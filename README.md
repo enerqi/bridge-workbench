@@ -20,7 +20,8 @@ and macOS may follow (untested).
 From the [releases page](https://github.com/enerqi/bridge-workbench/releases):
 
 - **Installer**: `bridge-workbench-<version>-setup.exe`. Installs for you alone, so no administrator rights
-  are needed, and adds a Start-menu entry and an uninstaller.
+  are needed, and adds a Start-menu entry and an uninstaller. To install for every account on the machine
+  (into Program Files, as administrator) run it as `bridge-workbench-<version>-setup.exe /ALLUSERS`.
 - **Portable**: `bridge-workbench-<version>-windows-x64.zip`. Unzip anywhere and run `workbench.exe`.
 - **Scoop**: `scoop install https://github.com/enerqi/bridge-workbench/releases/download/<tag>/bridge-workbench.json`
 

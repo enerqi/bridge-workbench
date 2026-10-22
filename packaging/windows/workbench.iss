@@ -3,8 +3,9 @@
 ;   iscc /DAppVersion=0.1.0-alpha.1 /DDistDir=<abs path to target\dist> /O<out dir> packaging\windows\workbench.iss
 ;
 ; A PER-USER install: no administrator prompt, into %LOCALAPPDATA%\Programs\Bridge Workbench (what {autopf}
-; means with PrivilegesRequired=lowest), a Start-menu entry, an uninstaller in Settings > Apps. Someone who
-; wants it for every account can pick that in the first page (PrivilegesRequiredOverridesAllowed=dialog).
+; means with PrivilegesRequired=lowest), a Start-menu entry, an uninstaller in Settings > Apps. No question
+; about it: an administrator who wants it for every account runs `setup.exe /ALLUSERS` (into Program Files),
+; which PrivilegesRequiredOverridesAllowed=commandline allows without putting a dialog in everyone's way.
 ;
 ; What the uninstaller does NOT remove, on purpose: the prefs file (%LOCALAPPDATA%\bridge-workbench\
 ; workbench.prefs), the deals folder and any notes folder - they are the user's, and a reinstall should find them.
@@ -30,7 +31,7 @@ DefaultDirName={autopf}\Bridge Workbench
 DefaultGroupName=Bridge Workbench
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0

@@ -3,6 +3,14 @@
 One `## <version>` section per release; the release workflow publishes that section as the release notes
 and refuses a tag without one. Versions are semver, `0.1.0-alpha.1`; the tag is `v0.1.0-alpha.1`.
 
+## 0.1.0-alpha.2
+
+- The installer no longer asks whether to install for you alone or for every account: it installs for you,
+  with no administrator rights needed. To install for every account (into Program Files, as administrator),
+  run it as `bridge-workbench-0.1.0-alpha.2-setup.exe /ALLUSERS`.
+
+An existing 0.1.0-alpha.1 install is upgraded in place.
+
 ## 0.1.0-alpha.1
 
 The first public build. **Alpha**: the built-in scenarios are about to be reorganised, and anything may
