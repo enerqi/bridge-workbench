@@ -15,6 +15,11 @@ on:
     # tag starting with `v` is ignored.
     tags:
       - "v[0-9]*"
+    # TEMPORARY (2026-10-22): GitHub never registered this workflow (no workflow_dispatch, "No workflows
+    # found"), so a branch push makes it evaluate the file - a parse error then shows as a failed run. The
+    # release step is tag-only, so this publishes nothing. Remove once the workflow is listed.
+    branches:
+      - master
   # Exercises the whole build without a tag; nothing is published, the files are kept as workflow artifacts.
   workflow_dispatch:
 
@@ -34,12 +39,12 @@ jobs:
           path: bridge-workbench
 
       # A tag with no CHANGELOG.md section used to be discovered at the very end, after the build. Here it
-      # costs seconds. The version: the tag without its `v`, or a dev stamp for a manual run (still semver,
+      # costs seconds. The version: the tag without its `v`, or a dev stamp for any other run (still semver,
       # which `just dist` insists on).
       - name: version
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
           else
             version="0.0.0-dev.${GITHUB_SHA::7}"
