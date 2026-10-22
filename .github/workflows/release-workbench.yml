@@ -15,11 +15,6 @@ on:
     # tag starting with `v` is ignored.
     tags:
       - "v[0-9]*"
-    # TEMPORARY (2026-10-22): GitHub never registered this workflow (no workflow_dispatch, "No workflows
-    # found"), so a branch push makes it evaluate the file - a parse error then shows as a failed run. The
-    # release step is tag-only, so this publishes nothing. Remove once the workflow is listed.
-    branches:
-      - master
   # Exercises the whole build without a tag; nothing is published, the files are kept as workflow artifacts.
   workflow_dispatch:
 
@@ -54,7 +49,11 @@ jobs:
           echo "building $version"
 
       - uses: extractions/setup-just@v4
+      # No uv cache: the python here is a few PEP 723 scripts (no lock file for a cache key to follow), and with
+      # the default cache setup-uv warns on every run that nothing matched its dependency glob.
       - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false
 
       - name: release notes from CHANGELOG.md
         if: startsWith(github.ref, 'refs/tags/')
@@ -206,13 +205,13 @@ jobs:
           PY
           cat dist/bridge-workbench.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bridge-workbench-${{ env.VERSION }}
           path: dist/*
           if-no-files-found: error
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/')
         with:
           name: Bridge Workbench ${{ env.VERSION }}
