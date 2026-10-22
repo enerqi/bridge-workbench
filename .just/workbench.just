@@ -27,7 +27,7 @@ workbench *args: mktarget_dirs
 # Writes target/dist/: workbench.exe + sciter.dll (the whole application; prefs live in %LOCALAPPDATA%), plus
 # LICENSE.txt and THIRD_PARTY_NOTICES.txt. The release workflow (.github/workflows/release-workbench.yml)
 # runs exactly this, then zips the folder and builds the installer from it (packaging/windows/workbench.iss).
-# e.g. `just sims dist 0.1.0-alpha.1`
+# e.g. `just dist 0.1.0-alpha.1`
 # ---
 # build the release artifact into target/dist (portable CPU, no console, version stamped)
 [group('workbench')]
@@ -48,7 +48,7 @@ dist version="dev":
 	    sys.exit("the build failed")
 	engine = os.path.join(r"""{{SCITER_LIB}}""", "sciter.dll")
 	shutil.copy2(engine, out)
-	shutil.copy2(os.path.join("..", "..", "LICENSE"), os.path.join(out, "LICENSE.txt"))
+	shutil.copy2("LICENSE", os.path.join(out, "LICENSE.txt"))
 	# The licences the shipped code asks to travel with it. Read from the checkouts the exe was built from,
 	# so the text is always the one that applies to what is linked in.
 	odin_root = subprocess.run(["odin", "root"], capture_output=True, text=True, check=True).stdout.strip()

@@ -7,4 +7,16 @@ target/
 # machine-specific editor config (absolute norn collection path) — generate with `just ols-config`
 ols.json
 
+# Generated pages (deal exports, scratch analyses, the suit book's scraped tables) ...
+*.html
+html/
+deals/
+# ...except the workbench's own pages, which are SOURCE: it #loads them into the exe, so a checkout without
+# them cannot compile the workbench at all. quiz-template.html is vendored from bridge-system-apps
+# (`just dswasm vendor-template` there) and player.html by `just vendor-player`, so a fresh clone builds.
+!ui/*.html
+
+__pycache__/
+.ruff_cache/
+.claude/
 .playwright*

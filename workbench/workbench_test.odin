@@ -6,7 +6,7 @@ package main
 	SPLIT OUT OF `workbench.odin`, which had reached ~12,900 lines with half of them tests. That split is
 	why this program is a PACKAGE DIRECTORY rather than one of the repo's `-file` programs: `odin ... -file`
 	compiles exactly one file, so a second file is only possible once the thing is a package. `sim.odin`,
-	`analyse_deal.odin`, `page_check.odin` and `bml2html.odin` are all still single files, and all of them
+	`analyse_deal.odin` and `page_check.odin` are all still single files, and all of them
 	are a fraction of this size.
 
 	WHAT THESE PIN is the seam between the document and the host — the ids the host reads, that the argv
@@ -59,11 +59,11 @@ import sa "sciter:sciter_app"
 g_view: sa.Windowless_View
 
 /*
-PER-TEST TIMINGS, opt in: `just sims test-workbench-serial -define:WB_TEST_TIMINGS=true` (the sharded
+PER-TEST TIMINGS, opt in: `just test-workbench-serial -define:WB_TEST_TIMINGS=true` (the sharded
 `test-workbench` always has them on). The runner's own log has
 whole-second timestamps, which said only that the suite was "about 0.4s a test". This times every test that
 builds a window (`test_app` .. `test_app_destroy`) and splits it into the setup, the pumps (how many, and
-their time) and the rest - the test's own work - one `timing` line per test, for `just sims
+their time) and the rest - the test's own work - one `timing` line per test, for `just
 test-workbench-timings` to sort. Single-threaded runner (ODIN_TEST_THREADS=1), so plain globals do.
 */
 WB_TEST_TIMINGS :: #config(WB_TEST_TIMINGS, false)
@@ -2035,7 +2035,7 @@ test_the_transcript_reaches_the_report_pane :: proc(t: ^testing.T) {
 
 // The generate path, actually run: the worker's per-scenario body (parse args, wire hooks, `cli.run`)
 // against a real scenario, writing a real card page. Seeded and `--dealer N`, so the bytes are
-// reproducible — which is what lets `just sims wb-cli-parity` diff this file against the same run through
+// reproducible — which is what lets `just wb-cli-parity` diff this file against the same run through
 // `sim.exe` and prove the window and the command line produce the same page.
 //
 // Deliberately NOT --dd: that would pull DDS into a test binary that also runs the windowless engine, and
@@ -4019,13 +4019,14 @@ test_the_release_check_says_what_github_answered :: proc(t: ^testing.T) {
 //   * the mark names are written twice — once in the script, once in the stylesheet — and a mark nothing
 //     styles is invisible rather than broken.
 
-// The notes are two directories above this one, and `bml_docs_dir` is what has to find them. A test binary
-// runs with the working directory `just` was invoked from, which is `deal-simulations/odin-sims`.
+// The notes are another repository, and `bml_docs_dir` is what has to find them: through
+// BML_DOCS_DIRECTORY, which the justfile sets from BRIDGE_SYSTEM_HOME when that checkout exists. Without it
+// the walk up from the working directory finds nothing and this skips.
 @(test)
-test_the_bml_corpus_is_found_by_walking_up :: proc(t: ^testing.T) {
+test_the_bml_corpus_is_found :: proc(t: ^testing.T) {
 	dir, note := bml_docs_dir(context.temp_allocator)
 	if dir == "" {
-		log.warnf("no .bml corpus above the working directory (%s) — skipping", note)
+		log.warnf("no .bml corpus (%s) — skipping", note)
 		return
 	}
 	testing.expect(t, bml_corpus_at(dir), "the directory it named does not hold the corpus marker")
@@ -9542,9 +9543,15 @@ No tables here.
 	testing.expectf(t, strings.contains(none, "no bid tables"), "a file with no tables: %q", none)
 
 	// A real chapter goes through, with every auction the extraction finds in the page.
-	source, err := os.read_entire_file_from_path(#directory + "/../../../nt-bidding.bml", context.temp_allocator)
+	notes, note := bml_docs_dir(context.temp_allocator)
+	if notes == "" {
+		log.warnf("no corpus (%s) — skipping the real chapter", note)
+		return
+	}
+	chapter, _ := filepath.join({notes, "nt-bidding.bml"}, context.temp_allocator)
+	source, err := os.read_entire_file_from_path(chapter, context.temp_allocator)
 	if err != nil {
-		log.warn("nt-bidding.bml is not where the corpus should be — skipping the real chapter")
+		log.warnf("no nt-bidding.bml in %s — skipping the real chapter", notes)
 		return
 	}
 	doc := bml.parse(string(source))
@@ -10739,7 +10746,7 @@ test_the_built_pages_look_is_a_file_in_the_notes_folder :: proc(t: ^testing.T) {
 }
 
 /*
-SNAPSHOTS OF THE WINDOW, opt in: `WB_SNAPSHOTS=<folder> just sims test-workbench-serial
+SNAPSHOTS OF THE WINDOW, opt in: `WB_SNAPSHOTS=<folder> just test-workbench-serial
 -define:ODIN_TEST_NAMES=main.test_snapshot_the_views` writes each view as a PNG, for LOOKING at a layout change
 (icons, spacing, hierarchy) rather than asserting it. Software Skia, 1120x780 - the real window is on the GPU
 and may differ in the details, but not in the layout. Without the variable it does nothing.

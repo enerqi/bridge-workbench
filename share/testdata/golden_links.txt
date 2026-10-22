@@ -6,7 +6,7 @@
 # are never edited or re-recorded to make a test pass - only appended to, when a new kind of link appears.
 #
 # `share_test.odin` decodes each one and compares what it carries (deals, tables, par numbers, CCA targets,
-# title, flags) with `golden_links.expected`; `just sims test-player` has the wasm player open each one.
+# title, flags) with `golden_links.expected`; `just test-player` has the wasm player open each one.
 # One link a line: <name> <fragment>.
 plain v1.AAxTaGFyZWQgZGVhbHMKfbrHESrlsk3VhA8vAWp9YwcWCey4tjzWGzEGgSlZDYIev2T-vH4EtQQ
 analysed v1.AQxTaGFyZWQgZGVhbHMKfbrHESrlsk3VhA8vAWp9YwcWCey4tjzWGzEGgSlZDYIev2T-vH4EtQQ

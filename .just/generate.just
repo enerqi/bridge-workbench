@@ -1,5 +1,5 @@
 # Convenience wrappers over `sim` / `sim-norebuild` (the root justfile reaches them as a module, e.g.
-# `just sims gen-all 32`). Shares the justfile's namespace: `deals_output_dir` / `scratch_dir` come from there.
+# `just gen-all 32`). Shares the justfile's namespace: `deals_output_dir` / `scratch_dir` come from there.
 #
 # NAMING: gen-all = every registered scenario, gen-some = a named subset, gen-one = one scenario.
 # Suffixes stack in this order: [-cards][-par], then -norebuild to reuse the last release build.

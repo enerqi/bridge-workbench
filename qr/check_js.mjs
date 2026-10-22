@@ -1,5 +1,5 @@
 // The card page's QR encoder (norn's `html_cards_qr.js`, a port of qr.odin) held to the same golden matrices
-// as qr.odin: node qr/check_js.mjs <html_cards_qr.js> <goldens.txt>   (`just sims test-qr-js`)
+// as qr.odin: node qr/check_js.mjs <html_cards_qr.js> <goldens.txt>   (`just test-qr-js`)
 //
 // Each golden is qrcodegen's matrix, scanned back by zxing-cpp when it was recorded (testdata/make_goldens.py).
 import fs from "node:fs";

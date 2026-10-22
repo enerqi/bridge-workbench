@@ -1,4 +1,4 @@
-; The Windows installer: Inno Setup 6. Built by the release workflow from `just sims dist`'s folder:
+; The Windows installer: Inno Setup 6. Built by the release workflow from `just dist`'s folder:
 ;
 ;   iscc /DAppVersion=0.1.0-alpha.1 /DDistDir=<abs path to target\dist> /O<out dir> packaging\windows\workbench.iss
 ;
@@ -13,7 +13,7 @@
   #error Pass the version: /DAppVersion=0.1.0-alpha.1
 #endif
 #ifndef DistDir
-  #error Pass the folder `just sims dist` wrote: /DDistDir=...\target\dist
+  #error Pass the folder `just dist` wrote: /DDistDir=...\target\dist
 #endif
 
 [Setup]
@@ -23,9 +23,9 @@ AppName=Bridge Workbench
 AppVersion={#AppVersion}
 AppVerName=Bridge Workbench {#AppVersion}
 AppPublisher=enerqi
-AppPublisherURL=https://github.com/enerqi/bridge-bidding-systems
-AppSupportURL=https://github.com/enerqi/bridge-bidding-systems/issues
-AppUpdatesURL=https://github.com/enerqi/bridge-bidding-systems/releases
+AppPublisherURL=https://github.com/enerqi/bridge-workbench
+AppSupportURL=https://github.com/enerqi/bridge-workbench/issues
+AppUpdatesURL=https://github.com/enerqi/bridge-workbench/releases
 DefaultDirName={autopf}\Bridge Workbench
 DefaultGroupName=Bridge Workbench
 DisableProgramGroupPage=yes

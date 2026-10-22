@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = []
 # ///
-"""Run the workbench tests as N PROCESSES at once (`just sims test-workbench [SHARDS]`, the default).
+"""Run the workbench tests as N PROCESSES at once (`just test-workbench [SHARDS]`, the default).
 
     uv run --no-project -p 3.14 --script tools/test_shards.py <test exe> <shards>
 

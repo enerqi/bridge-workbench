@@ -3,7 +3,7 @@
         "What a workbench release is built from, besides this repository at the release tag.",
         "Read by .github/workflows/release-workbench.yml. Each sibling is checked out at `commit`; the",
         "Odin compiler is laytan/setup-odin's `release` (a monthly tag, so a build can be repeated).",
-        "Re-pin with `just sims pin-deps` from clean, pushed checkouts - it refuses uncommitted changes or",
+        "Re-pin with `just pin-deps` from clean, pushed checkouts - it refuses uncommitted changes or",
         "unpushed commits, because CI can only check out what is on GitHub. All five are public; a private",
         "one would need the SIBLING_REPOS_TOKEN secret (a fine-grained token with read access to it)."
     ],

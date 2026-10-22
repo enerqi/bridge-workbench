@@ -284,7 +284,7 @@ test_a_long_title_is_cut_between_characters :: proc(t: ^testing.T) {
 // Par travels as the solver's numbers and comes back as the same caption, for every shape a caption takes: a
 // made contract with overtricks, a doubled sacrifice, two contracts, a negative score, no contract list, and no
 // par at all. The numbers are made up - `share` has no solver - but `par_caption` writes the caption the
-// generator writes from real ones (`just sims test-player` checks that with DDS).
+// generator writes from real ones (`just test-player` checks that with DDS).
 @(test)
 test_par_rebuilds_byte_for_byte :: proc(t: ^testing.T) {
 	state := rand.create(5)

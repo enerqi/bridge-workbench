@@ -2783,7 +2783,7 @@ not show it at all. Hiding the body, stripping the font link, the script or the 
 `STRIP=style` and then `STRIP=vunits` took it back to ~45ms - the page's `vw`/`vh` lengths, which the card
 page's desktop CSS now replaces with script-set variables. For example:
 
-	WORKBENCH_FRAME_LOG=1 WORKBENCH_PAGE_STRIP=vunits WORKBENCH_PAGE_CSS="body>*{display:none!important}" just sims workbench
+	WORKBENCH_FRAME_LOG=1 WORKBENCH_PAGE_STRIP=vunits WORKBENCH_PAGE_CSS="body>*{display:none!important}" just workbench
 
 `PAGE_CSS` goes in as given, inside a <style> of its own just before `</head>`: a <style> added by SCRIPT does
 not apply in this engine (measured). `PAGE_STRIP` takes a comma list of `font` (the web-font link), `style`
@@ -3000,7 +3000,7 @@ focus_page :: proc(app: ^App, force := false) {
 // the corpus to html, and until now looking at a change meant saving, building and opening a browser.
 //
 // The rendering is IN-PROCESS, which is the whole reason this is possible: `bridge-markup` (the Odin
-// implementation of BML, `markup:.`, the same library `bml2html.odin` drives) parses SOURCE TEXT. The
+// implementation of BML, `markup:.`, the same library bridge-markup's `bml2html` drives) parses SOURCE TEXT. The
 // python reference renders a FILE — `content_from_file` takes a path — so a preview of text nobody has
 // saved has nothing to hand it, and its parse state lives in module globals besides. One parse is ~2ms for
 // a chapter, so the preview is a button and not a job: no worker, no progress, no cancel.
@@ -3018,16 +3018,16 @@ focus_page :: proc(app: ^App, force := false) {
 // which one and how many bytes.
 
 // How the corpus is recognised: the root document every chapter is included into. Naming a FILE rather
-// than looking for `*.bml` is what keeps `deal-simulations/` — or any other directory that happens to hold
-// one — from being mistaken for the notes.
+// than looking for `*.bml` is what keeps a directory that happens to hold one from being mistaken for the
+// notes.
 BML_CORPUS_MARKER :: "bidding-system.bml"
 
 // Where the `.bml` corpus is, and a note when it was not found.
 //
-// `BML_DOCS_DIRECTORY` first, the same variable the quiz app reads for the same purpose. Then a walk UP
-// from the working directory, because that is where this program starts: `just sims workbench` starts it in
-// `deal-simulations/odin-sims`, two levels below the notes, and the built exe in `target/release`, four.
-// Eight levels is more than either needs, and the walk stops at a drive root regardless.
+// `BML_DOCS_DIRECTORY` first, the same variable the quiz app reads for the same purpose; this repository's
+// justfile sets it from BRIDGE_SYSTEM_HOME when the notes checkout exists. Then a walk UP from the working
+// directory, for a copy started from inside a notes folder (the workbench lived two levels below the notes
+// until it became a repository of its own). Eight levels, and the walk stops at a drive root regardless.
 bml_docs_dir :: proc(allocator := context.allocator) -> (dir: string, note: string) {
 	if named := os.get_env("BML_DOCS_DIRECTORY", context.temp_allocator); named != "" {
 		if bml_corpus_at(named) {
@@ -3617,7 +3617,7 @@ go_to_problem :: proc(app: ^App, file: string, line: int) {
 }
 
 // `#INCLUDE name`: the corpus directory first, then the working directory. The other way round from
-// `bml2html.odin`, and deliberately — that program is the reference's stand-in and the reference resolves
+// bridge-markup's `bml2html`, and deliberately — that program is the reference's stand-in and the reference resolves
 // against the cwd, whereas here the file being edited is known to live in `docs` and the cwd is wherever
 // the exe happened to start. A miss is a diagnostic inside the library rather than an error: a half-typed
 // document has to keep rendering.
@@ -8462,10 +8462,10 @@ main :: proc() {
 	// Vulkan; macOS: Metal). So this is not a "turn the GPU on" switch. It is here to FORCE one backend when
 	// a driver misbehaves, and `raster` is the way back to software when a GPU path renders nothing:
 	//
-	//	WORKBENCH_GFX=gpu      just sims workbench     # the best GPU layer for the platform, explicitly
-	//	WORKBENCH_GFX=vulkan   just sims workbench
-	//	WORKBENCH_GFX=opengl   just sims workbench
-	//	WORKBENCH_GFX=raster   just sims workbench     # software Skia, when a GPU layer misbehaves
+	//	WORKBENCH_GFX=gpu      just workbench     # the best GPU layer for the platform, explicitly
+	//	WORKBENCH_GFX=vulkan   just workbench
+	//	WORKBENCH_GFX=opengl   just workbench
+	//	WORKBENCH_GFX=raster   just workbench     # software Skia, when a GPU layer misbehaves
 	//
 	// `graphics_caps` is NOT the answer to "which layer am I on": it is a Direct2D-era rating of the machine
 	// (0/1/2) and reports `.Software` here on a build whose default is a GPU layer. Nothing in the API reports

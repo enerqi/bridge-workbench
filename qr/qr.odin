@@ -7,7 +7,7 @@
 // No engine and no allocation the caller does not own, so it is unit-tested natively against a reference
 // encoder (`testdata/goldens.txt`: `qrcodegen`'s matrices, each scanned back by zxing-cpp, recorded by
 // `testdata/make_goldens.py`). The card page carries a JS PORT of this file (norn's `html_cards_qr.js`), held to
-// the same goldens by `check_js.mjs` (`just sims test-qr-js`): change one, change both.
+// the same goldens by `check_js.mjs` (`just test-qr-js`): change one, change both.
 //
 // The layout follows the standard's own construction order: function patterns first (finders, timing,
 // alignment, format and version areas), then the codewords in the two-column zigzag, then a mask over

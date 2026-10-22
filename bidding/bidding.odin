@@ -2,7 +2,7 @@ package bidding
 
 /*
 	Package `bidding` — the "Weak Strong Club" bidding system, expressed as deal predicates plus the
-	named-scenario registry. The Odin port of `deal-simulations/tcl-sims/deal-utils.tcl`.
+	named-scenario registry. The Odin port of the notes repository's `deal-simulations/tcl-sims/deal-utils.tcl`.
 
 	WHY THIS IS A PACKAGE (rather than folded into a program's `package main`)
 	------------------------------------------------------------------------

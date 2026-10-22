@@ -705,7 +705,7 @@ check_the_carousel :: proc(view: ^sa.Windowless_View) {
 	// and a snap step through the burst at almost the same simulated rate — measured, the worst mid-burst lag
 	// came out 394px with the catch-up and 387px without it, which is a check with no teeth and was deleted
 	// rather than kept as false comfort. Frame rate and smoothness are judged in the real window
-	// (`just sims workbench-debug`). What IS worth pinning here is that a burst of overlapping steps still
+	// (`just workbench-debug`). What IS worth pinning here is that a burst of overlapping steps still
 	// ENDS in the right place, whichever path the moves took.
 	if fast, err := sa.select_first(root, "#nc-next"); err == nil {
 		for step in 1 ..< len(slides) {
@@ -1846,7 +1846,7 @@ check_the_par_toggle :: proc(view: ^sa.Windowless_View) {
 
 	// The QR button: its modal opens in THIS engine, the code is drawn with a real box (an svg sized on its
 	// container laid out 1x1 here, in the workbench), and the drawing is the one `qr/` makes from the same link -
-	// the page carries a JS port of it, held to the goldens by `just sims test-qr-js`; this holds the two
+	// the page carries a JS port of it, held to the goldens by `just test-qr-js`; this holds the two
 	// together on a real link, painted.
 	qr_button, qerr := sa.select_first(root, "#nc-qr")
 	if qerr != nil {

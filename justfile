@@ -17,7 +17,6 @@ import '.just/toolchain.just'
 import '.just/editor.just'
 import '.just/generate.just'
 import '.just/analyse.just'
-import '.just/markup.just'
 import '.just/workbench.just'
 import '.just/bench.just'
 import '.just/release.just'
@@ -70,7 +69,6 @@ sim_name := "sim.exe"
 analyse_name := "analyse_deal.exe"
 hand_ocr_name := "hand-ocr.exe"
 workbench_name := "workbench.exe"
-bml2html_name := "bml2html.exe"
 test_main_name := "test-bidding.exe"
 
 # `join`, not the `/` operator: `/` always emits a forward slash, and cmd.exe rejects a forward-slash
@@ -122,6 +120,15 @@ export DDS_MAX_MB := env_var_or_default("DDS_MAX_MB", "256")
 # its root. `export` so the workbench tests find its fixtures.
 export HAND_OCR_DIR := env_var_or_default("HAND_OCR_DIR", home / "dev/bridge-hand-ocr")
 
+# The bidding NOTES (the `.bml` corpus) are another repository, enerqi/bridge-bidding-systems, which nothing here
+# BUILDS against. Two things read it: the workbench's notes view at startup (BML_DOCS_DIRECTORY, below) and the
+# opt-in tests over the whole corpus (`test-quiz-corpus`'s parity goldens, the notes-editor tests). Exported only
+# when the checkout is really there, so a machine without it - CI - runs those tests as skips rather than failures.
+# BML_DOCS_DIRECTORY set by hand wins.
+_notes_default := env_var_or_default("BRIDGE_SYSTEM_HOME", home / "docs/bridge/bridge-bidding-system")
+export BRIDGE_SYSTEM_HOME := if path_exists(_notes_default / "bidding-system.bml") == "true" { _notes_default } else { "" }
+export BML_DOCS_DIRECTORY := env_var_or_default("BML_DOCS_DIRECTORY", BRIDGE_SYSTEM_HOME)
+
 
 # ============================================================= qa =========
 
@@ -160,7 +167,6 @@ lint *args:
 	odin check player {{norn}} -target:js_wasm32 -define:COMBO_THREADS=false -vet -vet-cast -strict-style -vet-tabs {{args}}
 	odin check workbench {{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}} -vet -vet-cast -strict-style -vet-tabs {{args}}
 	odin check page_check.odin -file {{norn}} {{dds}} {{sciter}} -vet -vet-cast -strict-style -vet-tabs {{args}}
-	odin check bml2html.odin -file {{markup}} -vet -vet-cast -strict-style -vet-tabs {{args}}
 	odin check bench.odin -file {{norn}} -vet -vet-cast -strict-style -vet-tabs {{args}}
 	odin check bench_e2e.odin -file {{norn}} {{dds}} -vet -vet-cast -strict-style -vet-tabs {{args}}
 
@@ -439,7 +445,7 @@ vendor-player: player
 	from pathlib import Path
 	target = Path("ui") / "player.html"
 	shutil.copyfile(Path(r"{{ join(player_dir, "player.html") }}"), target)
-	print(f"{target}: {target.stat().st_size:,} bytes - now rebuild the workbench (just sims workbench)")
+	print(f"{target}: {target.stat().st_size:,} bytes - now rebuild the workbench (just workbench)")
 
 # Rebuilds the player and the phone speed test (dds_wasm_spike/) into target/netlify/ and deploys that folder
 # to production on Netlify with its CLI (via npx, so only node is needed). SITE is the Netlify project's name
@@ -464,7 +470,7 @@ publish-player site=env_var_or_default("NETLIFY_SITE", "bridge-workbench"): play
 	if not npx:
 	    sys.exit("npx not found: install node")
 	result = subprocess.run([npx, "-y", "netlify-cli", "deploy", "--prod", "--no-build", "--dir", str(out), "--site", "{{ site }}",
-	                         "--message", "just sims publish-player"])
+	                         "--message", "just publish-player"])
 	sys.exit(result.returncode)
 
 # the player in wasm against native pages: a generated page's link must rebuild it byte for byte (needs node)

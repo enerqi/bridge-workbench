@@ -52,7 +52,7 @@
 //   - a change is a NEW VERSION (`v2.`), with its own encoder, and the `v1.` decoder STAYS, so old links keep
 //     opening in the new player;
 //   - `testdata/golden_links.txt` holds real links of every kind, and `test_every_golden_link_still_reads` (plus
-//     `just sims test-player`, in the wasm module itself) fails when one stops reading the same. Those goldens
+//     `just test-player`, in the wasm module itself) fails when one stops reading the same. Those goldens
 //     are appended to when a new kind of link appears, and never edited or re-recorded to make a test pass.
 // The card page may change freely: a link means its DEALS (and their table, par numbers, targets), not a layout.
 package share
@@ -66,7 +66,7 @@ import "../par_caption"
 import "../replay"
 import "../sampled"
 
-// Where this project publishes the player (`just sims publish-player`): the address links open unless the
+// Where this project publishes the player (`just publish-player`): the address links open unless the
 // program writing them is told another (the workbench's `share.player` setting, `SHARE_PLAYER` for `sim`).
 PUBLISHED_PLAYER :: "https://bridge-workbench.netlify.app/player.html"
 

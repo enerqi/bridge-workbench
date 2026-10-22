@@ -1,7 +1,7 @@
 {
  "1c-opening.bml": {
   "count": 1255,
-  "sha256": "b75f26766dec92effde20e1e070ffd2df2c92b5e9e4c6f91f42fc002fbf6a498"
+  "sha256": "ef983b3fb04c70f8f6990f4d9d472f4b3ab7c806c595e129c7ec88d831935ff2"
  },
  "2club-opening.bml": {
   "count": 407,
@@ -29,7 +29,7 @@
  },
  "bidding-system.bml": {
   "count": 7676,
-  "sha256": "f008d7e80358dcf4fa1739ac4b6e3e5d937c93e45187ec1ce043ec5001520bff"
+  "sha256": "acc5c10da24c321493396a8f678de2af424c6e15b6775a8c053934b616904406"
  },
  "carding.bml": {
   "count": 0,

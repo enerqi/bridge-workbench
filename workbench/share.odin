@@ -10,10 +10,10 @@ the reader's browser. Nothing is uploaded anywhere; the deals travel in the link
 WHERE THE PLAYER IS. A link is only as good as the address in front of it, so:
   - the `share.player` setting: the address of a published `player.html` (any static host - it never
     changes, so it is published once). EMPTY means this project's own, `share.PUBLISHED_PLAYER`
-    (bridge-workbench.netlify.app, deployed by `just sims publish-player`). This is what makes a link someone
+    (bridge-workbench.netlify.app, deployed by `just publish-player`). This is what makes a link someone
     else can open.
   - only when the setting is not an address at all (`share.usable_player_address`), the copy BUILT INTO this
-    program (`ui/player.html`, vendored by `just sims vendor-player`), written to the deals folder and linked as
+    program (`ui/player.html`, vendored by `just vendor-player`), written to the deals folder and linked as
     a `file:///` address. That opens on this computer only, and the status line says so and why.
 
 WHAT A LINK CARRIES. The player has norn and the card-combination analysis (`combo`), so a page that had that
@@ -42,7 +42,7 @@ import "../prefs"
 import "../qr"
 import "../share"
 
-// The player page, compiled in (`just sims vendor-player` refreshes it).
+// The player page, compiled in (`just vendor-player` refreshes it).
 PLAYER_BUILTIN :: #load("../ui/player.html", string)
 
 // Where a published player is: a URL, or empty for the built-in copy.

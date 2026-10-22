@@ -4,7 +4,7 @@ The question: can the double-dummy solver run in the reader's browser, so that a
 only the workbench gives today: the 2-hand make %, the per-lead figures, the exact contract explorer and the
 play-through costs? The answer is yes, and it is cheap enough to be worth doing.
 
-**2026-10-13: the module's build moved to `player/dds/`** (`build.py`, the two shim headers, `dds.js`; `just sims
+**2026-10-13: the module's build moved to `player/dds/`** (`build.py`, the two shim headers, `dds.js`; `just
 player-dds` -> `target/player/dds.wasm`), since the player now carries DDS. What is left here is the measuring:
 benches and the phone page. Where this file says `build.sh` or `target/dds-wasm/dds.wasm`, read those.
 

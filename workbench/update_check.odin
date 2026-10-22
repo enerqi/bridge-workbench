@@ -3,7 +3,7 @@ package main
 /*
 	The version, and "is a newer release out?" - asked BY HAND, from the About panel.
 
-	The version is stamped at build time: `just sims dist 0.1.0-alpha.1` passes
+	The version is stamped at build time: `just dist 0.1.0-alpha.1` passes
 	`-define:WORKBENCH_VERSION=0.1.0-alpha.1`; every other build says "dev".
 
 	The check is one HTTPS GET of the GitHub releases list, on a thread of its own, when the person presses
@@ -30,8 +30,8 @@ import curl "vendor:curl"
 WORKBENCH_VERSION :: #config(WORKBENCH_VERSION, "dev")
 
 // Where releases are published. One place, so moving the releases to another repository is one edit.
-RELEASES_API :: "https://api.github.com/repos/enerqi/bridge-bidding-systems/releases?per_page=1"
-RELEASES_PAGE :: "https://github.com/enerqi/bridge-bidding-systems/releases"
+RELEASES_API :: "https://api.github.com/repos/enerqi/bridge-workbench/releases?per_page=1"
+RELEASES_PAGE :: "https://github.com/enerqi/bridge-workbench/releases"
 
 // The version as the About panel words it.
 version_label :: proc() -> string {

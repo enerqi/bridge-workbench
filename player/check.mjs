@@ -1,5 +1,5 @@
 // The player, held to the native pages: node player/check.mjs <player.wasm> <odin.js> <dir> [<golden_links.txt>]
-// (`just sims test-player` runs it with everything).
+// (`just test-player` runs it with everything).
 //
 // `<dir>` holds what `native` wrote: plain, analysed and par (.html / .txt), each page with
 // the link fragment read back out of it. The wasm player renders each fragment, stepping board by board as

@@ -15,14 +15,21 @@ import "core:crypto/hash"
 import "core:encoding/hex"
 import "core:encoding/json"
 import "core:fmt"
+import "core:log"
 import "core:mem"
 import "core:os"
 import "core:strings"
 import "core:testing"
 import bml "markup:."
 
+// The notes this port is held to live in ANOTHER repository (bridge-bidding-system), found through
+// BRIDGE_SYSTEM_HOME as the apps repository finds it. Unset or empty, the corpus test is skipped: the workbench
+// builds and tests without the notes, and CI does not clone them. The justfile sets it when the checkout is at
+// its usual place.
 @(private = "file")
-REPO :: #directory + "/../../.."
+notes_home :: proc() -> string {
+	return os.get_env("BRIDGE_SYSTEM_HOME", context.temp_allocator)
+}
 
 @(private = "file")
 Golden :: struct {
@@ -43,11 +50,16 @@ test_every_file_matches_the_python_quiz :: proc(t: ^testing.T) {
 		testing.fail_now(t, "testdata/goldens.json does not parse")
 	}
 
+	notes := notes_home()
+	if notes == "" {
+		log.warn("BRIDGE_SYSTEM_HOME is not set - skipping the corpus parity test")
+		return
+	}
 	matched := 0
 	for name, golden in goldens {
-		source, source_error := os.read_entire_file(fmt.tprintf("%s/%s", REPO, name), context.temp_allocator)
+		source, source_error := os.read_entire_file(fmt.tprintf("%s/%s", notes, name), context.temp_allocator)
 		if source_error != nil {
-			testing.expectf(t, false, "%s: in the goldens but not in the repo", name)
+			testing.expectf(t, false, "%s: in the goldens but not in %s", name, notes)
 			continue
 		}
 		doc := bml.parse(string(source), {resolve_include = read_include})
@@ -108,7 +120,7 @@ test_heading_bids :: proc(t: ^testing.T) {
 
 @(private = "file")
 read_include :: proc(name: string, user: rawptr, allocator: mem.Allocator) -> (text: string, ok: bool) {
-	data, error := os.read_entire_file(fmt.tprintf("%s/%s", REPO, name), allocator)
+	data, error := os.read_entire_file(fmt.tprintf("%s/%s", notes_home(), name), allocator)
 	return string(data), error == nil
 }
 
