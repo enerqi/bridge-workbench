@@ -1,6 +1,7 @@
 # Bridge Workbench
 
-A desktop workbench for contract bridge practice and bidding-system notes, for Windows.
+A desktop workbench for contract bridge practice and bidding-system notes. Windows today; Linux is planned,
+and macOS may follow (untested).
 
 - **Generate practice deals** for an auction, from the built-in scenarios or your own scenario files, as an
   interactive card page, a BBO hand-viewer page or text.
@@ -28,7 +29,8 @@ The program is not yet signed, so Windows SmartScreen may warn on first run: cho
 The About panel's **Is a new version out?** button checks this repository's releases, and only when you
 press it.
 
-Windows 10/11, x64.
+Releases are Windows 10/11, x64, for now. The code is written to be portable (its UI engine, Sciter, runs on
+Windows, Linux and macOS), and Linux builds are planned. A macOS build may come later, but there is no Mac to test it on.
 
 ## Building from source
 
