@@ -20,3 +20,6 @@ __pycache__/
 .ruff_cache/
 .claude/
 .playwright*
+
+# rc.exe's output beside packaging/windows/workbench.rc, rebuilt by every workbench build
+*.res

@@ -69,6 +69,10 @@ sim_name := "sim.exe"
 analyse_name := "analyse_deal.exe"
 hand_ocr_name := "hand-ocr.exe"
 workbench_name := "workbench.exe"
+# The exe's own icon - Explorer, the taskbar button, shortcuts, Settings > Apps. The title bar's comes from the
+# document instead (`with_window_icon`), so without this the taskbar showed Windows' generic program icon.
+# Odin compiles the .rc with the SDK's rc.exe. Windows only; `just icon` regenerates the .ico.
+workbench_resource := if os() == "windows" { "-resource:packaging/windows/workbench.rc" } else { "" }
 test_main_name := "test-bidding.exe"
 
 # `join`, not the `/` operator: `/` always emits a forward slash, and cmd.exe rejects a forward-slash

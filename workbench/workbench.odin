@@ -9009,12 +9009,14 @@ compose_document :: proc(allocator := context.allocator) -> string {
 }
 
 /*
-THE WINDOW'S ICON - the title bar's, and the taskbar's while it runs: the header's mark as a data URL in the
-engine's own `window-icon` attribute on `<html>`, so the exe needs no file beside it and every platform the
-engine runs on reads it. ADDED HERE, FOR THE REAL WINDOW ONLY: in a windowless view the attribute crashes the
-engine (measured 2026-10-20: every test segfaulted at load), so the test documents never carry it. Keep the
-picture in step with `svg.mark` in ui/workbench.html. The EXE's icon in Explorer and on a pinned shortcut is a
-different thing: a Windows resource (`.ico` via an `.rc` file, `odin build -resource:`).
+THE WINDOW'S ICON - the title bar's: the header's mark as a data URL in the engine's own `window-icon`
+attribute on `<html>`, so the exe needs no file beside it and every platform the engine runs on reads it.
+ADDED HERE, FOR THE REAL WINDOW ONLY: in a windowless view the attribute crashes the engine (measured
+2026-10-20: every test segfaulted at load), so the test documents never carry it. Keep the picture in step
+with `svg.mark` in ui/workbench.html. On Windows it does NOT reach the TASKBAR button (seen 2026-10-22: the
+generic program icon there): that, Explorer, shortcuts and Settings > Apps take the exe's own icon, a
+resource (packaging/windows/workbench.rc, linked by `-resource:`). Its .ico is drawn from THIS string by
+`just icon`, so re-run that after changing the picture.
 */
 WINDOW_ICON :: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg transform='rotate(-16 12 13)'%3E%3Crect x='3.2' y='4' width='11.5' height='16' rx='2' fill='%2389b4fa'/%3E%3C/g%3E%3Cg transform='rotate(9 12 13)'%3E%3Crect x='8.6' y='3.4' width='11.5' height='16' rx='2' fill='%23f4f4f7'/%3E%3Cpath transform='translate(10.6 8.2) scale(0.32)' fill='%23e64553' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/g%3E%3C/svg%3E"
 

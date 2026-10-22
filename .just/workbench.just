@@ -12,7 +12,7 @@
 # run the desktop workbench (release)
 [group('workbench')]
 workbench *args: mktarget_dirs
-	odin run workbench {{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}} -keep-executable -o:speed -microarch:native -linker:{{linker}} -out:{{ target_path("release", workbench_name) }} -- {{args}}
+	odin run workbench {{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}} {{workbench_resource}} -keep-executable -o:speed -microarch:native -linker:{{linker}} -out:{{ target_path("release", workbench_name) }} -- {{args}}
 
 # `-debug` for a steppable build with the tracking allocator's leak report at exit; also what to run when
 # attaching the SDK's `inspector` (the window is created with .ENABLE_DEBUG either way).
@@ -41,7 +41,7 @@ dist version="dev":
 	os.makedirs(out, exist_ok=True)
 	exe = os.path.join(out, "{{workbench_name}}")
 	collections = r"""{{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}}""".split()
-	command = ["odin", "build", "workbench", *collections, "-o:speed", "-subsystem:windows",
+	command = ["odin", "build", "workbench", *collections, *"""{{workbench_resource}}""".split(), "-o:speed", "-subsystem:windows",
 	           f"-define:WORKBENCH_VERSION={version}", "-linker:{{linker}}", f"-out:{exe}"]
 	print(" ".join(command))
 	if subprocess.run(command).returncode != 0:
@@ -78,7 +78,7 @@ dist version="dev":
 # run the desktop workbench (debug)
 [group('workbench')]
 workbench-debug *args: mktarget_dirs
-	odin run workbench {{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}} -keep-executable -debug -linker:{{linker}} -out:{{ target_path("debug", workbench_name) }} -- {{args}}
+	odin run workbench {{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}} {{workbench_resource}} -keep-executable -debug -linker:{{linker}} -out:{{ target_path("debug", workbench_name) }} -- {{args}}
 
 # The SDK's inspector: DOM tree, computed styles, script console and debugger, over a socket, against a
 # RUNNING workbench. Needs `just workbench-debug` on the other side (the release build grants neither the
@@ -259,3 +259,8 @@ wb-cli-parity: mktarget_dirs
 	    print(f"PASS: {ui.name} and {cli.name} are identical ({ui.stat().st_size} bytes)")
 	else:
 	    sys.exit(f"FAIL: {ui} and {cli} differ - the window and the command line have diverged")
+
+# regenerate packaging/windows/workbench.ico (the exe's icon) from the window's mark, WINDOW_ICON in workbench.odin
+[group('workbench')]
+icon:
+	uv run --script packaging/windows/make_icon.py

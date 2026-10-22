@@ -3,6 +3,11 @@
 One `## <version>` section per release; the release workflow publishes that section as the release notes
 and refuses a tag without one. Versions are semver, `0.1.0-alpha.1`; the tag is `v0.1.0-alpha.1`.
 
+## 0.1.0-alpha.3
+
+- The program has its own icon on the taskbar, in Explorer, on its Start-menu and desktop shortcuts and in
+  Settings > Apps, instead of Windows' generic program icon.
+
 ## 0.1.0-alpha.2
 
 - The installer no longer asks whether to install for you alone or for every account: it installs for you,
