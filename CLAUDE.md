@@ -482,13 +482,17 @@ copied to `w:/deals/` and handed to a `<frame>`). Two keyboard facts from the sa
 inside it holds the focus (the workbench focuses the framed `<body>`) — the arrow keys and the
 `a`/`n`/`e`/`s`/`w` seat shortcuts work in the window because of those two.
 
-**A full deal analysed with a make chance opens the CCA panel in BLIND** (2026-10-20): the deal was sampled
-as if the defenders were unseen (`data-sim-blind`, `render_full_deal_body`), and that is what the reader asked
-for, so the panel starts there until they pick Exact. While it reads blind the two hands declarer cannot see
-are faded and labelled "unseen by declarer" (`syncBlindFade` in norn's footer template). **That change is
-applied on a zero TIMEOUT, not inside the caller**: changing the seats (a class on the slide or compass, an
-inline style or the note, all three tried) inside the Exact button's own re-render crashed Sciter a frame
-later with an access violation. `page-check`'s `check_the_blind_fade` holds it.
+**A full deal analysed with random layouts opens the CCA panel on RANDOM LAYOUTS** (2026-10-20; named
+"Blind" until 2026-10-22): the other two hands were redealt at random, each layout solved double-dummy
+(`data-sim-layouts`, `render_full_deal_body`), and that is what the reader asked for, so the panel starts there
+until they pick This deal. While it reads random layouts the two redealt hands are faded and labelled
+"redealt at random" (`syncRedealtFade` in norn's footer template). NOT "blind": every layout is played seeing
+all 52 cards, so the figure is a ceiling; "blind" on the page means single-dummy only (the blind suit line,
+"achievable playing blind", the blind two-way guess). The analyse panel's field is "simulate [N] random
+layouts" (`--sample`) for the same reason. **The fade is applied on a zero TIMEOUT, not inside the caller**:
+changing the seats (a class on the slide or compass, an inline style or the note, all three tried) inside the
+This deal button's own re-render crashed Sciter a frame later with an access violation. `page-check`'s
+`check_the_redealt_fade` holds it.
 
 **Performance of the hosted page is a LAYOUT question, measured.** Every board on a card page takes part in
 layout whether or not it is on screen, and the engine re-lays out all of them on each window-resize step:

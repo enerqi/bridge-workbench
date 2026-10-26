@@ -171,7 +171,8 @@ solve_sample :: proc(
 // layout stream, the result is byte-identical to a fixed-N run truncated at the stop point. `target`/
 // `has_target` name the gating contract; with `has_target=false` the current best-EV contract is re-picked each
 // round. Returns the resolved batch (its `.n` = samples actually solved) and the gating contract. Free with
-// `solved_sample_free`.
+// `solved_sample_free`. `progress`, when set, is told `done` of `n_cap` after each round: a few hundred layouts
+// are seconds, and a window shows that as a moving bar. An early stop never reports `done == n_cap`.
 solve_sample_adaptive :: proc(
 	board: norn.Board,
 	side: bit_set[norn.Seat],
@@ -180,6 +181,8 @@ solve_sample_adaptive :: proc(
 	constraints: Sample_Constraints = {},
 	target: Contract = {},
 	has_target: bool = false,
+	progress: proc(data: rawptr, done, n_cap: int) = nil,
+	progress_data: rawptr = nil,
 ) -> (
 	s: Solved_Sample,
 	gating: Contract,
@@ -211,6 +214,9 @@ solve_sample_adaptive :: proc(
 		}
 		sampled.tally(&grid, tables[done:done + round], a, b)
 		done += round
+		if progress != nil {
+			progress(progress_data, done, n_cap)
+		}
 		if sampled.adaptive_stop(grid, &gc, has_target, n_cap) {
 			break
 		}

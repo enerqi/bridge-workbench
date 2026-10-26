@@ -164,22 +164,8 @@ is shown in a browser. The webfont link goes too: the page has to read offline, 
 stylesheet's other fonts.
 */
 quiz_notes_document :: proc(app: ^App, html: string, allocator := context.allocator) -> string {
-	css := ""
-	if app.docs != "" {
-		if path, jerr := filepath.join({app.docs, "bml.css"}, context.temp_allocator); jerr == nil {
-			if data, err := os.read_entire_file_from_path(path, context.temp_allocator); err == nil {
-				css = string(data)
-			}
-		}
-	}
-	stripped := strip_link_tags(html, context.temp_allocator)
-	head := strings.index(stripped, "<head>")
-	if head < 0 || css == "" {
-		return strings.clone(stripped, allocator)
-	}
-	cut := head + len("<head>")
 	look := notes_look_css(notes_look(&app.prefs), context.temp_allocator) // the look chosen in Settings
-	return strings.concatenate({stripped[:cut], "<style>", css, "</style>", look, stripped[cut:]}, allocator)
+	return standalone_notes_page(html, notes_css(app), look, allocator)
 }
 
 // How many different meanings a corpus has to ask about (a row with no description cannot be asked).
@@ -331,6 +317,7 @@ refresh_quiz :: proc(app: ^App) {
 	delete(app.quiz_path, app.allocator)
 	app.quiz_path = ""
 	set_shown(app, "#bml-quizbar", app.bml_open != "")
+	set_shown(app, "#bml-docbar", app.bml_open != "")
 	path := quiz_file_for(app)
 	quiz: os.File_Info
 	qerr: os.Error = os.General_Error.Not_Exist

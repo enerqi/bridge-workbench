@@ -114,7 +114,7 @@ report_board :: proc(sink: Sink, board: norn.Board, args: ^Args, contract: deal_
 		delete(ad.cands)
 	}
 
-	bs, serr := sample_board(board, side, args, contract, has_contract)
+	bs, serr := sample_board(board, side, args, contract, has_contract, sink)
 	defer board_sample_free(&bs)
 	if serr != "" {
 		fmt.wprintfln(sink.err, "%s: %s", PROGRAM, serr)
@@ -187,7 +187,7 @@ print_sample_verdict :: proc(
 	}
 	fmt.wprintfln(
 		w,
-		"  %s makes %.0f%% (+/-%.0f%%, %d deals)   ·   E[tricks] simulated %.2f",
+		"  %s makes %.0f%% (+/-%.0f%%, %d layouts)   ·   E[tricks] simulated %.2f",
 		label,
 		s.make_pct,
 		s.stderr_pct,
@@ -201,7 +201,7 @@ print_sample_verdict :: proc(
 		if card, wpct, wn, base_pct, ok := deal_solve.worst_lead(leads, contract, side); ok && base_pct - wpct >= 3 {
 			fmt.wprintfln(
 				w,
-				"  Worst opening lead: %s -> %.0f%% (vs %.0f%% average, %d deals) — plan for it.",
+				"  Worst opening lead: %s -> %.0f%% (vs %.0f%% average, %d layouts) — plan for it.",
 				deal_solve.card_word(card),
 				wpct,
 				base_pct,

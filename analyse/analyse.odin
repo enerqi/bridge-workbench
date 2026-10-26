@@ -63,6 +63,10 @@ Sink :: struct {
 	// end. A whole match can take a while (a vugraph `.lin` solves every position of every play), and a
 	// windowed host shows "board 3 of 16" from this. Called on the thread running `run`.
 	progress:      proc(data: rawptr, done, total: int),
+	// Optional: how far through the CURRENT board, in thousandths, while its `--sample` layouts are solved -
+	// the one step of a single board that takes seconds, so without it a one-board run's bar went from empty
+	// to full in one jump. Same `progress_data`, same thread.
+	board_part:    proc(data: rawptr, permille: int),
 	progress_data: rawptr,
 }
 

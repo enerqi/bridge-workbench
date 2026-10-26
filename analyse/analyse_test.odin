@@ -7,7 +7,8 @@ package analyse
 	cannot build. These cover the parts that have no solver in them — the four input formats, the
 	seat/suit/card specs, and that the text report actually reaches the writer it was handed. The
 	DDS-backed paths (sampling, tax, exact grids) are covered in `deal_solve`'s own tests and by the
-	`test-golden` recipe, which diffs the real program's `data-sim` bake.
+	`test-golden` recipe, which diffs the real program's `data-sim` bake; the one solver test here is the
+	sampling's progress reports, which are this package's.
 */
 
 import "core:fmt"
@@ -229,11 +230,46 @@ test_report_board_writes_to_the_sink :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(out, "Whole-hand (simulated)"))
 }
 
-// A board that is neither a 2-hand advisor input nor a complete deal: the diagnostic goes to `err`, and
-// no report is written. With a builder_sink both streams are one string, so assert on the message.
+// A single board's random layouts take seconds, and the bar a window draws from `Sink.progress` alone went from
+// empty to full in one jump. `board_part` must report the sampling as it goes: several reports, rising, inside
+// the sampling's 900 thousandths of the board.
 @(test)
-test_report_board_rejects_a_three_hand_board :: proc(t: ^testing.T) {
-	boards, err := resolve_boards(`[Deal "N:AJ54.AK2.A32.AK3 Q98.QJT.KQJ.QJT7 KT32.543.654.542 -"]`)
+test_sampling_reports_how_far_through_the_board :: proc(t: ^testing.T) {
+	deal_solve.init() // DDS has no auto-init (see deal_solve's sample_test.odin)
+	boards, err := resolve_boards(TWO_HAND)
+	defer delete(boards)
+	testing.expect_value(t, err, "")
+
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	parts: [dynamic]int
+	defer delete(parts)
+	sink := builder_sink(&b)
+	sink.progress_data = &parts
+	sink.board_part = proc(data: rawptr, permille: int) {
+		append((^[dynamic]int)(data), permille)
+	}
+	// A cap of 400 is ten rounds; this board resolves well before the cap, but not in one round.
+	args := Args {
+		target = 9,
+		sample = 400,
+	}
+	report_board(sink, boards[0], &args, {}, false)
+
+	testing.expectf(t, len(parts) >= 2, "%d board_part reports; want one per round of layouts", len(parts))
+	for i in 1 ..< len(parts) {
+		testing.expectf(t, parts[i] > parts[i - 1], "board_part went backwards: %v", parts[:])
+	}
+	if len(parts) > 0 {
+		testing.expectf(t, parts[0] > 0 && parts[len(parts) - 1] <= 900, "board_part outside (0, 900]: %v", parts[:])
+	}
+}
+
+// A board that is neither a 2-hand advisor input nor a complete deal (one hand alone): the diagnostic goes
+// to `err`, and no report is written. With a builder_sink both streams are one string, so assert on the message.
+@(test)
+test_report_board_rejects_a_one_hand_board :: proc(t: ^testing.T) {
+	boards, err := resolve_boards(`[Deal "N:AJ54.AK2.A32.AK3 - - -"]`)
 	defer delete(boards)
 	testing.expect_value(t, err, "")
 
@@ -245,6 +281,16 @@ test_report_board_rejects_a_three_hand_board :: proc(t: ^testing.T) {
 	out := strings.to_string(b)
 	testing.expect(t, strings.contains(out, "not a 2-hand advisor board"))
 	testing.expect(t, !strings.contains(out, "Double-dummy census"))
+}
+
+// Three hands and a `-` (a screenshot read with one hand missed) is a complete deal, not a rejected board:
+// the missing hand is the 13 cards left over.
+@(test)
+test_resolve_three_hands_is_a_full_deal :: proc(t: ^testing.T) {
+	boards, err := resolve_boards(`[Deal "N:AJ54.AK2.A32.AK3 Q98.QJT.KQJ.QJT7 KT32.543.654.542 -"]`)
+	defer delete(boards)
+	testing.expect_value(t, err, "")
+	testing.expect(t, board_fully_known(boards[0]))
 }
 
 // `run` must report empty input as a USAGE error, and say so, rather than reading a stdin that is not

@@ -28,6 +28,9 @@ sample_board :: proc(
 	args: ^Args,
 	asked: deal_solve.Contract,
 	has_asked: bool,
+	sink: Sink,
+	part := 0,
+	parts := 1,
 ) -> (
 	bs: Board_Sample,
 	err: string,
@@ -64,6 +67,7 @@ sample_board :: proc(
 	// run the full cap). The lead grids and the misguess tax are then pure FILTERS over that one solved batch
 	// (they otherwise each draw+solve the identical seeded layouts), so a board pays for its samples once, not
 	// twice. `gating` is the contract that gated the stop — the auto-pick when the caller gave none.
+	layouts_progress := Layouts_Progress{sink, part, parts}
 	s, gating, sok := deal_solve.solve_sample_adaptive(
 		board,
 		side,
@@ -72,16 +76,39 @@ sample_board :: proc(
 		cons,
 		contract,
 		has_contract,
+		report_layouts,
+		&layouts_progress,
 	)
 	if !sok {
 		return {},
-			"DDS sampling failed — the constraints are too rare or impossible for these hands (could not draw enough consistent deals)"
+			"DDS sampling failed — the constraints are too rare or impossible for these hands (could not draw enough consistent layouts)"
 	}
 	defer deal_solve.solved_sample_free(&s)
 	// The lead grids, the misguess tax and the per-lead tax are FILTERS over that one solved batch (no extra
 	// solves), for the named contract or else `gating`, the one the sampling stopped on.
 	bs = sampled.advise(board, &s, contract, has_contract, gating)
 	return bs, ""
+}
+
+// What `report_layouts` needs to turn one sampling run's "done of n_cap" into the board's `Sink.board_part`.
+// `part` of `parts`: a fully-known deal samples once per partnership, each run half the board.
+@(private = "file")
+Layouts_Progress :: struct {
+	sink:  Sink,
+	part:  int,
+	parts: int,
+}
+
+// The sampling's share of a board is 900 of its 1000: what follows it (the card page, the suit analysis)
+// is a few hundred ms against seconds of solving, and a bar parked at the end while that runs looks hung.
+@(private = "file")
+report_layouts :: proc(data: rawptr, done, n_cap: int) {
+	lp := (^Layouts_Progress)(data)
+	if lp.sink.board_part == nil {
+		return
+	}
+	permille := (lp.part * 1000 + done * 1000 / max(n_cap, 1)) * 9 / (10 * max(lp.parts, 1))
+	lp.sink.board_part(lp.sink.progress_data, permille)
 }
 
 // The defenders' cards the sampling is conditioned on: `--lead`, plus, on a 2-hand board, the opening lead its

@@ -14,6 +14,17 @@
 workbench *args: mktarget_dirs
 	odin run workbench {{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}} {{workbench_resource}} -keep-executable -o:speed -microarch:native -linker:{{linker}} -out:{{ target_path("release", workbench_name) }} -- {{args}}
 
+# The same, built for UI and script work: `-use-separate-modules` optimises each package on its own and in
+# parallel, ~1.5 s against `workbench`'s ~15 s (measured 2026-10-22: nearly all of that is LLVM optimising
+# ONE module on one thread). The price is no inlining across packages: `just bench` measured the deal-level
+# analysis (combo `annotate`, the adaptive curve) ~3x slower, the per-suit work 1.1-1.7x, and `bench-e2e`
+# 1.2x (DDS, a prebuilt C library, is unaffected). Its own exe, so it never stands in for the real one.
+# ---
+# run the desktop workbench, quick to build but slower analysis
+[group('workbench')]
+workbench-quick *args: mktarget_dirs
+	odin run workbench {{norn}} {{dds}} {{sciter}} {{markup}} {{hocr}} {{workbench_resource}} -keep-executable -o:speed -use-separate-modules -microarch:native -linker:{{linker}} -out:{{ target_path("release", "workbench-quick.exe") }} -- {{args}}
+
 # `-debug` for a steppable build with the tracking allocator's leak report at exit; also what to run when
 # attaching the SDK's `inspector` (the window is created with .ENABLE_DEBUG either way).
 # ---

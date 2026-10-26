@@ -7,8 +7,8 @@ and macOS may follow (untested).
   interactive card page, a BBO hand-viewer page or text.
 - **Analyse a deal you already have**: paste it, drop a `.pbn`/`.lin` file, or drop or paste a screenshot of
   a hand diagram (BBO, IntoBridge, BridgeWebs, RealBridge, club prints). The picture is read into a deal you
-  can correct, then analysed: double-dummy par, make chances for declarer and dummy against unseen hands,
-  card-combination lines, and what each card of a recorded play cost.
+  can correct, then analysed: double-dummy par, how often each contract makes over random layouts of the
+  hands you cannot see, card-combination lines, and what each card of a recorded play cost.
 - **Edit bidding-system notes** written in BML (Bridge Markup Language) with a live preview, and make quiz
   pages from them.
 - **Share deals** as a link or a QR code. A link opens in any browser, with nothing installed.

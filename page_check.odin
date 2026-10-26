@@ -58,7 +58,7 @@ import "suit_book"
 // — the page still carries the compass, the combo blob and the whole CCA overlay, which is every part of
 // the layout the port had to fix.
 CHECK_DEAL :: `[Deal "N:AJ54.AK2.A32.AK3 - KT32.543.654.542 -"]`
-// All four hands, whose blind lines have long names ("Play low to Q then duck then run the K"): the blind-fade
+// All four hands, whose blind lines have long names ("Play low to Q then duck then run the K"): the redealt-fade
 // and CCA-layout checks and the panel snapshot (a board from a hand-ocr paste that reported both).
 CHECK_LONG_LINES_DEAL :: `[Deal "N:KQ3.JT62.AK9.J72 875.854.J876.865 2.A93.QT532.AK93 AJT964.KQ7.4.QT4"]`
 
@@ -352,9 +352,9 @@ main :: proc() {
 		check_the_match_table(&view)
 		check_the_par_toggle(&view)
 		check_the_two_hand_share_link(&view)
-		check_the_blind_fade(&view)
+		check_the_redealt_fade(&view)
 		if dir := os.get_env("PAGE_CHECK_SNAP", context.allocator); dir != "" {
-			snap_the_blind_panel(&view, dir)
+			snap_the_layouts_panel(&view, dir)
 		}
 	}
 
@@ -1884,39 +1884,39 @@ check_the_par_toggle :: proc(view: ^sa.Windowless_View) {
 	}
 }
 
-// A FULL deal analysed with a make chance opens the CCA panel in BLIND (the sampling is why it was asked
-// for), with the two hands declarer cannot see faded and labelled; Exact clears that, and so does closing the
+// A FULL deal analysed with random layouts opens the CCA panel on RANDOM LAYOUTS (the sampling is why it was
+// asked for), with the two redealt hands faded and labelled; This deal clears that, and so does closing the
 // panel. Script and style both, in this engine: a class on the active slide and the opacity it gives.
-check_the_blind_fade :: proc(view: ^sa.Windowless_View) {
+check_the_redealt_fade :: proc(view: ^sa.Windowless_View) {
 	page, ok := render_page(CHECK_LONG_LINES_DEAL, {"--sample", "40", "--seed", "1"})
 	if !ok {
-		check(false, "a full deal with a make chance renders")
+		check(false, "a full deal with random layouts renders")
 		return
 	}
 	defer delete(page)
-	if err := sa.load_html(view.window, page, "file://page-check/blind.html"); err != nil {
-		check(false, fmt.tprintf("the blind page loads (%v)", err))
+	if err := sa.load_html(view.window, page, "file://page-check/layouts.html"); err != nil {
+		check(false, fmt.tprintf("the random-layouts page loads (%v)", err))
 		return
 	}
 	pump(view, 32)
 	root, rerr := sa.root(view.window)
 	if rerr != nil {
-		check(false, "the blind page has a root")
+		check(false, "the random-layouts page has a root")
 		return
 	}
 	state :: proc(root: sa.Element) -> string {
 		return eval_text(
 			root,
 			`(function(){ var s = document.querySelector('.slide.active .compass'); var e = s && s.querySelector('.seat-e .suit');` +
-			` var b = document.getElementById('nc-cca-blind'); var n = s && s.querySelector('.seat-w .blind-note');` +
+			` var b = document.getElementById('nc-cca-layouts'); var n = s && s.querySelector('.seat-w .redealt-note');` +
 			` return (n ? 'faded' : 'plain') + ' ' + (e ? (e.style.opacity || '1') : '?') +` +
-			` ' ' + (b && b.classList.contains('sel') ? 'blind' : 'exact'); })()`,
+			` ' ' + (b && b.classList.contains('sel') ? 'layouts' : 'deal'); })()`,
 		)
 	}
 	cca, cerr := sa.select_first(root, "#nc-cca-toggle")
-	exact, eerr := sa.select_first(root, "#nc-cca-exact")
+	this_deal, eerr := sa.select_first(root, "#nc-cca-deal")
 	if cerr != nil || eerr != nil {
-		check(false, "the toolbar has CCA and the panel has Exact")
+		check(false, "the toolbar has CCA and the panel has This deal")
 		return
 	}
 	before := state(root)
@@ -1936,25 +1936,48 @@ check_the_blind_fade :: proc(view: ^sa.Windowless_View) {
 		` return 'rows ' + rows + ' overlaps ' + bad; })()`,
 	)
 	check(layout == "rows 1 overlaps 0", fmt.tprintf("the CCA header keeps the strain buttons on one row and the line column clear of E (%s)", layout))
-	sa.do_click(exact)
+	sa.do_click(this_deal)
 	pump(view, 96)
-	as_exact := state(root)
+	as_deal := state(root)
 	sa.do_click(cca)
 	pump(view, 128)
 	closed := state(root)
 	check(
 		strings.has_prefix(before, "plain 1") &&
 		strings.has_prefix(opened, "faded 0.") && // 0.3, which this engine reads back as 0.298
-		strings.has_suffix(opened, "blind") &&
-		strings.has_prefix(as_exact, "plain 1") &&
+		strings.has_suffix(opened, "layouts") &&
+		strings.has_prefix(as_deal, "plain 1") &&
 		strings.has_prefix(closed, "plain 1"),
 		fmt.tprintf(
-			"a sampled full deal opens Blind with the defenders faded; Exact and closing clear it (%s -> %s -> %s -> %s)",
+			"a sampled full deal opens on Random layouts with the defenders faded; This deal and closing clear it (%s -> %s -> %s -> %s)",
 			before,
 			opened,
-			as_exact,
+			as_deal,
 			closed,
 		),
+	)
+	// The "CCA NS IMPS" badge under the board is drawn as a link, so it is one: it toggles the panel, as the
+	// toolbar button does. Looked up afresh each click, because the line is rebuilt on every render.
+	panel_open :: proc(root: sa.Element) -> string {
+		return eval_text(root, `(function(){ var p = document.getElementById('nc-cca'); return p && !p.hasAttribute('hidden') ? 'open' : 'shut'; })()`)
+	}
+	click_badge :: proc(view: ^sa.Windowless_View, root: sa.Element) -> bool {
+		badge, err := sa.select_first(root, ".slide.active .combo .cmini")
+		if err != nil {
+			return false
+		}
+		sa.do_click(badge)
+		pump(view, 64)
+		return true
+	}
+	shut := panel_open(root)
+	found := click_badge(view, root)
+	by_badge := panel_open(root)
+	found = click_badge(view, root) && found
+	again := panel_open(root)
+	check(
+		found && shut == "shut" && by_badge == "open" && again == "shut",
+		fmt.tprintf("the CCA badge under the board opens and closes the panel (%v: %s -> %s -> %s)", found, shut, by_badge, again),
 	)
 }
 
@@ -2610,7 +2633,7 @@ pill_ink_margins :: proc(view: ^sa.Windowless_View, pill: sa.Rect) -> (above, be
 
 // `PAGE_CHECK_SNAP=<folder>`: the CCA panel on a full deal with long line names (the one that reported the
 // panel's layout), as PNGs at two view widths - for LOOKING at a panel change in this engine.
-snap_the_blind_panel :: proc(view: ^sa.Windowless_View, dir: string) {
+snap_the_layouts_panel :: proc(view: ^sa.Windowless_View, dir: string) {
 	defer sa.resize_windowless(view, VIEW_WIDTH, VIEW_HEIGHT)
 	for w in ([]i32{1100, 800}) {
 		sa.resize_windowless(view, w, VIEW_HEIGHT)
@@ -2636,6 +2659,29 @@ snap_the_blind_panel :: proc(view: ^sa.Windowless_View, dir: string) {
 		if perr != nil {
 			return
 		}
+		snap_panel(panel, fmt.tprintf("%s/cca-%d.png", dir, w))
+		// And narrowed (the width button), then back: the choice is remembered, so it is undone.
+		if narrow, nerr := sa.select_first(root, "#nc-cca-narrow"); nerr == nil {
+			sa.do_click(narrow)
+			pump(view, 96)
+			fmt.eprintln(
+				"narrowed:",
+				eval_text(
+					root,
+					`(function(){ var p = document.getElementById('nc-cca'), b = document.getElementById('nc-cca-narrow');` +
+					` var cs = getComputedStyle(b); return 'panel ' + Math.round(p.getBoundingClientRect().width) +` +
+					` 'px, button "' + b.textContent + '" ' + cs.color + ' on ' + cs.backgroundColor; })()`,
+				),
+			)
+			snap_panel(panel, fmt.tprintf("%s/cca-%d-narrow.png", dir, w))
+			_ = eval_text(root, `(function(){ var b = document.getElementById('nc-cca-body'); b.scrollLeft = 9999; return ''; })()`)
+			pump(view, 16)
+			snap_panel(panel, fmt.tprintf("%s/cca-%d-narrow-scrolled.png", dir, w))
+			sa.do_click(narrow)
+			pump(view, 64)
+		}
+	}
+	snap_panel :: proc(panel: sa.Element, path: string) {
 		image, ierr := sa.image_from_element(panel)
 		if ierr != nil {
 			fmt.eprintln("could not snapshot the CCA panel:", ierr)
@@ -2643,7 +2689,6 @@ snap_the_blind_panel :: proc(view: ^sa.Windowless_View, dir: string) {
 		}
 		defer sa.release_image(image)
 		png, _ := sa.save_image(image, allocator = context.temp_allocator)
-		path := fmt.tprintf("%s/cca-%d.png", dir, w)
 		if os.write_entire_file(path, png) == nil {
 			fmt.eprintln("wrote", path)
 		}

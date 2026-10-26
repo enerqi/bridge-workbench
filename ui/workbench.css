@@ -480,7 +480,7 @@ aside .foot {
 .line.field input[type="text"] {
 	width: 11em;
 }
-/* A count with its unit after it ("make chance [300] layouts"): the box narrower so the line keeps the
+/* A count with its unit after it ("simulate [300] random layouts"): the box narrower so the line keeps the
    others' width. */
 .line.field input#sample {
 	width: 5em;
@@ -611,6 +611,14 @@ textarea {
 
 textarea:focus {
 	border-color: var(--accent);
+}
+
+/* The analyse box GROWS WITH WHAT IS IN IT, from its 4 lines to about 14, then scrolls: a pasted record with
+   its [Play] and auction, or a few boards, was read through a 4-line slot (reported). */
+textarea#deal {
+	height: min-content;
+	min-height: 4em;
+	max-height: 14em;
 }
 
 /* The primary button, and its three states. `:disabled` comes LAST of the four so it wins over hover and

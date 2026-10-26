@@ -5213,6 +5213,15 @@ test_the_editor_bar_survives_a_narrow_window :: proc(t: ^testing.T) {
 			`.segbtn[data-preview="split"]`,
 			`.segbtn[data-preview="wide"]`,
 			"#bml-save",
+			// The sidebar's "this document" row: it is there because the pane heads had no room left.
+			"#bml-tidy",
+			"#bml-export",
+			"#bml-export-zip",
+			"#bml-export-all",
+			// The palette's buttons in the bar.
+			"#bml-goto-open",
+			"#bml-link-open",
+			"#bml-insert-open",
 		}) {
 		element := find(&app, selector)
 		testing.expectf(t, element != nil, "no %s", selector)
@@ -7449,10 +7458,11 @@ scratch_scenario_dir :: proc(t: ^testing.T, leaf: string) -> string {
 		return ""
 	}
 	// EMPTIED, not merely created: these tests count the files they find, and a leftover from a previous
-	// run is a count that is right on a clean machine and wrong on the machine it is debugged on.
+	// run is a count that is right on a clean machine and wrong on the machine it is debugged on. Notes too:
+	// the notes tests count the documents in theirs (a renamed test's file was a third document, measured).
 	if infos, err := os.read_directory_by_path(dir, 0, context.temp_allocator); err == nil {
 		for info in infos {
-			if info.type != .Directory && strings.has_suffix(info.name, SCENARIO_EXT) {
+			if info.type != .Directory && (strings.has_suffix(info.name, SCENARIO_EXT) || strings.has_suffix(info.name, ".bml")) {
 				os.remove(info.fullpath)
 			}
 		}
@@ -10969,4 +10979,633 @@ test_a_clipboard_dib_becomes_a_bmp_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, int(bmp[10]), 14 + 40 + 12)
 	_, short := bmp_from_dib(dib[:20], context.temp_allocator)
 	testing.expect(t, !short, "a truncated DIB was accepted")
+}
+
+// THE NOTES EXPORT takes the DOCUMENT a chapter belongs to - its root, with its chapters - and nothing else,
+// not even a page it links to (another document); standing alone (the stylesheet inlined), with the editor's
+// unsaved text for the open file. `all` takes every root in the folder, under the folder's name.
+@(test)
+test_the_notes_export_takes_the_root_of_the_open_file :: proc(t: ^testing.T) {
+	dir := scratch_scenario_dir(t, "wb-notes-export")
+	out := scratch_scenario_dir(t, "wb-notes-export-out")
+	if dir == "" || out == "" {return}
+	files := [][2]string {
+		{"system.bml", "* System\n#INCLUDE chapter.bml\nSee [the alternatives](alternatives.html#Top).\n"},
+		{"chapter.bml", "* Chapter on disk\n"},
+		{"alternatives.bml", "* Top\nBack to [the system](system.html).\n"},
+	}
+	for f in files {
+		if !write_scenario_file(dir, f[0], f[1]) {return}
+	}
+	export, why := export_notes(dir, "chapter.bml", "* Chapter as edited\n", out, ".marker{}", "")
+	testing.expect_value(t, why, "")
+	testing.expect_value(t, export.name, "system")
+	testing.expect_value(t, len(export.pages), 1)
+	root_path, _ := filepath.join({out, "notes", "system", "system.html"}, context.temp_allocator)
+	data, err := os.read_entire_file_from_path(root_path, context.temp_allocator)
+	testing.expectf(t, err == nil, "the root page should be written to %s", root_path)
+	page := string(data)
+	testing.expect(t, strings.contains(page, "Chapter as edited"), "the open file's unsaved text should be in it")
+	testing.expect(t, !strings.contains(page, "Chapter on disk"), "not the text on disk")
+	testing.expect(t, strings.contains(page, "<style>.marker{}</style>"), "the stylesheet should be inlined")
+	testing.expect(t, !strings.contains(page, "<link"), "and nothing linked")
+	// What THIS export wrote, not what is in the folder: an earlier run's pages stay there.
+	for file in export.files {
+		testing.expectf(t, file.name == "system.html", "a linked page is another document, not exported with this one: %s", file.name)
+	}
+
+	everything, all_why := export_notes(dir, "chapter.bml", "* Chapter as edited\n", out, ".marker{}", "", all = true)
+	testing.expect_value(t, all_why, "")
+	testing.expect_value(t, everything.name, "wb-notes-export")
+	testing.expect_value(t, len(everything.pages), 2) // the two roots; the chapter is inside system
+	both, _ := filepath.join({out, "notes", "wb-notes-export", "alternatives.html"}, context.temp_allocator)
+	testing.expect(t, os.exists(both), "zip all takes every document")
+}
+
+// A STORED zip: one local header per entry carrying the CRC-32 of the bytes, the entries under the folder,
+// and the end record counting them. "hello" has the CRC-32 0x3610A686.
+@(test)
+test_the_notes_zip_is_a_stored_zip :: proc(t: ^testing.T) {
+	zip := stored_zip({{name = "a.html", data = transmute([]u8)string("hello")}}, "notes", time.now(), context.temp_allocator)
+	u32_at :: proc(b: []u8, at: int) -> u32 {return u32(b[at]) | u32(b[at + 1]) << 8 | u32(b[at + 2]) << 16 | u32(b[at + 3]) << 24}
+	testing.expect_value(t, u32_at(zip, 0), 0x04034b50)
+	testing.expect_value(t, u32_at(zip, 14), 0x3610a686)
+	testing.expect_value(t, string(zip[30:30 + len("notes/a.html")]), "notes/a.html")
+	end := len(zip) - 22
+	testing.expect_value(t, u32_at(zip, end), 0x06054b50)
+	testing.expect_value(t, int(zip[end + 10]), 1) // entries in all
+	// The end record's size and offset of the directory must meet exactly at the end record: a reader finds
+	// the directory through them (a size counted 12 bytes long was the first version's bug).
+	size, offset := int(u32_at(zip, end + 12)), int(u32_at(zip, end + 16))
+	testing.expect_value(t, u32_at(zip, offset), 0x02014b50)
+	testing.expect_value(t, offset + size, end)
+}
+
+// The analyse box GROWS with its text, from 4 lines to a cap, then scrolls: measured as the box's height with
+// one line, ten, and sixty in it.
+@(test)
+test_the_analyse_box_grows_with_its_text :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	height :: proc(app: ^App, lines: int) -> i32 {
+		b := strings.builder_make(context.temp_allocator)
+		for i in 0 ..< lines {
+			fmt.sbprintf(&b, "%s[Deal \"N:AJ54.AK2.A32.AK3 - KT32.543.654.542 -\"] %d", "" if i == 0 else "\n", i)
+		}
+		set_input(app, "#deal", strings.to_string(b))
+		pump(app)
+		box, err := sa.location(find(app, "#deal"))
+		return box.height if err == nil else -1
+	}
+	one, ten, sixty := height(&app, 1), height(&app, 10), height(&app, 60)
+	testing.expectf(t, one > 0 && ten > one + one / 2, "ten lines should make the box taller than one does (%d, %d)", one, ten)
+	testing.expectf(t, sixty < ten * 2, "sixty lines should stop at the cap and scroll (%d against %d for ten)", sixty, ten)
+}
+
+// TIDY re-indents the buffer's bid tables (and only the buffer: nothing is saved), and it is ONE edit: the
+// widget's own undo puts every line back.
+@(test)
+test_tidy_reindents_the_buffer_as_one_undoable_edit :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-tidy")
+	if dir == "" {return}
+	original := "* Tidy\n\n1C = strong\n  1D = negative\n     1H = relay\n  1S = positive\n"
+	if !write_scenario_file(dir, "tidy.bml", original) {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "tidy.bml")
+	if !testing.expectf(t, opened, "could not open tidy.bml: %s", why) {return}
+	pump(&app)
+
+	ok, said := tidy_bml(&app)
+	testing.expectf(t, ok, "tidy failed: %s", said)
+	testing.expectf(t, strings.contains(said, "ctrl+z"), "the edit should have been the undoable one: %s", said)
+	pump(&app)
+	after, _ := bml_source(&app, context.temp_allocator)
+	testing.expect_value(t, strings.trim_right(after, "\n"), "* Tidy\n\n1C = strong\n    1D = negative\n        1H = relay\n    1S = positive")
+
+	result, err := sa.eval(app.window, `document.$("#bml-text").execCommand("edit:undo")`)
+	sa.value_clear(&result)
+	testing.expect(t, err == nil, "undo should run")
+	pump(&app)
+	undone, _ := bml_source(&app, context.temp_allocator)
+	testing.expect_value(t, strings.trim_right(undone, "\n"), strings.trim_right(original, "\n"))
+
+	disk, _ := os.read_entire_file_from_path(fmt.tprintf("%s/tidy.bml", dir), context.temp_allocator)
+	testing.expect_value(t, string(disk), original) // never saved
+}
+
+// THE INDENT KEYS in the notes editor write SPACES, 4 a level: tab to the next stop (never a tab character,
+// which the parse counts as one space), enter at the broken line's indent, shift+tab out a level, and tab on
+// several lines moves them all in. Each through a real key, and each one undo step.
+@(test)
+test_the_indent_keys_write_spaces :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-keys")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "keys.bml", "1C = strong\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "keys.bml")
+	if !testing.expectf(t, opened, "could not open keys.bml: %s", why) {return}
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	if editor == nil {return}
+	_ = sa.set_focus(editor)
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+	key :: proc(app: ^App, editor: sa.Element, code: sciter.Sc_Kb_Codes, modifiers: sciter.Keyboard_States = {}) {
+		_, _ = sa.send_key(editor, .DOWN, u32(code), modifiers)
+		pump(app)
+	}
+	caret :: proc(app: ^App, row, col: int) {
+		result, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(%d, %d, %d, %d)`, row, col, row, col))
+		sa.value_clear(&result)
+	}
+
+	caret(&app, 0, 11) // the end of `1C = strong`
+	key(&app, editor, .ENTER)
+	key(&app, editor, .TAB)
+	key(&app, editor, .TAB)
+	testing.expect_value(t, text(&app), "1C = strong\n        ")
+
+	// Enter keeps the indent of the line it breaks.
+	key(&app, editor, .ENTER)
+	testing.expect_value(t, text(&app), "1C = strong\n        \n        ")
+
+	// Shift+tab: out to the previous stop.
+	set_bml_source(&app, "1C = strong\n      1D = negative\n")
+	pump(&app)
+	caret(&app, 1, 8)
+	key(&app, editor, .TAB, {.LSHIFT})
+	testing.expect_value(t, text(&app), "1C = strong\n    1D = negative")
+
+	// NOT HERE: tab on several selected lines. This view keeps no selection - `selectRange` across lines, and
+	// even `selectAll`, read back as a caret with `selectionText` empty (measured) - so that path is the real
+	// window's to show.
+
+	taken, _ := sa.eval(app.window, "wbIndentKeys")
+	count, _ := sa.value_to_int(&taken)
+	sa.value_clear(&taken)
+	testing.expect_value(t, count, 5)
+	testing.expect(t, !strings.contains(text(&app), "\t"), "no tab character")
+}
+
+// THE LINK PALETTE writes the link to the picked heading at the caret: `[name](#name)` within the document,
+// `[name](other.html#id)` to a heading in another document (another `#INCLUDE` tree), and only the rest when
+// `](#` was typed - opening the palette by typing it is the page script's keyup.
+@(test)
+test_the_link_palette_writes_cross_references :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	// The host's event handler, so the script's posted `wb-link` reaches it (as `test_a_wheel_zoom_is_remembered`).
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	dir := scratch_scenario_dir(t, "wb-bml-links")
+	if dir == "" {return}
+	files := [][2]string {
+		{"system.bml", "* System\n#INCLUDE chapter.bml\n"},
+		{"chapter.bml", "* Chapter\n** Stayman over 1N\n"},
+		{"other.bml", "* Other system\n** Lebensohl\n"},
+	}
+	for f in files {
+		if !write_scenario_file(dir, f[0], f[1]) {return}
+	}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "chapter.bml")
+	if !testing.expectf(t, opened, "could not open chapter.bml: %s", why) {return}
+	pump(&app)
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+	// The open file's headings are read from the BUFFER, so every buffer written here keeps `Stayman over 1N`.
+	write :: proc(app: ^App, source: string, row, col: int, mode: Goto_Mode, typed: bool, query: string) {
+		close_goto(app)
+		set_bml_source(app, source)
+		pump(app)
+		result, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(%d, %d, %d, %d)`, row, col, row, col))
+		sa.value_clear(&result)
+		toggle_goto(app, mode, typed)
+		set_input(app, "#bml-goto-input", query)
+		draw_goto_list(app)
+		jump_to_goto(app)
+		pump(app)
+	}
+	other_id := bml.normalise_header_id("Lebensohl", context.temp_allocator)
+
+	head :: "* Chapter\n** Stayman over 1N\n"
+	write(&app, head + "see ", 2, 4, .Link, false, "stayman")
+	testing.expect_value(t, text(&app), head + "see [Stayman over 1N](#Stayman over 1N)")
+	write(&app, head + "see ", 2, 4, .Link, false, "lebensohl")
+	testing.expect_value(t, text(&app), fmt.tprintf("%ssee [Lebensohl](other.html#%s)", head, other_id))
+	write(&app, head + "see [it](#", 2, 10, .Link, true, "stayman")
+	testing.expect_value(t, text(&app), head + "see [it](#Stayman over 1N)")
+	write(&app, head + "see [it](#", 2, 10, .Link, true, "lebensohl")
+	testing.expect_value(t, text(&app), fmt.tprintf("%ssee [it](other.html#%s)", head, other_id))
+	testing.expect(t, !app.goto_open, "writing closes the palette")
+
+	// Typing `](#` opens it: the page script's check (`bmlLinkTrigger`, which its keyup calls) posts to the host.
+	// Asked directly - a key-up sent from here does not reach a script listener in this view - and only after
+	// `](#`: the same check one character earlier asks for nothing.
+	set_bml_source(&app, "see [it](#")
+	pump(&app)
+	asked :: proc(app: ^App, col: int) -> bool {
+		result, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(0, %d, 0, %d)`, col, col))
+		sa.value_clear(&result)
+		answer, _ := sa.eval(app.window, `bmlLinkTrigger(document.$("#bml-text"))`)
+		defer sa.value_clear(&answer)
+		yes, _ := sa.value_to_bool(&answer)
+		return yes
+	}
+	testing.expect(t, !asked(&app, 9), "one character short of ](# asks for nothing")
+	testing.expect(t, asked(&app, 10), "after ](# it asks for the palette")
+	pump(&app)
+	pump(&app)
+	testing.expect(t, app.goto_open && app.goto_mode == .Link && app.goto_typed, "typing ](# should open the link palette")
+	close_goto(&app)
+}
+
+// THE INSERT PALETTE writes a construct's template at the caret and leaves the caret at its `$0`.
+@(test)
+test_the_insert_palette_writes_a_construct :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-insert")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "notes.bml", "* Notes\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "notes.bml")
+	if !testing.expectf(t, opened, "could not open notes.bml: %s", why) {return}
+	pump(&app)
+
+	set_bml_source(&app, "* Notes\n    ")
+	pump(&app)
+	result, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(1, 4, 1, 4)`)
+	sa.value_clear(&result)
+	toggle_goto(&app, .Insert)
+	testing.expect(t, app.goto_open && len(app.goto_all) > 10, "the insert palette lists the constructs")
+	set_input(&app, "#bml-goto-input", "cut")
+	draw_goto_list(&app)
+	jump_to_goto(&app)
+	pump(&app)
+	got, _ := bml_source(&app, context.temp_allocator)
+	got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+	// Every line of the block at the level it was asked for, and the caret on the block's name.
+	testing.expect_value(t, strings.trim_right(got, "\n"), "* Notes\n    #CUT name\n    \n    #ENDCUT")
+	row, col := caret_position(&app)
+	testing.expect_value(t, row, 1)
+	testing.expect_value(t, col, 9)
+}
+
+// THE BAR'S PALETTE BUTTONS open the three modes, and a link chosen after a CLICK still lands at the caret the
+// source had: the button takes the focus, the plaintext keeps its caret, and the palette reads it on opening.
+@(test)
+test_the_palette_buttons_write_at_the_source_caret :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	dir := scratch_scenario_dir(t, "wb-bml-buttons")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "notes.bml", "* Notes\n** Stayman\nsee  here\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "notes.bml")
+	if !testing.expectf(t, opened, "could not open notes.bml: %s", why) {return}
+	show_editor(&app)
+	pump(&app)
+
+	for button in ([]struct {
+			id:   string,
+			mode: Goto_Mode,
+		}{{"#bml-goto-open", .Jump}, {"#bml-link-open", .Link}, {"#bml-insert-open", .Insert}}) {
+		click(&app, button.id)
+		pump(&app)
+		testing.expectf(t, app.goto_open && app.goto_mode == button.mode, "%s should open the %v palette", button.id, button.mode)
+		close_goto(&app)
+		pump(&app)
+	}
+
+	_ = sa.set_focus(find(&app, "#bml-text"))
+	result, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(2, 4, 2, 4)`)
+	sa.value_clear(&result)
+	click(&app, "#bml-link-open")
+	pump(&app)
+	set_input(&app, "#bml-goto-input", "stayman")
+	draw_goto_list(&app)
+	jump_to_goto(&app)
+	pump(&app)
+	got, _ := bml_source(&app, context.temp_allocator)
+	got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+	testing.expect_value(t, strings.trim_right(got, "\n"), "* Notes\n** Stayman\nsee [Stayman](#Stayman) here")
+}
+
+// BIDS IN CAPITALS: the bid column's strain letters raised (`1c` -> `1C`, `(1n)` -> `(1N)`, `2nt`, `1hs`,
+// `1c--1h`), and nothing else - not the minor class `3m`, the wildcard `3x`, the `!c` shorthand, a word, or
+// the description after the `=`. Asked directly per line (as `=` asks it, up to the caret), and through enter.
+@(test)
+test_bids_are_capitalised_in_the_bid_column :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-caps")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "caps.bml", "* Caps\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "caps.bml")
+	if !testing.expectf(t, opened, "could not open caps.bml: %s", why) {return}
+	pump(&app)
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+	Case :: struct {
+		line, want: string,
+	}
+	cases := []Case {
+		{"1c = strong 1c", "1C = strong 1c"},
+		{"    (1n)--x = takeout", "    (1N)--x = takeout"},
+		{"2nt = 20-21", "2NT = 20-21"},
+		{"1hs = majors", "1HS = majors"},
+		{"1c--1h = relay", "1C--1H = relay"},
+		{"3m = minor class, 3x wildcard", "3m = minor class, 3x wildcard"},
+		{"2!c = shorthand", "2!c = shorthand"},
+		{"new-suit = forcing", "new-suit = forcing"},
+		{"(2hs)", "(2HS)"},
+		{"see 1c for this", "see 1c for this"},
+	}
+	for c in cases {
+		set_bml_source(&app, c.line)
+		pump(&app)
+		result, _ := sa.eval(app.window, `bmlCapitaliseBids(document.$("#bml-text"), 0)`)
+		sa.value_clear(&result)
+		pump(&app)
+		testing.expect_value(t, text(&app), c.want)
+	}
+
+	// Through enter, the line being left: its bid raised, and the new line at its indent.
+	set_bml_source(&app, "    1d = diamonds")
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	_ = sa.set_focus(editor)
+	result, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(0, 17, 0, 17)`)
+	sa.value_clear(&result)
+	_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.ENTER), {})
+	pump(&app)
+	testing.expect_value(t, text(&app), "    1D = diamonds\n    ")
+
+	// Through `=`: the bid up to the caret raised, and the separator written for it (`bmlSeparator`).
+	set_bml_source(&app, "2hs ")
+	pump(&app)
+	_ = sa.set_focus(editor)
+	result, _ = sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(0, 4, 0, 4)`)
+	sa.value_clear(&result)
+	_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.EQUAL), {})
+	pump(&app)
+	testing.expect_value(t, text(&app), "2HS = ")
+}
+
+// THE SEPARATOR, typed for you: `=` after a bid writes ` = ` (exactly one space either side, the caret past
+// them); SPACE after one level bid, at the end of a line under a bid row, writes ` = ` too. And where it must
+// NOT: a second `=` on a line, a space after a bracketed call, a space with no bid row above (an auction).
+@(test)
+test_the_bid_separator_is_typed_for_you :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-sep")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "sep.bml", "* Sep\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "sep.bml")
+	if !testing.expectf(t, opened, "could not open sep.bml: %s", why) {return}
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	if editor == nil {return}
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+	Case :: struct {
+		source:   string,
+		row, col: int,
+		key:      sciter.Sc_Kb_Codes,
+		want:     string, // the text after the key, when this handler took it; "" when it must not
+		caret:    int,
+	}
+	cases := []Case {
+		{"1c", 0, 2, .EQUAL, "1C = ", 5},
+		{"    (1N)  ", 0, 10, .EQUAL, "    (1N) = ", 11},
+		{"1C = strong\n    2d", 1, 6, .SPACE, "1C = strong\n    2D = ", 9},
+		{"1C = strong\n    2n+", 1, 7, .SPACE, "1C = strong\n    2N+ = ", 10},
+		{"1C = strong, 4 = 4 shape", 0, 24, .EQUAL, "", 0}, // a second `=`: prose
+		{"1C = strong\n    (1D)", 1, 8, .SPACE, "", 0}, // a bracketed call: no
+		{"1H P 1S P\n2C", 1, 2, .SPACE, "", 0}, // an auction: no bid row above
+		{"see", 0, 3, .EQUAL, "", 0}, // not a call
+	}
+	for c, i in cases {
+		set_bml_source(&app, c.source)
+		pump(&app)
+		_ = sa.set_focus(editor)
+		r, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(%d, %d, %d, %d)`, c.row, c.col, c.row, c.col))
+		sa.value_clear(&r)
+		before, _ := sa.eval(app.window, "wbSeparators")
+		n0, _ := sa.value_to_int(&before)
+		sa.value_clear(&before)
+		_, _ = sa.send_key(editor, .DOWN, u32(c.key), {})
+		pump(&app)
+		after, _ := sa.eval(app.window, "wbSeparators")
+		n1, _ := sa.value_to_int(&after)
+		sa.value_clear(&after)
+		if c.want == "" {
+			testing.expectf(t, n1 == n0, "case %d (%q): the separator should not be written", i, c.source)
+			continue
+		}
+		testing.expectf(t, n1 == n0 + 1, "case %d (%q): the separator should be written", i, c.source)
+		testing.expect_value(t, text(&app), c.want)
+		row, col := caret_position(&app)
+		testing.expectf(t, row == c.row && col == c.caret, "case %d: the caret at %d,%d, want %d,%d", i, row, col, c.row, c.caret)
+	}
+}
+
+// THE COMPLETION TERMS: the built-in lexicon (comments and blank lines out), a folder's own `lexicon.txt`, and
+// with `folder` its notes' words of five letters or more - each once, the first spelling winning.
+@(test)
+test_the_completion_terms :: proc(t: ^testing.T) {
+	dir := scratch_scenario_dir(t, "wb-bml-lexicon")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "lexicon.txt", "# ours\nTwo-under transfer\nlebensohl\n") {return}
+	if !write_scenario_file(dir, "notes.bml", "1C = Kokish relay, see lebensohl; puppetry too\n") {return}
+
+	testing.expect_value(t, len(completion_terms(dir, "off")), 0)
+	terms := completion_terms(dir, "terms")
+	testing.expect(t, slice.contains(terms, "Lebensohl") && slice.contains(terms, "RKCB"), "the built-in terms")
+	testing.expect(t, slice.contains(terms, "Two-under transfer"), "the folder's lexicon.txt")
+	testing.expect(t, !slice.contains(terms, "lebensohl"), "a second spelling of a term is not added")
+	testing.expect(t, !slice.contains(terms, "# ours") && !slice.contains(terms, ""), "comments and blanks are not terms")
+	testing.expect(t, !slice.contains(terms, "Kokish"), "folder words only when asked for")
+	folder := completion_terms(dir, "folder")
+	testing.expect(t, slice.contains(folder, "Kokish") && slice.contains(folder, "puppetry"), "the notes' words")
+	testing.expect(t, !slice.contains(folder, "see"), "short words are left out")
+}
+
+// COMPLETION in the source: three letters of a description word name a term (`bmlSuggest`), TAB writes it,
+// CTRL+SPACE steps to the next first; never in the bid column; a term differing only in case is offered.
+@(test)
+test_completion_writes_a_lexicon_term :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-complete")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "complete.bml", "* Complete\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "complete.bml")
+	if !testing.expectf(t, opened, "could not open complete.bml: %s", why) {return}
+	send_lexicon(&app)
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	if editor == nil {return}
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+	offer :: proc(app: ^App, source: string, col: int) -> string {
+		set_bml_source(app, source)
+		pump(app)
+		_ = sa.set_focus(find(app, "#bml-text"))
+		r, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(0, %d, 0, %d)`, col, col))
+		sa.value_clear(&r)
+		got, _ := sa.eval(app.window, `bmlSuggest(document.$("#bml-text"))`)
+		defer sa.value_clear(&got)
+		s, _ := sa.value_to_string(&got, context.temp_allocator)
+		return s
+	}
+
+	testing.expect_value(t, offer(&app, "1C = see leb", 12), "Lebensohl")
+	_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.TAB), {})
+	pump(&app)
+	testing.expect_value(t, text(&app), "1C = see Lebensohl")
+
+	testing.expect_value(t, offer(&app, "1N = then rkcb", 14), "RKCB") // differs only in case
+	testing.expect_value(t, offer(&app, "leb = no", 3), "") // the bid column
+	testing.expect_value(t, offer(&app, "1C = le", 7), "") // two letters
+
+	// CTRL+SPACE: the next term, then TAB writes that one.
+	first := offer(&app, "1C = inv", 8)
+	testing.expect(t, first != "", "inv should offer something")
+	_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.SPACE), {.LCONTROL})
+	pump(&app)
+	_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.TAB), {})
+	pump(&app)
+	got := text(&app)
+	testing.expectf(t, strings.has_prefix(got, "1C = Inv") || strings.has_prefix(got, "1C = inv"), "a term written: %q", got)
+	testing.expectf(t, got != fmt.tprintf("1C = %s", first), "ctrl+space should have moved past %q (%q)", first, got)
+
+	taken, _ := sa.eval(app.window, "wbCompletions")
+	count, _ := sa.value_to_int(&taken)
+	sa.value_clear(&taken)
+	testing.expect_value(t, count, 2)
+}
+
+// A TAKEN KEY'S CHARACTER IS SWALLOWED. This engine types on the key-char that FOLLOWS a key-down, so a key the
+// editor's handler took (`=`, tab, the space trigger) still typed its character: `2s=` came out `2S = =`
+// (reported). The whole sequence a real key makes - down, char, up - and a plain character still types.
+@(test)
+test_a_taken_key_does_not_type_its_character :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-chars")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "chars.bml", "* Chars\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "chars.bml")
+	if !testing.expectf(t, opened, "could not open chars.bml: %s", why) {return}
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	if editor == nil {return}
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+	press :: proc(app: ^App, editor: sa.Element, code: sciter.Sc_Kb_Codes, char: rune) {
+		_, _ = sa.send_key(editor, .DOWN, u32(code), {})
+		_, _ = sa.send_key(editor, .CHAR, u32(char), {})
+		_, _ = sa.send_key(editor, .UP, u32(code), {})
+		pump(app)
+	}
+	caret :: proc(app: ^App, row, col: int) {
+		r, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(%d, %d, %d, %d)`, row, col, row, col))
+		sa.value_clear(&r)
+	}
+
+	set_bml_source(&app, "2s")
+	pump(&app)
+	_ = sa.set_focus(editor)
+	caret(&app, 0, 2)
+	press(&app, editor, .EQUAL, '=')
+	testing.expect_value(t, text(&app), "2S = ")
+
+	// Tab: spaces to the stop, and no tab character after them.
+	set_bml_source(&app, "1C = x\n")
+	pump(&app)
+	caret(&app, 1, 0)
+	press(&app, editor, .TAB, '\t')
+	testing.expect_value(t, text(&app), "1C = x\n    ")
+
+	// A key the handler does NOT take types as it always did.
+	set_bml_source(&app, "1C = x")
+	pump(&app)
+	caret(&app, 0, 6)
+	press(&app, editor, .Y, 'y')
+	testing.expect_value(t, text(&app), "1C = xy")
 }

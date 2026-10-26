@@ -169,6 +169,7 @@ draw_prefs :: proc(app: ^App) {
 	set_text_at(app, "#prefs-theme-note", fmt.tprintf("system is currently %s", system))
 	draw_graphics_prefs(app)
 	draw_notes_look_prefs(app)
+	draw_notes_complete_prefs(app)
 	draw_hand_look_prefs(app)
 	draw_quiz_prefs(app)
 	draw_share_prefs(app)

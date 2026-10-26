@@ -123,6 +123,7 @@ render_full_deal_body :: proc(
 	args: ^Args,
 	contract: deal_solve.Contract,
 	has_contract: bool,
+	sink: Sink,
 ) -> (
 	cost: Maybe(deal_solve.Play_Cost),
 ) {
@@ -133,16 +134,16 @@ render_full_deal_body :: proc(
 	// Exact double-dummy grids (one per side) so the card page's contract picker + trick slider come alive
 	// on the known deal (spikes at each strain's DD tricks; the band relabels to "double-dummy (exact)").
 	// Carried on its own hidden element — deal_solve.annotate owns the `.par` div — which render.odin reads as the
-	// board's data-sim source. With `--sample` we ALSO bake the BLIND advisor per side (sample_board ignores
-	// the known defenders and randomises the other 26, i.e. "play it as if you can't see all four hands"),
-	// so the page can toggle exact ↔ blind for either partnership. solve_table is cached (deal_solve.annotate's).
+	// board's data-sim source. With `--sample` we ALSO bake RANDOM LAYOUTS per side (sample_board ignores the
+	// real defenders and redeals the other 26 cards, each layout solved double-dummy), so the page can toggle
+	// "This deal" ↔ "Random layouts" for either partnership. solve_table is cached (deal_solve.annotate's).
 	if ns_grid, ew_grid, ok := deal_solve.exact_grids(board.deal); ok {
 		strings.write_string(b, `<div class="sim-exact" hidden data-sim='`)
 		deal_solve.write_exact_sim_json(b, &ns_grid, &ew_grid, board)
 		strings.write_string(b, `'`)
 		if args.sample > 0 {
-			strings.write_string(b, ` data-sim-blind='`)
-			write_blind_sides_json(b, board, args, contract, has_contract)
+			strings.write_string(b, ` data-sim-layouts='`)
+			write_layout_sides_json(b, board, args, contract, has_contract, sink)
 			strings.write_string(b, `'`)
 		}
 		strings.write_string(b, `></div>`)
@@ -170,18 +171,19 @@ write_play_element :: proc(b: ^strings.Builder, board: norn.Board) -> (cost: May
 	return
 }
 
-// Bake the BLIND (DDS-sampled) advisor grids for BOTH partnerships of a known deal: `{"ns":<sim>,"ew":<sim>}`
+// Bake the RANDOM-LAYOUTS (DDS-sampled) grids for BOTH partnerships of a known deal: `{"ns":<sim>,"ew":<sim>}`
 // where each `<sim>` is the same shape write_sim_json emits for a 2-hand board (n/lvl/strain/g plus the
 // misguess-tax ach/taxpts/pvt AND the nested opening-lead sub-grids, so each side drives its own lead picker
-// in Blind mode). sample_board treats the named side as declarer+dummy and randomises the
-// other 26 cards, so this is exactly "how would this side fare playing blind". A side that fails to sample
-// is emitted as null.
-write_blind_sides_json :: proc(
+// on Random layouts). sample_board treats the named side as declarer+dummy and redeals the other 26 cards,
+// so this is "how often would this side make, not knowing the rest of the deal" - still double-dummy on each
+// layout, so a ceiling, not blind play. A side that fails to sample is emitted as null.
+write_layout_sides_json :: proc(
 	b: ^strings.Builder,
 	board: norn.Board,
 	args: ^Args,
 	contract: deal_solve.Contract,
 	has_contract: bool,
+	sink: Sink,
 ) {
 	// The recorded opening lead pre-selects the picker, but only on the side it defends against (its leader is
 	// one of that side's defenders). ns_lseat/ew_lseat stay 0 (unset) otherwise, and for a board with no lead.
@@ -197,7 +199,7 @@ write_blind_sides_json :: proc(
 	}
 
 	strings.write_byte(b, '{')
-	bs_ns, _ := sample_board(board, combo.NS_SIDE, args, contract, has_contract)
+	bs_ns, _ := sample_board(board, combo.NS_SIDE, args, contract, has_contract, sink, 0, 2)
 	defer board_sample_free(&bs_ns)
 	strings.write_string(b, `"ns":`)
 	if bs_ns.have {
@@ -216,7 +218,7 @@ write_blind_sides_json :: proc(
 	} else {
 		strings.write_string(b, "null")
 	}
-	bs_ew, _ := sample_board(board, combo.EW_SIDE, args, contract, has_contract)
+	bs_ew, _ := sample_board(board, combo.EW_SIDE, args, contract, has_contract, sink, 1, 2)
 	defer board_sample_free(&bs_ew)
 	strings.write_string(b, `,"ew":`)
 	if bs_ew.have {
@@ -258,7 +260,7 @@ render_board_body :: proc(
 	_, side, ok := combo.analyse_board(board)
 	if !ok {
 		if board_fully_known(board) {
-			return true, render_full_deal_body(b, board, args, contract, has_contract)
+			return true, render_full_deal_body(b, board, args, contract, has_contract, sink)
 		}
 		strings.write_string(b, `<div class="par">Not a 2-hand board (need declarer + dummy, defenders '-').</div>`)
 		return
@@ -266,7 +268,7 @@ render_board_body :: proc(
 	drawn = true
 	sd, _, _ := combo.sd_bundle_board(board)
 
-	bs, serr := sample_board(board, side, args, contract, has_contract)
+	bs, serr := sample_board(board, side, args, contract, has_contract, sink)
 	defer board_sample_free(&bs)
 	if serr != "" {
 		fmt.wprintfln(sink.err, "%s: %s", PROGRAM, serr)

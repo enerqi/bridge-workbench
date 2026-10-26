@@ -88,6 +88,7 @@ CHECK :: uintptr(10) // the scenario editor`s debounce ran out; check the buffer
 HEADING :: uintptr(11) // a heading in the notes preview was clicked; go to it (see `on_preview_click`)
 LINKED_FILE :: uintptr(12) // a link in the notes preview names another notes file; open it (`on_preview_click`)
 UPDATE :: uintptr(13) // the About panel's release check answered; the sentence is in `App.update_text`
+ANALYSE_PART :: uintptr(14) // lparam = thousandths of the board under way, while its make-chance layouts are solved
 
 Job_Kind :: enum {
 	Generate,
@@ -289,6 +290,11 @@ App :: struct {
 	goto_sel:           int,
 	goto_all:           []outline.Heading,
 	goto_rows:          []outline.Heading,
+	// What ENTER does in it (`notes_insert.odin`): jump, or write a link or a construct at `goto_at`, the
+	// caret [row, column] it was opened from. `goto_typed`: opened by typing `](#`, which is already there.
+	goto_mode:          Goto_Mode,
+	goto_at:            [2]int,
+	goto_typed:         bool,
 	// The preview scroll that has not landed yet, and how many times it has been tried. A frame's
 	// sub-document is laid out on the engine's schedule, so the scroll is RETRIED on a timer until the
 	// numbers say it moved - see `scroll_preview_to_heading`.
@@ -315,6 +321,10 @@ App :: struct {
 	job:                Job,
 	worker:             ^thread.Thread,
 	running:            bool,
+	// Where an analysis is, from ANALYSE_STEP: the board under way and the boards in all. ANALYSE_PART is a
+	// fraction of the board under way, so it needs both to place the bar.
+	analyse_board:      int,
+	analyse_boards:     int,
 	allocator:          runtime.Allocator,
 }
 
@@ -500,6 +510,12 @@ run_analysis :: proc(app: ^App, argv: []string) {
 		app := (^App)(data)
 		sa.post_callback(app.window, ANALYSE_STEP, uintptr(min(done, 0xffff) << 16 | min(total, 0xffff)))
 	}
+	// Within a board: its make-chance layouts are the slow part, seconds for a single deal, which without this
+	// left the bar empty until it filled in one go.
+	sink.board_part = proc(data: rawptr, permille: int) {
+		app := (^App)(data)
+		sa.post_callback(app.window, ANALYSE_PART, uintptr(clamp(permille, 0, 1000)))
+	}
 
 	result := analyse.run(sink, &args)
 
@@ -666,11 +682,17 @@ on_posted :: proc(handler: ^sa.Host_Handler, posted: sa.Posted) {
 
 	case ANALYSE_STEP:
 		done, total := int(posted.lparam >> 16), int(posted.lparam & 0xffff)
+		app.analyse_board, app.analyse_boards = done, total
 		if total > 0 {
 			set_progress(app, done * 100 / total)
 		}
 		if total > 1 {
 			set_text_at(app, "#analyse-busy-text", fmt.tprintf("board %d of %d", min(done + 1, total), total))
+		}
+
+	case ANALYSE_PART:
+		if app.analyse_boards > 0 {
+			set_progress(app, (app.analyse_board * 1000 + int(posted.lparam)) * 100 / (app.analyse_boards * 1000))
 		}
 
 	case UPDATE:
@@ -878,6 +900,7 @@ start_job :: proc(app: ^App, job: Job, status: string) {
 	app.running = true
 	// The pump outranks the work while the work is on - see `ui_thread_priority`.
 	ui_thread_priority(true)
+	app.analyse_board, app.analyse_boards = 0, 0
 	set_progress(app, 0)
 	set_job_status(app, status)
 	set_enabled(app, "#generate", false)
@@ -995,7 +1018,7 @@ analyse_flags :: proc(app: ^App) -> (argv: [dynamic]string, err: string) {
 	argv = make([dynamic]string, 0, 8, context.temp_allocator)
 	if sample := strings.trim_space(read_text(app, "#sample")); sample != "" && sample != "0" {
 		if n, ok := strconv.parse_int(sample); !ok || n < 0 {
-			return nil, fmt.tprintf("make chance: %q is not a number of layouts", sample)
+			return nil, fmt.tprintf("simulate: %q is not a number of random layouts", sample)
 		}
 		append(&argv, "--sample", sample)
 	}
@@ -3228,6 +3251,7 @@ draw_bml_files :: proc(app: ^App) {
 show_editor :: proc(app: ^App) {
 	show_view(app, .Editor)
 	draw_bml_files(app)
+	send_lexicon(app) // the completion terms, for this folder (`notes_complete.odin`)
 	if app.docs == "" || len(app.bml_names) == 0 {
 		bml_status(app, "choose a folder of .bml files")
 		return
@@ -3316,6 +3340,7 @@ use_bml_dir :: proc(app: ^App, path: string) {
 	remember_open_notes_dir(app)
 	set_bml_source(app, "")
 	draw_bml_files(app)
+	send_lexicon(app) // another folder, another lexicon.txt and other words
 
 	if len(names) == 0 {
 		bml_status(app, fmt.tprintf("no .bml files in %s", path))
@@ -3380,6 +3405,59 @@ open_bml :: proc(app: ^App, name: string, repreview := true) -> (ok: bool, why: 
 	return true, ""
 }
 
+/*
+`tidy`: every bid table in the buffer re-indented to 4 spaces a level, its nesting unchanged
+(`bml.tidy_indentation` works it out by the parse's own rules, and its corpus test holds that the notes
+render byte-for-byte as before). Into the BUFFER, as one undoable edit (`bmlReplaceLines`), never saved -
+`save` is still the press that writes the file.
+*/
+tidy_bml :: proc(app: ^App) -> (ok: bool, why: string) {
+	if app.bml_open == "" {
+		return false, "nothing is open"
+	}
+	source, got := bml_source(app, context.temp_allocator)
+	if !got {
+		return false, "the editor's text could not be read"
+	}
+	tidied, changed := bml.tidy_indentation(source, 4, context.temp_allocator)
+	if changed == 0 {
+		return true, "the bid tables are already indented 4 spaces a level"
+	}
+
+	// The changed lines only, by index: the buffer's lines are the widget's line elements, one each.
+	before := strings.split(source, "\n", context.temp_allocator)
+	after := strings.split(tidied, "\n", context.temp_allocator)
+	edits := strings.builder_make(context.temp_allocator)
+	strings.write_byte(&edits, '[')
+	written := 0
+	for line, i in after {
+		if i < len(before) && line == before[i] {
+			continue
+		}
+		if written > 0 {
+			strings.write_byte(&edits, ',')
+		}
+		fmt.sbprintf(&edits, "[%d,", i)
+		write_json_string(&edits, line)
+		strings.write_byte(&edits, ']')
+		written += 1
+	}
+	strings.write_byte(&edits, ']')
+
+	script := strings.concatenate(
+		{"bmlReplaceLines(", json_string(strings.to_string(edits), context.temp_allocator), ")"},
+		context.temp_allocator,
+	)
+	result, err := sa.eval(app.window, script)
+	defer sa.value_clear(&result)
+	done, ierr := sa.value_to_int(&result)
+	if err != nil || ierr != nil || done < 0 {
+		set_bml_source(app, tidied) // not undoable, so it says so
+		return true, fmt.tprintf("re-indented %d lines - not undoable here: reopen the file without saving to undo", changed)
+	}
+	return true, fmt.tprintf("re-indented %d lines, 4 spaces a level, nesting unchanged · ctrl+z undoes it · not saved yet", done)
+}
+
 // Write the buffer back to the file it came from. The one destructive thing in this window, so it says what
 // it wrote — and it restores the file's own line endings and its single trailing newline rather than
 // imposing the widget's.
@@ -3439,6 +3517,8 @@ preview_bml :: proc(app: ^App) -> (ok: bool, why: string) {
 			include_user = app,
 			check_cross_references = app.bml_links,
 			known_anchors = known,
+			// Always on, unlike the links: it has no false alarms to opt out of (2 rows in the whole corpus).
+			check_indentation = true,
 		},
 	)
 	defer bml.destroy(doc)
@@ -4332,16 +4412,28 @@ GOTO_ROWS :: 12
 
 // Open or close the palette. Only in the notes view - the plaintext, the caret and the file list it moves
 // between are all there, and the key is left alone everywhere else.
-toggle_goto :: proc(app: ^App) {
+toggle_goto :: proc(app: ^App, mode := Goto_Mode.Jump, typed := false) {
+	// The same key again closes it; another mode's key switches it over.
 	if app.goto_open {
+		was := app.goto_mode
 		close_goto(app)
-		return
+		if was == mode {
+			return
+		}
 	}
 	if app.docs == "" {
 		bml_status(app, "choose a folder of .bml files first")
 		return
 	}
-	build_goto_index(app)
+	// Where a link or a construct will be written: the caret NOW, before the input takes the focus.
+	row, col := caret_position(app)
+	app.goto_mode, app.goto_at, app.goto_typed = mode, {row, col}, typed
+	if mode == .Insert {
+		free_goto_index(app)
+		app.goto_all = snippet_rows(app.allocator)
+	} else {
+		build_goto_index(app)
+	}
 	if len(app.goto_all) == 0 {
 		bml_status(app, "no headings in this folder's .bml files")
 		return
@@ -4350,11 +4442,29 @@ toggle_goto :: proc(app: ^App) {
 	app.goto_sel = 0
 	set_shown(app, "#bml-goto", true)
 	set_input(app, "#bml-goto-input", "") // a palette opens empty; the last query is not a state to restore
+	if input := find(app, "#bml-goto-input"); input != nil {
+		placeholder := "go to heading — 1h 1s, lbn, stayman … up/down to choose, enter to jump, esc to close"
+		switch mode {
+		case .Jump:
+		case .Link:
+			placeholder = "link to heading — type part of its name, enter writes the link at the caret, esc to close"
+		case .Insert:
+			placeholder = "insert — cut, paste, vul, seat, hide, include, list, bold … enter writes it at the caret"
+		}
+		_ = sa.set_attribute(input, "placeholder", placeholder)
+	}
 	draw_goto_list(app)
 	if input := find(app, "#bml-goto-input"); input != nil {
 		_ = sa.set_focus(input)
 	}
-	bml_status(app, fmt.tprintf("go to heading - %d in %d files", len(app.goto_all), len(app.bml_names)))
+	switch mode {
+	case .Jump:
+		bml_status(app, fmt.tprintf("go to heading - %d in %d files", len(app.goto_all), len(app.bml_names)))
+	case .Link:
+		bml_status(app, fmt.tprintf("link to heading - %d in %d files", len(app.goto_all), len(app.bml_names)))
+	case .Insert:
+		bml_status(app, "insert a BML construct at the caret")
+	}
 }
 
 // Close it, and hand the keyboard back to the SOURCE rather than to whatever had it before: the palette is
@@ -4488,6 +4598,10 @@ jump_to_goto :: proc(app: ^App) {
 		return
 	}
 	target := app.goto_rows[clamp(app.goto_sel, 0, len(app.goto_rows) - 1)]
+	if app.goto_mode != .Jump {
+		write_from_palette(app, target)
+		return
+	}
 	go_to_heading(app, target)
 }
 
@@ -5359,8 +5473,19 @@ Everything that is not one of these five keys is left to fall through and be typ
 goto_key :: proc(app: ^App, key_code: u32, modifiers: sciter.Keyboard_States) -> bool {
 	if sciter.KEYBOARD_STATE_CONTROL & modifiers != {} {
 		// CTRL+R, the way in and the way out. Only in the notes view: everywhere else the key is nobody's.
-		if sciter.Sc_Kb_Codes(key_code) == .R && current_view(app) == .Editor {
+		if current_view(app) != .Editor {
+			return false
+		}
+		// CTRL+L a LINK to a heading, CTRL+I INSERT a construct (`notes_insert.odin`): the same palette, writing.
+		#partial switch sciter.Sc_Kb_Codes(key_code) {
+		case .R:
 			toggle_goto(app)
+			return true
+		case .L:
+			toggle_goto(app, .Link)
+			return true
+		case .I:
+			toggle_goto(app, .Insert)
 			return true
 		}
 		return false
@@ -7866,6 +7991,12 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 			set_note(app, fmt.tprintf("hand page %d%%", int(factor * 100 + 0.5)))
 			remember_page_zoom(app, factor)
 			return true
+		case "wb-link":
+			// `](#` typed in the notes source (the page script's keyup): the link palette, to finish it.
+			if !app.goto_open {
+				toggle_goto(app, .Link, typed = true)
+			}
+			return true
 		}
 		if sa.event_name(be, context.temp_allocator) == "wb-split-dragged" {
 			if id, _ := sa.attribute(be.target, "id", context.temp_allocator); id == "deal-split" {
@@ -7914,6 +8045,10 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 	// control and their word is the pref's value.
 	if word, _ := sa.attribute(be.target, "data-gfx", context.temp_allocator); word != "" {
 		choose_graphics(app, word)
+		return true
+	}
+	if word, _ := sa.attribute(be.target, "data-notes-complete", context.temp_allocator); word != "" {
+		choose_notes_complete(app, word)
 		return true
 	}
 	if word, _ := sa.attribute(be.target, "data-notes-built", context.temp_allocator); word != "" {
@@ -8191,8 +8326,36 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		make_quiz(app)
 		return true
 
+	// The palette's three modes from the bar (CTRL+R / CTRL+L / CTRL+I from the keyboard).
+	case "bml-goto-open":
+		toggle_goto(app)
+		return true
+	case "bml-link-open":
+		toggle_goto(app, .Link)
+		return true
+	case "bml-insert-open":
+		toggle_goto(app, .Insert)
+		return true
+
+	case "bml-tidy":
+		_, why := tidy_bml(app)
+		bml_status(app, why)
+		return true
+
 	case "bml-quiz-open":
 		open_quiz(app)
+		return true
+
+	case "bml-export":
+		export_notes_to_browser(app)
+		return true
+
+	case "bml-export-zip":
+		export_notes_to_zip(app)
+		return true
+
+	case "bml-export-all":
+		export_notes_to_zip(app, all = true)
 		return true
 
 	case "bml-save":

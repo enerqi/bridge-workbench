@@ -183,6 +183,20 @@
         Used by the notes preview and by the notes inside quiz pages, and by the built pages when they are
         set to this look.
       </div>
+      <!-- COMPLETION in the notes source (workbench/notes_complete.odin): bridge terms, and optionally the folder's
+           own words. -->
+      <div class="about-head">Notes completion</div>
+      <div class="line">
+        <span class="barlabel field-label">complete</span>
+        <div class="seg" id="prefs-notes-complete">
+          <button class="segbtn" data-notes-complete="off" title="No completion"
+                  data-hint="No suggestions while typing notes.">off</button>
+          <button class="segbtn" data-notes-complete="terms" title="Bridge terms"
+                  data-hint="Suggest bridge terms and convention names as you type a description: after three letters the status line names one, tab writes it, ctrl+space steps through the others, esc drops it. A lexicon.txt in the notes folder adds your own, one a line.">terms</button>
+          <button class="segbtn" data-notes-complete="folder" title="Bridge terms and the words in this notes folder"
+                  data-hint="The bridge terms, and every word of five letters or more already used in this folder's notes - your own vocabulary without listing it, with more suggestions to step past.">+ folder words</button>
+        </div>
+      </div>
       <!-- THE HAND PAGE'S LOOK (workbench/hand_look.odin): the felt and the cards, with the suits above. Put into
            the page in the pane as it arrives - every page, old ones too - and into pages a run writes when the
            last row says so. -->
@@ -352,6 +366,9 @@
 
         <div class="group">the notes view</div>
         <div class="krow"><span class="k"><b>ctrl+r</b></span><span class="d">go to any heading in the corpus, by name</span></div>
+        <div class="krow"><span class="k"><b>ctrl+l</b></span><span class="d">link to a heading at the caret (or type <code>](#</code>)</span></div>
+        <div class="krow"><span class="k"><b>ctrl+i</b></span><span class="d">insert BML at the caret: #CUT/#PASTE, #VUL, diagrams, tables, lists …</span></div>
+        <div class="krow"><span class="k"><b>tab</b><b>shift+tab</b></span><span class="d">indent / outdent with spaces, 4 a column (enter keeps the indent)</span></div>
         <div class="krow"><span class="k"><b>ctrl+s</b></span><span class="d">save the file</span></div>
         <div class="krow"><span class="k"><b>ctrl+b</b></span><span class="d">fold the file list away, or bring it back</span></div>
         <div class="krow"><span class="k"><b>ctrl+t</b><b>ctrl+\</b></span><span class="d">the preview: closed, beside the source, full width (shift: back the other way)</span></div>
@@ -400,6 +417,16 @@
       <!-- THE SIDEBAR'S TOGGLE ON THE LEFT, THE PANE'S CONTROLS ON THE RIGHT (2026-10-20): the toggle belongs to
            the sidebar under it, and with the pane's segment straight after it the two read as one group
            (reported). The gap takes the bar's slack. -->
+      <!-- THE PALETTE'S THREE MODES AS BUTTONS (2026-10-26): they were keys only, findable in `?` alone, and the
+           insert list is exactly what nobody remembers is there. The caret they write at is the source's, which
+           keeps it while the button has the focus (`toggle_goto` reads it). -->
+      <span class="barlabel">notes</span>
+      <button id="bml-goto-open" class="ghost" title="Go to a heading in any file in the folder (ctrl+r)"
+              data-hint="Open the heading list: type part of a heading's name, up/down to choose, enter to jump there. Every file in the folder is searched.">go to</button>
+      <button id="bml-link-open" class="ghost" title="Link to a heading, written at the caret (ctrl+l, or type ](#)"
+              data-hint="Pick a heading and the link to it is written at the caret: [name](#name), or other.html#... for a heading in another document. Typing ](# opens the same list to finish a link you started.">link</button>
+      <button id="bml-insert-open" class="ghost" title="Insert BML at the caret: #CUT/#PASTE, #VUL, diagrams, tables, lists (ctrl+i)"
+              data-hint="A list of BML's constructs - the directives nobody remembers, deal diagrams, auctions, tables, description lists, font styles - each written at the caret as a template to fill in.">insert</button>
       <span class="bar-gap"></span>
       <!-- WHERE THE PREVIEW IS: the deals view's three-position control, for this view's pane (2026-10-10).
            It was one toggle whose label turned into `close`, and a word in the bar did not read as closing
@@ -429,6 +456,20 @@
         <li><b>fold</b> collapses the file to its headings, keeping the caret's section open. Remembered per file.</li>
         <li><b>CTRL+R</b> jumps to any heading in any file in the folder. The letters only need to be in order
             (<code>lbn</code> would find Lebensohl), and dashes don't matter (<code>1h 1s</code> finds 1H-1S).</li>
+        <li><b>CTRL+L</b> links to a heading: pick it the same way and <code>[name](#name)</code> is written at the
+            caret - or type <code>](#</code> and the list opens to finish it. A heading in another document (one
+            that is not part of this file's) is linked as <code>other.html#...</code>, so the link works on the page.</li>
+        <li><b>CTRL+I</b> inserts BML you may not remember the shape of: <code>#CUT</code>/<code>#PASTE</code> with
+            replacements, <code>#VUL</code>, <code>#SEAT</code>, <code>#HIDE</code>, <code>#INCLUDE</code>, competitive
+            headers, lists, bold/italic/monospace.</li>
+        <li><b>Completion</b>: after three letters of a word in a description, the status line names a bridge term
+            (<i>tab →</i> Lebensohl). <b>Tab</b> writes it, <b>Ctrl+Space</b> steps to the next, <b>Esc</b> drops
+            it. Settings &gt; Notes completion turns it off or adds this folder's own words; a <code>lexicon.txt</code>
+            in the notes folder adds your terms, one a line.</li>
+        <li>Typing <b>=</b> after a bid writes <code> = </code> and capitalises the bid (<code>1c</code> → <code>1C</code>);
+            a space after a lone bid under a bid row does the same, and shift+space is a plain space.</li>
+        <li><b>Tab</b> indents with spaces to the next 4-column stop, <b>Enter</b> keeps the line's indent, and
+            <b>tidy</b> (under "this document") re-indents a whole file's bid tables 4 spaces a level.</li>
         <li><b>Squiggles</b> are problems the parser found — hover one to read it. Red means something will be
             missing from the page; yellow is a warning.</li>
         <li><b>links</b> also checks cross-references. It is off by default: a file that is one chapter of a
@@ -469,6 +510,24 @@
         </div>
         <div id="bml-sources" class="sources"
              data-hint="The folders of notes: the one found at startup first, then the ones you added. Click one to open its files; × forgets an added folder."></div>
+        <!-- THIS DOCUMENT: what acts on the open file as a whole, in the sidebar because both pane heads were
+             full (at 720px the source's quiz buttons and the preview's export buttons went off the window's
+             edge, measured). `tidy` re-indents its bid tables (`tidy_bml`); `page`, `zip` and `zip all` write it
+             as web pages (`workbench/notes_export.odin`): the document the open file belongs to - a chapter's
+             root, with its chapters - or for `zip all` every document in the folder. Shown while a file is open. -->
+        <div id="bml-docbar" style="display: none">
+          <div class="side-sub">this document</div>
+          <div class="side-row side-actions">
+            <button id="bml-export" class="ghost icon-text" title="Write these notes as web pages and open them in your browser"
+              data-hint="Write the document this file belongs to (for a chapter, the whole system that includes it) as a web page in the deals folder's notes folder, then open it in your browser. The page stands alone - copy it anywhere. Unsaved edits are included. Links to other documents need those pages too: zip all writes them all."><span class="away">↗</span>page</button>
+            <button id="bml-export-zip" class="ghost" title="Write this document as a web page and pack it into a .zip to send"
+              data-hint="The same page as page ↗ writes, packed into a .zip beside its folder, which Explorer then shows. Unpacked, it is one folder that opens in any browser.">zip</button>
+            <button id="bml-export-all" class="ghost" title="Write every document in this notes folder as web pages, packed into one .zip"
+              data-hint="Every document in the notes folder (each with its chapters) as web pages, packed into one .zip named after the folder, which Explorer then shows. The links between documents work in it.">zip all</button>
+            <button id="bml-tidy" class="ghost" title="Re-indent the bid tables to 4 spaces a level (the nesting does not change)"
+              data-hint="Re-indent every bid table in this file to 4 spaces a level. The nesting stays exactly as it was - each row keeps its parent - and the page renders the same; only the spaces change, tabs included. One ctrl+z undoes it, and nothing is saved until you press save.">tidy</button>
+          </div>
+        </div>
         <div class="side-sub">files</div>
         <div id="bml-list"
              data-hint="The .bml files in this folder. Click one to edit it; unsaved changes are kept until you pick the same file again."></div>
@@ -912,9 +971,11 @@
             <li><b>Declarer and dummy only</b>: put a dash (<code>-</code>) in place of each defender's hand, as in
                 <code>N:AJ54.AK2.A32.AK3 - KT32.543.654.542 -</code>. Each suit is then analysed over every way
                 the defenders' cards in it can split.</li>
-            <li><b>make chance</b> (declarer and dummy only): the chance of making the contract with the whole hand
-                played out, over that many random layouts of the defenders' cards, each solved — 200 to 500 is
-                plenty, and more takes longer. 0 stops at the suit-by-suit analysis.</li>
+            <li><b>simulate random layouts</b>: keep the known hands and deal the other cards at random that many
+                times, solving each layout double-dummy — how often each contract makes. A ceiling: real play misses
+                some guesses, and the <i>achievable</i> figure estimates that. 200 to 500 is plenty, and more takes
+                longer; 0 stops at the suit-by-suit analysis. With all four hands given, the card page can then show
+                each side either on the deal as dealt or on random layouts of the other two hands.</li>
             <li><b>contract</b> and <b>target</b> choose what to score and the trick count to highlight;
                 <code>auto</code> picks the contract.</li>
             <li><b>defenders</b> (declarer and dummy, one board): what you know of their hands - a card held
@@ -932,10 +993,10 @@
                     placeholder='[Deal "N:AJ54.AK2.A32.AK3 - KT32.543.654.542 -"]  ·  or a bare N:..., a LIN record, a hand URL — or drop a screenshot, .pbn or .lin on the window, or paste a screenshot (ctrl+v)'></textarea>
         </div>
         <div class="line field">
-          <label for="sample">make chance</label>
-          <input type="text" id="sample" class="num" value="0" title="Chance of making, over this many layouts; 0 = off"
-                 data-hint="Chance of making the contract, over this many random layouts of the defenders' cards, each solved - 200 to 500 is plenty. 0 = off (the suit-by-suit analysis alone). Declarer and dummy only: when all four hands are given, that deal is solved exactly.">
-          <span class="unit">layouts</span>
+          <label for="sample">simulate</label>
+          <input type="text" id="sample" class="num" value="0" title="Random layouts of the unknown hands, each solved double-dummy; 0 = off"
+                 data-hint="Keep the known hands and deal the other cards at random this many times, solving each layout double-dummy: how often each contract makes. A ceiling - real play misses some guesses, and the achievable figure estimates that. 200 to 500 is plenty; 0 = off (the suit-by-suit analysis alone). With all four hands given, the deal itself is solved exactly, and these layouts add the card page's Random layouts view.">
+          <span class="unit">random layouts</span>
         </div>
         <div class="line field">
           <label for="contract">contract</label>
@@ -1227,6 +1288,26 @@
   function bmlColorize()      { bmlColorEnabled = true; return bmlColorizePass(true); }
   function bmlColorizeDirty() { return bmlColorEnabled ? bmlColorizePass(false) : 0; }
 
+  // TIDY'S EDIT (`tidy_bml`): `[[line, text], ...]` written into those lines of the source as ONE transaction
+  // (`plaintext.update`), so a single ctrl+z takes the whole tidy back, and lines it did not touch keep their
+  // marks and the caret stays where it was. Returns how many lines it changed, or -1 when it could not run
+  // (the host then replaces the whole text, which is not undoable).
+  function bmlReplaceLines(json) {
+    var editor = document.$("#bml-text");
+    if (!editor || !editor.plaintext || !editor.plaintext.update) return -1;
+    var edits = JSON.parse(json), lines = editor.children, done = 0;
+    var ok = editor.plaintext.update(function (tctx) {
+      for (var k = 0; k < edits.length; k++) {
+        var el = lines[edits[k][0]];
+        if (!el || !el.firstChild) continue;
+        tctx.setText(el.firstChild, edits[k][1]);
+        done++;
+      }
+      return true;
+    });
+    return ok ? done : -1;
+  }
+
   /* ---------------------------------------------------------------- the scenario colorizer
 
      `.scenario` is line-oriented in the same way BML is - a comment, a header, a `key: value` body line -
@@ -1511,6 +1592,63 @@
     return false;
   });
 
+  // `](#` JUST TYPED in the notes source: the host opens the link palette to finish it (`notes_insert.odin`).
+  // On keyup, when the character is in; a caret key, a delete or a modifier is not typing, so it does not
+  // re-open the palette over a link somebody is only moving past.
+  // The check on its own, so a test can ask it: a key-up sent to the editor from the host does not reach a
+  // script `keyup` listener in the windowless view (measured), so only the listener line is the window's to show.
+  function bmlLinkTrigger(editor) {
+    var at = editor.plaintext.selectionStart;
+    var line = editor.children[at[0]];
+    var text = line ? (bmlLineText(line) || "") : "";
+    if (at[1] < 3 || text.slice(at[1] - 3, at[1]) !== "](#") return false;
+    wbZoomed("wb-link");
+    return true;
+  }
+  document.on("keyup", "#bml-text", function (event) {
+    if (event.ctrlKey || event.altKey) return false;
+    // A caret key moves away from whatever was offered; a letter (or `-`, `'`) asks again (`bmlSuggest`).
+    if (BML_CARET_KEYS[event.code]) { bmlDropCompletion(); return false; }
+    try { bmlLinkTrigger(this); } catch (x) {}
+    if (/^Key[A-Z]$|^Minus$|^Quote$/.test(event.code)) {
+      try { bmlSuggest(this); } catch (x) {}
+    } else if (event.code !== "Tab" && event.code !== "Escape" && !/^(Shift|Control|Alt|Meta)/.test(event.code)) {
+      bmlDropCompletion(); // a modifier's own key-up (the shift of a capital) is not a key that moves on
+    }
+    return false;
+  });
+
+  // THE PALETTE'S WRITE (`insert_into_source`): at [row, col], `drop` characters before it removed, `before`
+  // then `after` inserted, and the caret left between them - one `plaintext.update`, so one ctrl+z.
+  function bmlInsertAt(row, col, drop, before, after) {
+    var editor = document.$("#bml-text");
+    if (!editor || !editor.plaintext) return false;
+    var p = editor.plaintext;
+    p.selectRange(row, col, row, col);
+    var ok = p.update(function (tctx) {
+      // Something to REMOVE (the typed `#` a link to another page replaces): the whole line is written again
+      // with `setText`, as `tidy` does. `edit:delete-prev` then `insert-text` in one update crashed the engine
+      // a frame later (measured: every time, in the windowless view), where ctrl+backspace's run of
+      // `delete-prev` alone does not.
+      var el = editor.children[row];
+      var node = el && el.firstChild;
+      if (drop > 0 && node) {
+        var line = bmlLineText(el) || "";
+        tctx.setText(node, line.slice(0, col - drop) + before + after + line.slice(col));
+        return true;
+      }
+      tctx.execCommand("edit:insert-text", before + after);
+      return true;
+    });
+    if (!ok) return false;
+    // The caret back over `after`: it is on the row `before` ends on, after its last line.
+    var lines = before.split("\n");
+    var r = row + lines.length - 1;
+    var c = (lines.length === 1 ? col - drop : 0) + lines[lines.length - 1].length;
+    p.selectRange(r, c, r, c); // the focus is the host's: closing the palette hands it back to the source
+    return true;
+  }
+
   /* CTRL+BACKSPACE IS OURS, in both editors, because the engine's own one breaks the widget (reported
      2026-10-19): type on a new line, ctrl+backspace it empty, and the caret vanishes until a key brings it
      back at the top of the text - and twice in a row the window froze. The same in the notes editor, with the
@@ -1541,6 +1679,219 @@
     });
   }
 
+  // THE INDENT KEYS (reported 2026-10-26: two tabs then a bid wrote two literal tab characters, drawn as boxes,
+  // which the parse counts as ONE space each). Spaces instead, 4 a level, as `tidy` writes them:
+  //   tab        - spaces to the next 4-column stop; with several lines selected, each of them in by 4
+  //   shift+tab  - the caret's line (or each selected line) out to the previous stop
+  //   enter      - the new line starts at the indent of the line it was broken from
+  // Each is ONE `plaintext.update`, so one ctrl+z takes it back.
+  var BML_STEP = 4;
+  var wbIndentKeys = 0; // how many keys this took: the test's proof that it, not the widget, ran
+
+  function bmlLeading(text) {
+    var n = 0;
+    while (n < text.length && text[n] === " ") n++;
+    return n;
+  }
+
+  // BIDS IN CAPITALS (2026-10-26): `1c = strong` is a bid row to the parse, but a lowercase strain gets no suit
+  // symbol on the page and is a different call to the quiz. So the BID COLUMN of the line - what is before its
+  // `=`, or a line that is one bid-like token (`(1n)`, `2hs`) - has its strain letters raised when `=` is typed
+  // and when the line is left with enter: 1c -> 1C, (1n) -> (1N), 2nt -> 2NT, 1hs -> 1HS, 1c--1h -> 1C--1H.
+  // ONLY c d h s n (and nt) after a level: `3m` is the minor class and `3x` a wildcard in BML's call grammar,
+  // `2!c` is the suit shorthand, and the description after the `=` is prose. One undo step of its own.
+  var BML_LOWER_BID = /(^|[^!A-Za-z0-9])([1-7])((?:nt|[cdhsn])+)(?=$|[^A-Za-z])/g;
+
+  // `upto`: the `=` being typed is at that column, so the bid column is everything before it.
+  function bmlCapitaliseBids(editor, row, upto) {
+    var el = editor.children[row];
+    var node = el && el.firstChild;
+    var text = el ? (bmlLineText(el) || "") : "";
+    if (!node || !text.length) return false;
+    var eq = upto !== undefined ? upto : text.indexOf("=");
+    var column = eq >= 0 ? text.slice(0, eq) : text;
+    if (eq < 0 && !/^\s*[(\d]\S*\s*$/.test(text)) return false; // no `=`: only a lone bid-like token
+    var raised = column.replace(BML_LOWER_BID, function (all, before, level, strain) {
+      return before + level + strain.toUpperCase();
+    });
+    if (raised === column) return false;
+    return editor.plaintext.update(function (tctx) {
+      tctx.setText(node, raised + text.slice(column.length));
+      return true;
+    });
+  }
+
+  /* COMPLETION FROM THE LEXICON (`notes_complete.odin` builds the list and calls `bmlSetLexicon`). After three
+     letters of a word in a description or prose - never in the bid column, before a line's `=` - the first
+     term starting with them (any case; a term that differs only in case counts, so `rkcb` offers `RKCB`) is
+     named in the STATUS LINE, not a popup: TAB writes it, CTRL+SPACE steps to the next, ESC drops it, and any
+     other key asks again. The word is written whole with `setText`, one undo step. */
+  var bmlLexicon = [];
+  var bmlCompletion = null; // { row, start, end, list, index } while a suggestion is up
+  var wbCompletions = 0; // how many TAB wrote: the test's proof that it, not the indent, ran
+
+  function bmlSetLexicon(json) {
+    bmlLexicon = JSON.parse(json) || [];
+    bmlCompletion = null;
+    return bmlLexicon.length;
+  }
+
+  function bmlCompletionStatus(text) {
+    var status = document.$("#bml-status");
+    if (status) status.textContent = text;
+  }
+
+  function bmlShowCompletion() {
+    var c = bmlCompletion;
+    if (!c) return;
+    var more = c.list.length > 1 ? " · ctrl+space: " + (c.list.length - 1) + " more" : "";
+    bmlCompletionStatus("tab → " + c.list[c.index] + more + " · esc");
+  }
+
+  function bmlDropCompletion() {
+    if (!bmlCompletion) return false;
+    bmlCompletion = null;
+    bmlCompletionStatus("");
+    return true;
+  }
+
+  // The suggestion for the word the caret is at the end of, if any. Returns the term offered, or "".
+  function bmlSuggest(editor) {
+    bmlCompletion = null;
+    var at = editor.plaintext.selectionStart, end = editor.plaintext.selectionEnd;
+    if (!at || !end || at[0] !== end[0] || at[1] !== end[1] || !bmlLexicon.length) return "";
+    var el = editor.children[at[0]];
+    var text = el ? (bmlLineText(el) || "") : "";
+    var col = at[1];
+    if (/[A-Za-z]/.test(text.charAt(col))) return ""; // mid-word
+    var eq = text.indexOf("=");
+    if (eq >= 0 && col <= eq) return ""; // the bid column
+    var m = /[A-Za-z][A-Za-z'\-]*$/.exec(text.slice(0, col));
+    if (!m || m[0].length < 3) return "";
+    var prefix = m[0], lower = prefix.toLowerCase(), list = [];
+    for (var i = 0; i < bmlLexicon.length && list.length < 20; i++) {
+      var term = bmlLexicon[i];
+      if (term !== prefix && term.toLowerCase().indexOf(lower) === 0) list.push(term);
+    }
+    if (!list.length) return "";
+    bmlCompletion = { row: at[0], start: col - prefix.length, end: col, list: list, index: 0 };
+    bmlShowCompletion();
+    return list[0];
+  }
+
+  // TAB with a suggestion up, the caret still where it was offered: the word written whole.
+  function bmlAcceptCompletion(editor) {
+    var c = bmlCompletion;
+    if (!c) return false;
+    var at = editor.plaintext.selectionStart;
+    if (!at || at[0] !== c.row || at[1] !== c.end) { bmlDropCompletion(); return false; }
+    var el = editor.children[c.row];
+    var node = el && el.firstChild;
+    if (!node) { bmlDropCompletion(); return false; }
+    var text = bmlLineText(el) || "", term = c.list[c.index];
+    var ok = editor.plaintext.update(function (tctx) {
+      tctx.setText(node, text.slice(0, c.start) + term + text.slice(c.end));
+      return true;
+    });
+    if (ok) editor.plaintext.selectRange(c.row, c.start + term.length, c.row, c.start + term.length);
+    bmlDropCompletion();
+    return ok;
+  }
+
+  function bmlNextCompletion() {
+    var c = bmlCompletion;
+    if (!c) return false;
+    c.index = (c.index + 1) % c.list.length;
+    bmlShowCompletion();
+    return true;
+  }
+
+  /* THE ` = ` BETWEEN A BID AND ITS MEANING (2026-10-26), typed for you:
+       `=`     after a bid: its capitals (`bmlCapitaliseBids`), then exactly one space before the `=` and one
+               after, the caret past them. Not on a line that already has an `=` (one in a description is
+               prose), and not where the text before the caret does not start like a call.
+       space   after ONE level bid (`1C`, `2NT`, `3HS`, `1c--1h`, `2N+`) that is all the line holds, at its end,
+               when the line above is a bid row: ` = ` instead of the space. Bracketed calls (`(1C) X` is a
+               bid column with a space in it), `P`, and auction lines (`1H P 1S P`, no `=` above) never do.
+     The line is written whole (`setText`), as tidy writes it: `delete-prev` then `insert-text` in one update
+     crashed the engine (the link palette, measured). One update, so ctrl+z takes it back to what was typed. */
+  var wbSeparators = 0; // how many this wrote: the test's proof that it, not the widget, ran
+  var BML_CALL_START = /^\s*(\(|\d|(P|X|XX|D|R|Pass|Dbl|Rdbl|any|others?|next|jump|cue|new|game)\b)/i;
+  var BML_LONE_LEVEL_BID = /^\s*[1-7](nt|[cdhsnmxo])*\+?(--[1-7](nt|[cdhsnmxo])*\+?)*$/i;
+
+  function bmlSeparator(editor, fromSpace) {
+    var at = editor.plaintext.selectionStart, end = editor.plaintext.selectionEnd;
+    if (!at || !end || at[0] !== end[0] || at[1] !== end[1]) return false;
+    var row = at[0], col = at[1];
+    var el = editor.children[row];
+    var text = el ? (bmlLineText(el) || "") : "";
+    if (!el || !el.firstChild || text.indexOf("=") >= 0) return false;
+    var before = text.slice(0, col);
+    if (fromSpace) {
+      if (col !== text.length || !BML_LONE_LEVEL_BID.test(before)) return false;
+      var above = row > 0 ? editor.children[row - 1] : null;
+      var aboveText = above ? (bmlLineText(above) || "") : "";
+      if (aboveText.indexOf(" = ") < 0) return false;
+    } else if (!BML_CALL_START.test(before)) {
+      return false;
+    }
+    bmlCapitaliseBids(editor, row, col);
+    text = bmlLineText(el) || text;
+    var head = text.slice(0, col).replace(/\s+$/, "") + " = ";
+    var ok = editor.plaintext.update(function (tctx) {
+      tctx.setText(el.firstChild, head + text.slice(col));
+      return true;
+    });
+    if (ok) editor.plaintext.selectRange(row, head.length, row, head.length);
+    return ok;
+  }
+
+  function bmlIndentKey(editor, code, shift) {
+    var at = editor.plaintext.selectionStart, end = editor.plaintext.selectionEnd;
+    if (!at || !end) return false;
+    var first = Math.min(at[0], end[0]), last = Math.max(at[0], end[0]);
+    var collapsed = at[0] === end[0] && at[1] === end[1];
+    var spaces = function (n) { return new Array(n + 1).join(" "); };
+    // Leaving a line with enter: its bids in capitals first (the notes editor only - a scenario is not BML).
+    if ((code === "Enter" || code === "NumpadEnter") && editor.getAttribute("id") === "bml-text") {
+      try { bmlCapitaliseBids(editor, first); } catch (x) {}
+    }
+    return editor.plaintext.update(function (tctx) {
+      if (code === "Enter" || code === "NumpadEnter") {
+        var line = editor.children[first];
+        var text = line ? (bmlLineText(line) || "") : "";
+        var indent = Math.min(bmlLeading(text), Math.min(at[1], end[1]));
+        if (!collapsed) tctx.deleteSelection();
+        // A newline IN the inserted text, not `edit:insert-break`: that command did nothing inside an update
+        // (measured, at the end of a line), where `insert-text` with "\n" breaks it and leaves the caret on the
+        // new line, after the indent.
+        tctx.execCommand("edit:insert-text", "\n" + spaces(indent));
+        return true;
+      }
+      if (first !== last || shift) {
+        // Whole lines, in or out. An empty line is left as it is.
+        for (var i = first; i <= last; i++) {
+          var el = editor.children[i];
+          var node = el && el.firstChild;
+          var t = el ? (bmlLineText(el) || "") : "";
+          if (!node || !t.length) continue;
+          if (!shift) {
+            tctx.insertText(node, 0, spaces(BML_STEP));
+          } else {
+            var lead = bmlLeading(t);
+            var out = Math.min(lead, lead % BML_STEP || BML_STEP);
+            if (out > 0) tctx.deleteRange(node, 0, node, out);
+          }
+        }
+        return true;
+      }
+      if (!collapsed) tctx.deleteSelection();
+      var col = Math.min(at[1], end[1]);
+      tctx.execCommand("edit:insert-text", spaces(BML_STEP - (col % BML_STEP)));
+      return true;
+    });
+  }
+
   // In the CAPTURE (sinking) phase, on each editor: the widget handles its keys at the element itself, so a
   // bubbling `document.on("keydown")` only heard the key after the engine's word delete had already run (the
   // first version of this did, and changed nothing).
@@ -1560,10 +1911,71 @@
     }
   }
 
+  var bmlSwallowChar = false; // a taken key's character is still to come (the keypress listener below)
+  var wbSwallowed = 0; // how many it swallowed: the test's evidence
+
   ["#bml-text", "#scn-text"].forEach(function (sel) {
     var editor = document.$(sel);
     if (!editor) return;
     editor.addEventListener("keydown", function (event) {
+      // Tab / shift+tab / enter, unmodified otherwise: ctrl+tab is the view switch, and ctrl+enter `make quiz`.
+      var indentKey = (event.code === "Tab" || event.code === "Enter" || event.code === "NumpadEnter") &&
+                      !event.ctrlKey && !event.altKey && !(event.shiftKey && event.code !== "Tab");
+      // A COMPLETION up (`bmlSuggest`): tab writes it, ctrl+space steps on, esc drops it - before the indent keys.
+      if (sel === "#bml-text" && bmlCompletion && !event.altKey) {
+        var used = false;
+        if (event.code === "Tab" && !event.ctrlKey && !event.shiftKey) {
+          used = bmlAcceptCompletion(editor);
+          if (used) wbCompletions += 1;
+        } else if (event.code === "Space" && event.ctrlKey) {
+          used = bmlNextCompletion();
+        } else if (event.code === "Escape") {
+          used = bmlDropCompletion();
+        }
+        if (used) {
+          bmlSwallowChar = true; // and the character the key would type (see bmlSwallowChar)
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
+      }
+      // `=` typed in the notes: the bid before it in capitals, then ` = ` written for it (`bmlSeparator`).
+      if (sel === "#bml-text" && !event.ctrlKey && !event.altKey &&
+          (event.key === "=" || (event.code === "Equal" && !event.shiftKey))) {
+        var wrote = false;
+        try { wrote = bmlSeparator(editor, false); } catch (x) { wrote = false; }
+        if (wrote) {
+          wbSeparators += 1;
+          bmlSwallowChar = true; // and the character the key would type (see bmlSwallowChar)
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return wrote;
+      }
+      // SPACE after a lone bid on a line under a bid row: ` = ` written instead (`bmlSeparator`). Shift+space
+      // is a plain space.
+      if (sel === "#bml-text" && event.code === "Space" && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        var spaced = false;
+        try { spaced = bmlSeparator(editor, true); } catch (x) { spaced = false; }
+        if (spaced) {
+          wbSeparators += 1;
+          bmlSwallowChar = true; // and the character the key would type (see bmlSwallowChar)
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return spaced;
+      }
+      if (indentKey) {
+        var took = false;
+        try { took = bmlIndentKey(editor, event.code, event.shiftKey); } catch (x) { took = false; }
+        if (took) {
+          wbIndentKeys += 1;
+          bmlSwallowChar = true; // and the character the key would type (see bmlSwallowChar)
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return took;
+      }
       var ours = event.code === "Backspace" && event.ctrlKey && !event.altKey && !event.shiftKey;
       if (wbKeyLogOn) {
         var before = wbCaretText(editor);
@@ -1576,10 +1988,27 @@
       try { done = bmlDeleteWordBack(editor); } catch (x) { done = false; }
       if (done) {
         wbWordBacks += 1;
+        bmlSwallowChar = true; // and the character the key would type (see bmlSwallowChar)
         event.preventDefault();
         event.stopPropagation();
       }
       return done;
+    }, { capture: true });
+    // THE CHARACTER OF A TAKEN KEY. This engine types a character on its own event, `keypress` (key-char), after
+    // the key-down: cancelling the key-down above does not stop it, so `2s=` came out `2S = =` (reported - and
+    // tab and the space trigger the same way; the windowless tests sent key-downs only, so never saw it). A key
+    // the handler took marks its character to be swallowed here; the key-up clears the mark if none came.
+    editor.addEventListener("keypress", function (event) {
+      if (!bmlSwallowChar) return false;
+      bmlSwallowChar = false;
+      wbSwallowed += 1;
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }, { capture: true });
+    editor.addEventListener("keyup", function () {
+      bmlSwallowChar = false;
+      return false;
     }, { capture: true });
   });
 

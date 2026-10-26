@@ -1,0 +1,180 @@
+# The notes editor's completion terms (workbench/notes_complete.odin), one a line, written as they should be
+# written. The first block is the bml Sublime Text syntax's own word lists (bid types, conventions); the rest are
+# common terms it did not have. A notes folder may add its own in a `lexicon.txt` beside its .bml files.
+# Lines starting with # are comments.
+
+# bid types (Sublime syntax)
+NF
+GF
+F1
+natural
+intermediate
+forcing
+non-forcing
+invite
+invitational
+weak
+limit
+jump
+shift
+solid
+semi-solid
+strong
+to play
+sign off
+pre-empt
+pre-emptive
+minors
+majors
+minor
+major
+balanced
+semi-balanced
+unbalanced
+shapely
+flat
+penalty
+responsive
+competitive
+negative
+raise
+singleton
+void
+try
+extras
+game
+artificial
+slam
+control
+cue
+ask
+distributional
+quantitative
+transfer
+relay
+takeout
+self-sufficient
+minimum
+maximum
+non-minimum
+non-maximum
+preference
+canapé
+responder
+response
+advancer
+advance
+opener
+overcaller
+overcall
+
+# conventions (Sublime syntax)
+Redwood
+Kickback
+Lackwood
+FSF
+Last Train
+Serious
+Gazilli
+Good-Bad
+RKB
+RKCB
+EKB
+UCB
+HCR
+Stayman
+NMF
+Blackwood
+Lightner
+Puppet Stayman
+Muppet
+Lebensohl
+Lissabon
+Michaels
+Unusual 2NT
+Smolen
+Splinter
+fit jump
+Jacoby
+Double Fit
+Mixed raise
+Prepared
+
+# conventions it did not have
+Multi
+Drury
+Reverse Drury
+Bergen
+Jacoby 2NT
+Texas
+Landy
+DONT
+Cappelletti
+Rubens
+Walsh
+Ogust
+Exclusion Blackwood
+Voidwood
+Minorwood
+Gerber
+Roman Key Card
+Gambling 3NT
+Namyats
+Ghestem
+Leaping Michaels
+Rosenkranz
+Support double
+Responsive double
+Maximal double
+Snapdragon
+Rubinsohl
+Transfer Lebensohl
+Crowhurst
+Checkback
+Two-way checkback
+XYZ
+New Minor Forcing
+Fourth Suit Forcing
+Inverted minors
+Flannery
+Wilkosz
+Muiderberg
+Lucas
+Precision
+Acol
+Benjamin
+Mini-splinter
+Auto-splinter
+Fragment
+Unassuming cue bid
+Western cue
+Trial bid
+Help-suit trial
+Short-suit trial
+Asking bid
+Control bid
+Cue bid
+Weak two
+Strong club
+
+# hands and conditions
+doubleton
+tripleton
+tenace
+honour
+honours
+vulnerable
+non-vulnerable
+favourable
+unfavourable
+balancing
+protective
+sandwich
+stopper
+stopped
+semi-forcing
+game-forcing
+invitational+
+constructive
+destructive
+pass or correct
