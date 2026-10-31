@@ -11,7 +11,7 @@
     "siblings": {
         "norn": {
             "repo": "enerqi/norn",
-            "commit": "b2080317c07029ddbfe0dcb1987521c880d2ff8b",
+            "commit": "9654be31f48deaf821b3d4d4d4f6a24962c4379b",
             "env": "NORN_HOME"
         },
         "odin-dds": {
@@ -21,17 +21,17 @@
         },
         "odin-sciter": {
             "repo": "enerqi/odin-sciter",
-            "commit": "aa41beb94a680ad0b35cf55c61fdb5a69ed84d36",
+            "commit": "0361b0d98b14c560b760c567f847bb68724cd20d",
             "env": "SCITER_HOME"
         },
         "bridge-markup": {
             "repo": "enerqi/bridge-markup",
-            "commit": "bcd2ef9f70e9fc079c5e3e320113f722d2bf3636",
+            "commit": "21a269394e15b60d02a27f4761a869547f663c1c",
             "env": "MARKUP_HOME"
         },
         "bridge-hand-ocr": {
             "repo": "enerqi/bridge-hand-ocr",
-            "commit": "af1ed920ba96acd1ffaeea445a78e04c8e9afa16",
+            "commit": "7fe0b2f194e1647637cd90f191ac62b424b9ca08",
             "env": "HAND_OCR_DIR"
         }
     }
