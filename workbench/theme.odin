@@ -120,6 +120,8 @@ apply_theme :: proc(app: ^App, theme: Theme) {
 	// settings view hides every working view, so that was every theme change. `show_view` restyles each
 	// of these on its first showing.
 	app.theme_stale = ~bit_set[View]{} - {current_view(app)}
+	// The editor's colours are kept per theme: the new theme's go on.
+	apply_editor_look(app)
 	draw_prefs(app)
 }
 
@@ -169,6 +171,7 @@ draw_prefs :: proc(app: ^App) {
 	set_text_at(app, "#prefs-theme-note", fmt.tprintf("system is currently %s", system))
 	draw_graphics_prefs(app)
 	draw_notes_look_prefs(app)
+	draw_editor_look_prefs(app)
 	draw_notes_complete_prefs(app)
 	draw_hand_look_prefs(app)
 	draw_quiz_prefs(app)

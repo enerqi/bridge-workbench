@@ -2,6 +2,10 @@
 # written. The first block is the bml Sublime Text syntax's own word lists (bid types, conventions); the rest are
 # common terms it did not have. A notes folder may add its own in a `lexicon.txt` beside its .bml files.
 # Lines starting with # are comments.
+#
+# CASE: a NAME keeps its capitals wherever it is used (Stayman, Lebensohl, RKCB), so it is written here with them;
+# an ordinary word or phrase is written in lower case, and the completion gives it the case being typed - `Ope`
+# writes `Opener`, and after a full stop it is capitalised anyway (`bmlShapeTerm` in the page script).
 
 # bid types (Sublime syntax)
 NF
@@ -74,7 +78,7 @@ Kickback
 Lackwood
 FSF
 Last Train
-Serious
+serious
 Gazilli
 Good-Bad
 RKB
@@ -93,12 +97,12 @@ Lissabon
 Michaels
 Unusual 2NT
 Smolen
-Splinter
+splinter
 fit jump
 Jacoby
-Double Fit
-Mixed raise
-Prepared
+double fit
+mixed raise
+prepared
 
 # conventions it did not have
 Multi
@@ -123,19 +127,19 @@ Namyats
 Ghestem
 Leaping Michaels
 Rosenkranz
-Support double
-Responsive double
-Maximal double
+support double
+responsive double
+maximal double
 Snapdragon
 Rubinsohl
 Transfer Lebensohl
 Crowhurst
 Checkback
-Two-way checkback
+two-way checkback
 XYZ
 New Minor Forcing
 Fourth Suit Forcing
-Inverted minors
+inverted minors
 Flannery
 Wilkosz
 Muiderberg
@@ -143,19 +147,19 @@ Lucas
 Precision
 Acol
 Benjamin
-Mini-splinter
-Auto-splinter
-Fragment
-Unassuming cue bid
-Western cue
-Trial bid
-Help-suit trial
-Short-suit trial
-Asking bid
-Control bid
-Cue bid
-Weak two
-Strong club
+mini-splinter
+auto-splinter
+fragment
+unassuming cue bid
+western cue
+trial bid
+help-suit trial
+short-suit trial
+asking bid
+control bid
+cue bid
+weak two
+strong club
 
 # hands and conditions
 doubleton

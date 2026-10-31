@@ -167,21 +167,116 @@
                   data-hint="Windows' own font, Segoe UI.">system</button>
           <button class="segbtn" data-notes-font="serif" title="Serif"
                   data-hint="A serif font, Georgia - book-like.">serif</button>
+          <button class="segbtn" data-notes-font="calibri" title="Calibri"
+                  data-hint="Calibri, Office's own sans; Carlito where it is missing.">calibri</button>
+          <button class="segbtn" data-notes-font="cambria" title="Cambria"
+                  data-hint="Cambria, a serif made for screens; Caladea, then Georgia, where it is missing.">cambria</button>
+          <button class="segbtn" data-notes-font="verdana" title="Verdana"
+                  data-hint="Verdana: wide and open, easy to read small.">verdana</button>
+        </div>
+      </div>
+      <div class="line">
+        <span class="barlabel field-label">bid cells</span>
+        <div class="seg" id="prefs-notes-bids">
+          <button class="segbtn" data-notes-bids="square" title="Square, the original"
+                  data-hint="The original: each bid in a square tinted cell.">square</button>
+          <button class="segbtn" data-notes-bids="rounded" title="Rounded"
+                  data-hint="The same tint with rounded corners.">rounded</button>
+          <button class="segbtn" data-notes-bids="fade" title="Fade"
+                  data-hint="The tint fades out towards the description.">fade</button>
+          <button class="segbtn" data-notes-bids="bar" title="Bar"
+                  data-hint="No fill: a coloured bar down each bid's left edge.">bar</button>
         </div>
       </div>
       <div class="line">
         <span class="barlabel field-label">built pages</span>
         <div class="seg" id="prefs-notes-built">
-          <button class="segbtn" data-notes-built="off" title="Build pages with the stylesheet alone"
-                  data-hint="Pages built from the notes keep the stylesheet's own look. Removes bml-look.css from the notes folder.">own look</button>
-          <button class="segbtn" data-notes-built="on" title="Build pages with this look"
-                  data-hint="Pages built from the notes use the look chosen above: it is written to bml-look.css in the notes folder, and the next build (just bml) adds it to the stylesheet beside the pages. The pages themselves do not change - only the stylesheet.">this look</button>
+          <button class="segbtn" data-notes-built="off" title="Built pages keep the original look"
+                  data-hint="Pages built from the notes keep the original look, whatever is chosen above - the preview alone shows your choices. Removes bml-look.css from the notes folder.">original look</button>
+          <button class="segbtn" data-notes-built="on" title="Built pages look like the preview"
+                  data-hint="Pages built from the notes look like the preview - everything chosen above: it is written to bml-look.css in the notes folder, and the next build (the notes view's build button) adds it to the stylesheet beside the pages. The pages themselves do not change - only the stylesheet.">same as preview</button>
         </div>
         <span class="barlabel" id="prefs-notes-note"></span>
       </div>
       <div class="about-line">
-        Used by the notes preview and by the notes inside quiz pages, and by the built pages when they are
-        set to this look.
+        Used by the notes preview and by the notes inside quiz pages - and by the built pages when they are set
+        to "same as preview".
+      </div>
+      <!-- FINE TUNING (notes_look.odin, NOTES_TUNES): a colour input per stylesheet token, in groups, made by the
+           workbench and FOLDED until the toggle opens it. Empty keeps the look above; each reset and `reset all`
+           put it back. -->
+      <div class="line">
+        <span class="barlabel field-label">profiles</span>
+        <span id="prefs-notes-profiles" class="profiles"></span>
+      </div>
+      <div class="line" id="prefs-notes-trash-line" style="display: none">
+        <span class="barlabel field-label">deleted</span>
+        <span id="prefs-notes-trash" class="profiles"></span>
+      </div>
+      <div class="line">
+        <span class="barlabel field-label"></span>
+        <input type="text" id="prefs-profile-name" class="num profile-name" placeholder="name"
+               data-hint="A name for the look as it is now - page, suits, font, bid cells and fine tuning - to load again later. The suits are the hand page's too.">
+        <button class="small" data-notes-profile-save="1" title="Save the look as it is now under this name (an existing one is replaced)"
+                data-hint="Saves everything in Notes look under the name beside it. A profile of that name is replaced.">save</button>
+        <span class="barlabel" id="prefs-profile-note"></span>
+      </div>
+      <div class="line">
+        <button class="small" id="prefs-tune-toggle" data-notes-tune-toggle="1" title="Show or fold the fine tuning"
+                data-hint="Colour by colour, over the look above: the page, the suits, the boxes, the tags and tables.">fine tuning &#x25B8;</button>
+        <span class="barlabel" id="prefs-notes-tune-count"></span>
+      </div>
+      <div id="prefs-notes-tune-box" style="display: none">
+        <div class="about-line">
+          Type a colour as #rrggbb or pick one with its button; the text size is a percentage. A set one wins over
+          the look above; empty keeps it.
+        </div>
+        <div id="prefs-notes-tune"></div>
+        <div class="line">
+          <button class="small" data-notes-tune-reset="*" title="Every one back to the look above"
+                  data-hint="Clears all the fine tuning: the notes look exactly as the page, suits and font chosen above.">reset all</button>
+          <span class="barlabel" id="prefs-notes-tune-note"></span>
+        </div>
+      </div>
+      <!-- THE NOTES EDITOR'S LOOK (workbench/editor_look.odin): the notes look's fine-tuning rows and profiles, for the
+           source pane. No presets - the theme is one - and the colours are kept per theme. -->
+      <div class="about-head">Notes editor</div>
+      <div class="line">
+        <span class="barlabel field-label">caret line</span>
+        <div class="seg" id="prefs-editor-caret-line">
+          <button class="segbtn" data-editor-caret-line="on" title="Tint the line the caret is on"
+                  data-hint="The line holding the caret is tinted, so the caret is easy to find. Its colour is the caret line row below.">on</button>
+          <button class="segbtn" data-editor-caret-line="off" title="No tint"
+                  data-hint="No tint behind the caret's line.">off</button>
+        </div>
+      </div>
+      <div class="about-line">
+        Type a colour as #rrggbb or pick one with its button. A set one wins over the theme's; empty keeps it. The
+        caret's width is the engine's own: only its colour can change.
+        <span id="prefs-editor-theme-note"></span>
+      </div>
+      <div id="prefs-editor-tune"></div>
+      <div class="line">
+        <button class="small" data-editor-tune-reset="*" title="Every one back to the theme's"
+                data-hint="Clears the editor's font, size, line height and this theme's colours: the editor looks as the theme draws it.">reset all</button>
+        <span class="barlabel" id="prefs-editor-tune-count"></span>
+        <span class="barlabel" id="prefs-editor-tune-note"></span>
+      </div>
+      <div class="line">
+        <span class="barlabel field-label">profiles</span>
+        <span id="prefs-editor-profiles" class="profiles"></span>
+      </div>
+      <div class="line" id="prefs-editor-trash-line" style="display: none">
+        <span class="barlabel field-label">deleted</span>
+        <span id="prefs-editor-trash" class="profiles"></span>
+      </div>
+      <div class="line">
+        <span class="barlabel field-label"></span>
+        <input type="text" id="prefs-editor-profile-name" class="num profile-name" placeholder="name"
+               data-hint="A name for the editor's look as it is now - font, size, line height, the caret line and the colours of both themes - to load again later.">
+        <button class="small" data-editor-profile-save="1" title="Save the editor's look as it is now under this name (an existing one is replaced)"
+                data-hint="Saves everything in Notes editor under the name beside it. A profile of that name is replaced.">save</button>
+        <span class="barlabel" id="prefs-editor-profile-note"></span>
       </div>
       <!-- COMPLETION in the notes source (workbench/notes_complete.odin): bridge terms, and optionally the folder's
            own words. -->
@@ -224,10 +319,10 @@
       <div class="line">
         <span class="barlabel field-label">saved pages</span>
         <div class="seg" id="prefs-hand-built">
-          <button class="segbtn" data-hand-built="off" title="Write pages in the original look"
-                  data-hint="Pages that generate and analyse write keep the original look. The pane still shows them in the look above.">original</button>
-          <button class="segbtn" data-hand-built="on" title="Write pages in this look"
-                  data-hint="Pages that generate and analyse write from now on carry the look above, so they look the same in a browser. Share links do not: a reader's player draws its own page.">this look</button>
+          <button class="segbtn" data-hand-built="off" title="Saved pages keep the original look"
+                  data-hint="Pages that generate and analyse write keep the original look. The pane still shows them in the look above.">original look</button>
+          <button class="segbtn" data-hand-built="on" title="Saved pages look like the pane"
+                  data-hint="Pages that generate and analyse write from now on look like the pane - the look above - in a browser too. Share links do not: a reader's player draws its own page.">same as pane</button>
         </div>
         <span class="barlabel" id="prefs-hand-note"></span>
       </div>
@@ -366,14 +461,20 @@
 
         <div class="group">the notes view</div>
         <div class="krow"><span class="k"><b>ctrl+r</b></span><span class="d">go to any heading in the corpus, by name</span></div>
-        <div class="krow"><span class="k"><b>ctrl+l</b></span><span class="d">link to a heading at the caret (or type <code>](#</code>)</span></div>
-        <div class="krow"><span class="k"><b>ctrl+i</b></span><span class="d">insert BML at the caret: #CUT/#PASTE, #VUL, diagrams, tables, lists …</span></div>
+        <div class="krow"><span class="k"><b>ctrl+k</b></span><span class="d">link to a heading at the caret (or type <code>](#</code>)</span></div>
+        <div class="krow"><span class="k"><b>ctrl+f</b> / <b>ctrl+h</b></span><span class="d">find in the file / find and replace — enter or f3 the next, shift the previous</span></div>
+        <div class="krow"><span class="k"><b>ctrl+l</b></span><span class="d">select the line (again: the next one too)</span></div>
+        <div class="krow"><span class="k"><b>ctrl+shift+k</b></span><span class="d">delete the line(s)</span></div>
+        <div class="krow"><span class="k"><b>alt+↑</b> / <b>alt+↓</b></span><span class="d">move the line(s) up / down</span></div>
+        <div class="krow"><span class="k"><b>ctrl+/</b></span><span class="d">comment the line(s) out with <code>//</code>, or back in</span></div>
+        <div class="krow"><span class="k"><b>ctrl+i</b></span><span class="d">insert BML at the caret: #CUT/#PASTE, diagrams, auctions, tables, lists …</span></div>
+        <div class="krow"><span class="k"><b>ctrl+g</b></span><span class="d">the BML guide in the preview: how each piece looks, with an insert on each (again: your notes)</span></div>
         <div class="krow"><span class="k"><b>tab</b><b>shift+tab</b></span><span class="d">indent / outdent with spaces, 4 a column (enter keeps the indent)</span></div>
         <div class="krow"><span class="k"><b>ctrl+s</b></span><span class="d">save the file</span></div>
         <div class="krow"><span class="k"><b>ctrl+b</b></span><span class="d">fold the file list away, or bring it back</span></div>
         <div class="krow"><span class="k"><b>ctrl+t</b><b>ctrl+\</b></span><span class="d">the preview: closed, beside the source, full width (shift: back the other way)</span></div>
         <div class="krow"><span class="k"><b>ctrl+enter</b></span><span class="d">make the quiz page from this file — shift: run it in your browser</span></div>
-        <div class="krow"><span class="k"><b>ctrl+o</b></span><span class="d">choose the folder of notes</span></div>
+        <div class="krow"><span class="k"><b>ctrl+o</b></span><span class="d">open a .bml file by name, from any notes folder — shift: add a folder</span></div>
 
         <div class="group">the scenarios view</div>
         <div class="krow"><span class="k"><b>ctrl+enter</b></span><span class="d">check now — it already checks itself once the typing pauses</span></div>
@@ -406,8 +507,9 @@
          FOLDER action, a FILE action and two PREVIEW settings read as one row of equals (reported: "the input
          widget layout probably needs more hierarchy", "quiz buttons seem weirdly placed"). Now: the bar is
          the layout (fold the files away, open/close the preview) plus the help and the status; the folder
-         heads the file list; save and the quiz head the SOURCE, since both act on the open file; fold and
-         links head the PREVIEW, since they only change what it renders. -->
+         heads the file list; save and the heading palette (go to, link, insert) head the SOURCE, since they act
+         on its text; fold and links head the PREVIEW, since they only change what it renders; what acts on the
+         whole document (export, tidy, the quiz) is under "this document" in the sidebar. -->
     <div class="bar">
       <!-- The glyph is the settled convention for "toggle the side panel": a rectangle with one edge band
            filled, which is what VS Code's `layout-sidebar-left`, JetBrains and the GNOME sidebar buttons all
@@ -417,16 +519,6 @@
       <!-- THE SIDEBAR'S TOGGLE ON THE LEFT, THE PANE'S CONTROLS ON THE RIGHT (2026-10-20): the toggle belongs to
            the sidebar under it, and with the pane's segment straight after it the two read as one group
            (reported). The gap takes the bar's slack. -->
-      <!-- THE PALETTE'S THREE MODES AS BUTTONS (2026-10-26): they were keys only, findable in `?` alone, and the
-           insert list is exactly what nobody remembers is there. The caret they write at is the source's, which
-           keeps it while the button has the focus (`toggle_goto` reads it). -->
-      <span class="barlabel">notes</span>
-      <button id="bml-goto-open" class="ghost" title="Go to a heading in any file in the folder (ctrl+r)"
-              data-hint="Open the heading list: type part of a heading's name, up/down to choose, enter to jump there. Every file in the folder is searched.">go to</button>
-      <button id="bml-link-open" class="ghost" title="Link to a heading, written at the caret (ctrl+l, or type ](#)"
-              data-hint="Pick a heading and the link to it is written at the caret: [name](#name), or other.html#... for a heading in another document. Typing ](# opens the same list to finish a link you started.">link</button>
-      <button id="bml-insert-open" class="ghost" title="Insert BML at the caret: #CUT/#PASTE, #VUL, diagrams, tables, lists (ctrl+i)"
-              data-hint="A list of BML's constructs - the directives nobody remembers, deal diagrams, auctions, tables, description lists, font styles - each written at the caret as a template to fill in.">insert</button>
       <span class="bar-gap"></span>
       <!-- WHERE THE PREVIEW IS: the deals view's three-position control, for this view's pane (2026-10-10).
            It was one toggle whose label turned into `close`, and a word in the bar did not read as closing
@@ -456,20 +548,30 @@
         <li><b>fold</b> collapses the file to its headings, keeping the caret's section open. Remembered per file.</li>
         <li><b>CTRL+R</b> jumps to any heading in any file in the folder. The letters only need to be in order
             (<code>lbn</code> would find Lebensohl), and dashes don't matter (<code>1h 1s</code> finds 1H-1S).</li>
-        <li><b>CTRL+L</b> links to a heading: pick it the same way and <code>[name](#name)</code> is written at the
+        <li><b>CTRL+K</b> links to a heading: pick it the same way and <code>[name](#name)</code> is written at the
             caret - or type <code>](#</code> and the list opens to finish it. A heading in another document (one
             that is not part of this file's) is linked as <code>other.html#...</code>, so the link works on the page.</li>
         <li><b>CTRL+I</b> inserts BML you may not remember the shape of: <code>#CUT</code>/<code>#PASTE</code> with
-            replacements, <code>#VUL</code>, <code>#SEAT</code>, <code>#HIDE</code>, <code>#INCLUDE</code>, competitive
+            replacements, <code>#HIDE</code>, <code>#INCLUDE</code>, competitive
             headers, lists, bold/italic/monospace.</li>
+        <li><b>guide</b> (<b>CTRL+G</b>) shows every piece of BML in the preview - its text beside how the page draws it - with an
+            <b>insert</b> link on each that writes it at the caret.</li>
         <li><b>Completion</b>: after three letters of a word in a description, the status line names a bridge term
             (<i>tab →</i> Lebensohl). <b>Tab</b> writes it, <b>Ctrl+Space</b> steps to the next, <b>Esc</b> drops
             it. Settings &gt; Notes completion turns it off or adds this folder's own words; a <code>lexicon.txt</code>
             in the notes folder adds your terms, one a line.</li>
         <li>Typing <b>=</b> after a bid writes <code> = </code> and capitalises the bid (<code>1c</code> → <code>1C</code>);
             a space after a lone bid under a bid row does the same, and shift+space is a plain space.</li>
-        <li><b>Tab</b> indents with spaces to the next 4-column stop, <b>Enter</b> keeps the line's indent, and
+        <li><b>Tab</b> indents with spaces to the next 4-column stop, <b>Enter</b> keeps the line's indent,
+            <b>Backspace</b> in an indent goes back a level of the bid table above, Enter in an auction lines its
+            calls up in columns, a <code>#+CAPTION: title</code> line just above a diagram, auction or table
+            titles it without starting a section, <code>#BOX</code> ... <code>#ENDBOX</code> puts the diagram or
+            auction it starts with on the left and the text after it beside them (<code>#BOX note</code>,
+            <code>tip</code> or <code>warning</code>, with a title after it if you like, frames it as a coloured
+            callout), and
             <b>tidy</b> (under "this document") re-indents a whole file's bid tables 4 spaces a level.</li>
+        <li>In a <code>| cell | cell |</code> table, <b>Tab</b> lines the columns up and goes to the next cell,
+            <b>Shift+Tab</b> to the previous one; past the last cell it adds a row.</li>
         <li><b>Squiggles</b> are problems the parser found — hover one to read it. Red means something will be
             missing from the page; yellow is a warning.</li>
         <li><b>links</b> also checks cross-references. It is off by default: a file that is one chapter of a
@@ -482,11 +584,33 @@
          views replace each other instead of stacking), and a palette that is one row of the editor is no
          worse to use — Sublime's own is at the top of the window too. Hidden by the stylesheet until the
          host shows it. -->
+    <!-- FIND AND REPLACE (ctrl+f / ctrl+h), in the flow like the palette below it; shown by the page script. -->
+    <div class="findbar" id="bml-find" style="display: none">
+      <div class="line">
+        <input type="text" id="bml-find-input" class="wide" placeholder="find — enter next, shift+enter previous, esc closes"
+               title="Find in this file" data-hint="Plain text, found as you type in the file being edited. Enter or F3 goes to the next match, shift the previous; the marks show every one.">
+        <button id="bml-find-case" class="ghost small find-opt" title="Match case" data-hint="Match upper and lower case exactly.">Aa</button>
+        <button id="bml-find-word" class="ghost small find-opt" title="Whole words" data-hint="Only whole words: `nt` does not find `intermediate`.">W</button>
+        <button id="bml-find-prev" class="ghost small" title="Previous match (shift+enter, shift+f3)">&#x2191;</button>
+        <button id="bml-find-next" class="ghost small" title="Next match (enter, f3)">&#x2193;</button>
+        <span class="barlabel" id="bml-find-count"></span>
+        <button id="bml-find-close" class="ghost small" title="Close (esc)">&#xD7;</button>
+      </div>
+      <div class="line" id="bml-replace-row" style="display: none">
+        <input type="text" id="bml-replace-input" class="wide" placeholder="replace with — enter replaces this one"
+               title="Replace the match with" data-hint="What a match is replaced with, as typed. Enter or replace writes it over the current match and goes to the next; all replaces every match at once - one ctrl+z takes it back.">
+        <button id="bml-replace-one" class="ghost small" title="Replace this match and go to the next (enter)">replace</button>
+        <button id="bml-replace-all" class="ghost small" title="Replace every match (one ctrl+z undoes it)">all</button>
+      </div>
+    </div>
     <div class="goto" id="bml-goto">
+      <div class="line">
+      <span class="barlabel goto-mode" id="bml-goto-mode" title="What enter does with the heading chosen">go to</span>
       <input type="text" id="bml-goto-input" class="wide"
              placeholder="go to heading — 1h 1s, lbn, stayman … up/down to choose, enter to jump, esc to close"
              title="Go to a heading in any .bml file in this folder"
              data-hint="Type part of a heading's name — the letters need only be in order, so `lbn` finds Lebensohl, and spaces and punctuation are separators rather than characters, so `1h 1s` finds 1H-1S, 1H--1S and 1H/1S alike. Every chapter in the folder is searched, the open one first; up/down choose, enter jumps the caret there, esc closes.">
+      </div>
       <div id="bml-goto-list"
            data-hint="The headings that match, best first. The name is on the left and the chapter it is in on the right; the leading dots are how deep the heading is."></div>
     </div>
@@ -504,7 +628,7 @@
         <div class="side-head">
           <div class="side-title">notes folders</div>
           <div class="side-row side-actions">
-            <button id="bml-folder" class="ghost small icon-text" title="Add a folder of .bml notes and open it (ctrl+o)"
+            <button id="bml-folder" class="ghost small icon-text" title="Add a folder of .bml notes and open it (ctrl+shift+o; ctrl+o opens a file by name)"
               data-hint="Add a folder of .bml notes to the list and open it - a copy, a branch, or somebody else's system. The folder found at startup stays first in the list; added ones are remembered for the next start."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>add…</button>
           </div>
         </div>
@@ -514,19 +638,32 @@
              full (at 720px the source's quiz buttons and the preview's export buttons went off the window's
              edge, measured). `tidy` re-indents its bid tables (`tidy_bml`); `page`, `zip` and `zip all` write it
              as web pages (`workbench/notes_export.odin`): the document the open file belongs to - a chapter's
-             root, with its chapters - or for `zip all` every document in the folder. Shown while a file is open. -->
+             root, with its chapters - or for `zip all` every document in the folder. The quiz joined them on
+             2026-10-27. Shown while a file is open. -->
         <div id="bml-docbar" style="display: none">
           <div class="side-sub">this document</div>
           <div class="side-row side-actions">
             <button id="bml-export" class="ghost icon-text" title="Write these notes as web pages and open them in your browser"
               data-hint="Write the document this file belongs to (for a chapter, the whole system that includes it) as a web page in the deals folder's notes folder, then open it in your browser. The page stands alone - copy it anywhere. Unsaved edits are included. Links to other documents need those pages too: zip all writes them all."><span class="away">↗</span>page</button>
-            <button id="bml-export-zip" class="ghost" title="Write this document as a web page and pack it into a .zip to send"
-              data-hint="The same page as page ↗ writes, packed into a .zip beside its folder, which Explorer then shows. Unpacked, it is one folder that opens in any browser.">zip</button>
-            <button id="bml-export-all" class="ghost" title="Write every document in this notes folder as web pages, packed into one .zip"
-              data-hint="Every document in the notes folder (each with its chapters) as web pages, packed into one .zip named after the folder, which Explorer then shows. The links between documents work in it.">zip all</button>
-            <button id="bml-tidy" class="ghost" title="Re-indent the bid tables to 4 spaces a level (the nesting does not change)"
-              data-hint="Re-indent every bid table in this file to 4 spaces a level. The nesting stays exactly as it was - each row keeps its parent - and the page renders the same; only the spaces change, tabs included. One ctrl+z undoes it, and nothing is saved until you press save.">tidy</button>
+            <button id="bml-export-zip" class="ghost icon-text" title="Write this document as a web page and pack it into a .zip to send"
+              data-hint="The same page as page ↗ writes, packed into a .zip beside its folder, which Explorer then shows. Unpacked, it is one folder that opens in any browser."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>zip</button>
+            <button id="bml-export-all" class="ghost icon-text" title="Write every document in this notes folder as web pages, packed into one .zip"
+              data-hint="Every document in the notes folder (each with its chapters) as web pages, packed into one .zip named after the folder, which Explorer then shows. The links between documents work in it."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/></svg>zip all</button>
+            <button id="bml-build" class="ghost icon-text" title="Write every notes file as a web page beside it, with the stylesheet it links"
+              data-hint="Every .bml in the notes folder, chapters too, written as a .html page beside it from the SAVED file - the pages to put on a web server, each linking bml.css, which is written beside them too, with the look from Settings. Save first: unsaved edits are not in the pages."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>build</button>
+            <button id="bml-tidy" class="ghost icon-text" title="Re-indent the bid tables to 4 spaces a level (the nesting does not change)"
+              data-hint="Re-indent every bid table in this file to 4 spaces a level. The nesting stays exactly as it was - each row keeps its parent - and the page renders the same; only the spaces change, tabs included. One ctrl+z undoes it, and nothing is saved until you press save."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M3 21h18v-2H3v2zM3 8v8l4-4-4-4zm8 9h10v-2H11v2zM3 3v2h18V3H3zm8 6h10V7H11v2zm0 4h10v-2H11v2z"/></svg>tidy</button>
           </div>
+          <!-- THE QUIZ (here since 2026-10-27; it headed the source pane): it makes a page from the whole
+               file, as page / zip do, and the source's head needed the room for the palette's buttons. The
+               line under it says whether this file has a quiz page and how old it is. -->
+          <div class="side-row side-actions quizbar" id="bml-quizbar" style="display: none">
+            <button id="bml-quiz" class="icon-text" title="Make a bidding quiz page from this file's bid tables (ctrl+enter)"
+              data-hint="Write a bidding quiz from this file's bid tables - the text in the editor, unsaved edits included - as one HTML page you can open in a browser or send to someone. Making it again replaces the page."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-5.99 13c-.59 0-1.05-.47-1.05-1.05 0-.59.47-1.04 1.05-1.04.59 0 1.04.45 1.04 1.04-.01.58-.45 1.05-1.04 1.05zm2.5-6.17c-.63.93-1.23 1.21-1.56 1.81-.13.24-.18.4-.18 1.18h-1.52c0-.41-.06-1.08.26-1.65.41-.73 1.18-1.16 1.63-1.8.48-.68.21-1.94-1.14-1.94-.88 0-1.32.67-1.5 1.23l-1.37-.57C11.51 5.96 12.52 5 13.99 5c1.23 0 2.08.56 2.51 1.26.37.61.58 1.73.01 2.57z"/></svg><span id="bml-quiz-label">make quiz</span></button>
+            <button id="bml-quiz-open" class="ghost icon-text" style="display: none" title="Run the quiz in your web browser (ctrl+shift+enter)"
+              data-hint="Open this file's quiz page in your web browser. The page is one self-contained file: copy it anywhere, it needs no server."><span class="away">↗</span>run</button>
+          </div>
+          <div class="quizstate-line"><span class="barlabel quizstate" id="bml-quiz-state"></span></div>
         </div>
         <div class="side-sub">files</div>
         <div id="bml-list"
@@ -534,24 +671,31 @@
       </aside>
       <div class="divider"></div>
       <div class="pane" id="bml-source">
-        <!-- THE OPEN FILE, NAMED, and what acts on it: save it, and make a quiz page from its bid tables.
-             The name is the pane's title (the preview's head says `preview`, the report's `report`) and
-             carries the unsaved dot; it was only in the bar's status line, among messages (2026-10-10).
-             The quiz is a real button with its own icon and a whole label, not a `generate` beside a dim
-             `quiz` - it makes a shareable page, which is more than its size said. The line after it says
-             whether this file has a quiz page and how old it is. Hidden while no file is open. The page runs
-             WebAssembly, which this engine does not, so it opens in a browser and is never shown in a pane.
-             See `workbench/quiz.odin`. -->
+        <!-- THE OPEN FILE, NAMED, and what acts on its text: save it, and the palette that goes to, links and
+             inserts at the caret. The name is the pane's title (the preview's head says `preview`, the
+             report's `report`) and carries the unsaved dot; it was only in the bar's status line, among
+             messages (2026-10-10). The quiz headed this pane too until 2026-10-27, and is now under "this
+             document" in the sidebar. -->
         <div class="pane-head">
           <span class="pane-title" id="bml-title" title="The file being edited"></span>
           <button id="bml-save" class="ghost icon-text" title="Write the editor's text back to the file (ctrl+s)"
               data-hint="Overwrite the .bml file on disk with the text in the editor. There is no undo for this beyond the editor's own."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>save</button>
-          <div class="quizbar" id="bml-quizbar" style="display: none">
-            <button id="bml-quiz" class="icon-text" title="Make a bidding quiz page from this file's bid tables (ctrl+enter)"
-              data-hint="Write a bidding quiz from this file's bid tables - the text in the editor, unsaved edits included - as one HTML page you can open in a browser or send to someone. Making it again replaces the page."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-5.99 13c-.59 0-1.05-.47-1.05-1.05 0-.59.47-1.04 1.05-1.04.59 0 1.04.45 1.04 1.04-.01.58-.45 1.05-1.04 1.05zm2.5-6.17c-.63.93-1.23 1.21-1.56 1.81-.13.24-.18.4-.18 1.18h-1.52c0-.41-.06-1.08.26-1.65.41-.73 1.18-1.16 1.63-1.8.48-.68.21-1.94-1.14-1.94-.88 0-1.32.67-1.5 1.23l-1.37-.57C11.51 5.96 12.52 5 13.99 5c1.23 0 2.08.56 2.51 1.26.37.61.58 1.73.01 2.57z"/></svg><span id="bml-quiz-label">make quiz</span></button>
-            <button id="bml-quiz-open" class="ghost icon-text" style="display: none" title="Run the quiz in your web browser (ctrl+shift+enter)"
-              data-hint="Open this file's quiz page in your web browser. The page is one self-contained file: copy it anywhere, it needs no server."><span class="away">↗</span>run</button>
-            <span class="barlabel quizstate" id="bml-quiz-state"></span>
+          <!-- THE PALETTE'S THREE MODES AS BUTTONS (2026-10-26): they were keys only, findable in `?` alone, and the
+               insert list is exactly what nobody remembers is there. HERE, on the source, since 2026-10-27: link
+               and insert write at the source's caret, and the window's bar is the layout only (reported: "why at
+               the top"); the quiz moved to the sidebar to make the room at 720px. The caret they write at is
+               the source's, which keeps it while the button has the focus (`toggle_goto` reads it). -->
+          <div class="palettebar">
+            <button id="bml-goto-open" class="ghost icon-text" title="Go to a heading in any file in the folder (ctrl+r)"
+              data-hint="Open the heading list: type part of a heading's name, up/down to choose, enter to jump there. Every file in the folder is searched."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M3 9h14V7H3v2zm0 4h14v-2H3v2zm0 4h14v-2H3v2zm16 0h2v-2h-2v2zm0-10v2h2V7h-2zm0 6h2v-2h-2v2z"/></svg>go to</button>
+            <button id="bml-link-open" class="ghost icon-text" title="Link to a heading, written at the caret (ctrl+k, or type ](#)"
+              data-hint="Pick a heading and the link to it is written at the caret: [name](#name), or other.html#... for a heading in another document. Typing ](# opens the same list to finish a link you started."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>link</button>
+            <button id="bml-insert-open" class="ghost icon-text" title="Insert BML at the caret: #CUT/#PASTE, diagrams, auctions, tables, lists (ctrl+i)"
+              data-hint="A list of BML's constructs - the directives nobody remembers, deal diagrams, auctions, tables, description lists, font styles - each written at the caret as a template to fill in."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>insert</button>
+            <!-- Here rather than on the preview's head, where it was first (2026-10-28): that head is hidden
+                 until a preview is up, so the guide could not be found. Opens the preview with the guide. -->
+            <button id="bml-guide" class="ghost icon-text" title="How each piece of BML looks on the page, with its text to insert (ctrl+g)"
+              data-hint="Show the BML guide in the preview: every construct - headings, bid tables, auctions, deal diagrams, tables, boxes - its text beside what the page makes of it, rendered by the same code as your notes. Each has an insert link that writes it at the caret. Press guide again to go back to your notes."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>guide</button>
           </div>
         </div>
         <plaintext id="bml-text" title="The .bml source"
@@ -569,10 +713,10 @@
       <div class="pane" id="bml-preview-pane" style="display: none">
         <div class="pane-head">
           <span class="barlabel">preview</span>
-          <button id="bml-fold" class="ghost" title="Fold the document to its headings, with the caret's section open"
-              data-hint="Fold the preview: every heading stays, the section the caret is in is open, and the other bodies become an ellipsis - so the outline is still there to navigate by. Big documents cost hundreds of MB rendered in full, so they start folded.">fold</button>
-          <button id="bml-links" class="ghost" title="Also check that every [label](#Anchor) resolves"
-              data-hint="Also report cross-references that land on no heading. Off by default: a file that is one chapter of a larger document links to headings in its sibling files on purpose, so this is only meaningful on the document that includes them all, or once you know the anchor should be here.">links</button>
+          <button id="bml-fold" class="ghost icon-text" title="Fold the document to its headings, with the caret's section open"
+              data-hint="Fold the preview: every heading stays, the section the caret is in is open, and the other bodies become an ellipsis - so the outline is still there to navigate by. Big documents cost hundreds of MB rendered in full, so they start folded."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 18.59L8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>fold</button>
+          <button id="bml-links" class="ghost icon-text" title="Also check that every [label](#Anchor) resolves"
+              data-hint="Also report cross-references that land on no heading. Off by default: a file that is one chapter of a larger document links to headings in its sibling files on purpose, so this is only meaningful on the document that includes them all, or once you know the anchor should be here."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>links</button>
         </div>
         <frame id="bml-page"></frame>
       </div>
@@ -1155,12 +1299,66 @@
      keystroke does not accumulate marks on the text that did not change. -->
 <script>
 
-  var BML_MARKS = ["bml-key", "bml-head", "bml-bid", "bml-opp", "bml-suit", "bml-link", "bml-op"];
+  var BML_MARKS = ["bml-key", "bml-h1", "bml-h2", "bml-h3", "bml-h4", "bml-bid", "bml-bid-odd", "bml-opp",
+                   "bml-suit", "bml-link", "bml-op", "bml-comment", "bml-class", "bml-seat", "bml-hand",
+                   "bml-alert", "bml-pseudo", "bml-name", "bml-cond", "bml-num", "bml-list", "bml-strong",
+                   "bml-em", "bml-u", "bml-code"];
 
   var BML_DIRECTIVE = /^\s*(#\+[A-Za-z_]+:|#INCLUDE|#CUT|#ENDCUT|#COPY|#ENDCOPY|#PASTE|#HIDE|#VUL|#SEAT|#TITLE)/;
-  var BML_HEADER    = /^\s*\*+\s/;
+  var BML_HEADER    = /^\s*(\*+)\s/;
   var BML_SUIT      = /!(?:c|d|h|s)/g;
   var BML_LINK      = /\[[^\]\r\n]*\]\(#[^)\r\n]*\)/g;
+  // `#BOX`, `#BOX note Title`, `#ENDBOX` (bml.py `_BOX_RE`): the marker, and the callout type when the first
+  // word is one.
+  var BML_BOX       = /^[ \t]*#[ \t]*(?:ENDBOX|BOX(?:[ \t]+(?:note|info|tip|warning)\b)?)/i;
+  // The directives whose rest is TEXT, written as any other text is: a title, a caption.
+  var BML_TEXT_DIRECTIVE = /^\s*#\+(?:TITLE|CAPTION):/i;
+  // A trailing `{.name}` class hook on a heading, `#BOX` or `#+CAPTION:` line (bml.py `_CLASS_HOOK_RE`).
+  var BML_CLASS_HOOK = /(?:^|[ \t]+)\{[ \t]*(?:\.[A-Za-z_][A-Za-z0-9_-]*[ \t]*)+\}[ \t\r\n]*$/;
+  // A hand line, `N: AKxx Qxx Kxx Axx` (bml.py `_HAND_LINE_RE`), and the same four holdings without a seat,
+  // which is a diagram's line.
+  var BML_HAND      = /^([ \t]*)([NESW]:?)([ \t]*)([2-9AKQJTx-]+(?:[ \t]+[2-9AKQJTx-]+){3})/;
+  var BML_HOLDINGS  = /^[ \t]*[2-9AKQJTx-]+(?:[ \t]+[2-9AKQJTx-]+){3}[ \t]*$/;
+  // One call of an auction (bml.py `_CALL_RE`), then its mark: `!` alerted, `*` / `^1` a note under it.
+  var BML_CALL      = /^(\(?(?:[1-7](?:NT|[CDHSN])|P|X|XX|D|R|AP|\?|-)\)?)(!|\*+|\^[0-9]+)?$/i;
+  var BML_SEAT      = /^[NESW]$/i;
+  // A note under an auction, `^1 the meaning`. (A `*` note is spelled as a heading, and a heading it is here.)
+  var BML_NOTE      = /^[ \t]*\^[0-9]+/;
+  var BML_LIST      = /^[ \t]*(?:-|[0-9]+[.)])(?=[ \t])/;
+  // A bid row's CALL when no `=` follows it (bml.py `_is_bid_row`): the row is `<call> <description>` and the
+  // call is its first token, or a link whose label is one (`[1D](#1C--1D) Negative`). One call is a level and a
+  // strain in any of the notation's spellings (`3CD`, `2!c`, `3oM`, `2N+`, `3*`), a pass / double word, or a
+  // bracketed opponents' call (`(2D)`, `(any)`, but not a lettered list's `(a)`); calls join with `-` / `--`
+  // into a sequence. Not an ordinal: `3rd seat` and `2nd round` start prose.
+  var BML_CALL_ONE = "(?:\\([^()\\s]{2,}\\)|\\([PXRD]\\)|[1-7](?!(?:st|nd|rd|th)(?![A-Za-z]))(?:[A-Za-z*]|![cdhs])[A-Za-z0-9!*+\\/]*|Pass|Dbl|Rdbl|XX|X|P|R)";
+  var BML_CALL_TOKEN = new RegExp("^" + BML_CALL_ONE + "(?:-{1,2}" + BML_CALL_ONE + ")*(?:\\*+|\\^[0-9]+|!)?$");
+  var BML_LINK_BID = /^\[([^\]\s]+)\]\([^)]*\)/;
+  // A call's mark inside a bid row's call, `2C*`, `(2C^1)`.
+  var BML_CALL_MARK = /(?:\*+|\^[0-9]+)(?=\)?$)/g;
+  // The pseudo-bids bmlbids.py knows: a call named by what it does rather than spelled.
+  var BML_PSEUDO    = /\b(?:next|jump|cue|new|game|any)\b/gi;
+  // EVERYTHING inline in ordinary text, as ONE scan: the engine's script runs a regex over a line slowly enough
+  // that nine passes over a 5300-line chapter cost 300ms where one costs a fraction (measured). In order:
+  //  1 a link, inside which nothing is anything else (its target is full of `_` and `-`);
+  //  2 a suit;
+  //  3 a seat or vulnerability condition (bml2html `_COND_RE`), which the preview tags - in a description only;
+  //  4 a point range, a shape or a minimum: `11--15`, `5-4`, `12+`;
+  //  5 a text style's opening `*` `/` `=` `_` (bml2html `_INLINE_RE`), whose close is found by hand;
+  //  6 a capitalised word, which may start a convention name (`bmlNames`).
+  var BML_INLINE = new RegExp([
+    "(\\[[^\\]\\r\\n]*\\]\\(#[^)\\r\\n]*\\))",
+    "(!(?:c|d|h|s))",
+    "(\\((?:NV|VUL)\\)|\\b(?:NV|VUL)\\b|\\b(?:1st|2nd|3rd|4th)(?:\\/(?:1st|2nd|3rd|4th))+\\b|\\b(?:1st|2nd|3rd|4th) (?:seat|position)\\b|\\b(?:un)?[Pp]assed hands?\\b)",
+    "(\\b[0-9]+(?:-{1,2}[0-9]+)+\\+?|\\b[0-9]+\\+)",
+    "([*\\/=_])",
+    "\\b([A-Z][A-Za-z0-9]*)"
+  ].join("|"), "g");
+  var BML_STYLE_MARK = { "*": "bml-strong", "/": "bml-em", "=": "bml-code", "_": "bml-u" };
+  // Convention names: the lexicon's terms that start with a capital (Stayman, Lebensohl, RKCB) - capitals are
+  // how the lexicon tells a NAME from an ordinary word. Keyed by the name's first word, longest name first, so
+  // `Puppet Stayman` is found from `Puppet`. Built by `bmlSetLexicon`; null until a lexicon arrives.
+  var bmlNames = null;
+  var bmlNamesKey = "";
 
   // One line's text. A `<plaintext>` line is a `<text>` element holding a single text node; the host's
   // `content=` write is what creates them.
@@ -1177,6 +1375,10 @@
   // the only thing a host-side test can see: a mark leaves no attribute behind and reads back through a
   // Range or not at all, so "did the colorizer do anything" has to be answered from in here.
   var bmlMarked = 0;
+  // The mark names the line being coloured has got so far, kept on the line (`bmlUsed`) so the next colouring
+  // clears just those. A clear names every mark it clears, and naming all of BML_MARKS on every line was 140ms
+  // of a whole pass over a big chapter (measured); most lines carry two or three, and plain prose none.
+  var bmlUsedNow = null;
 
   function bmlMark(el, from, to, name) {
     if (to <= from) return;
@@ -1187,6 +1389,20 @@
     r.setEnd(node, to);
     r.applyMark(name);
     bmlMarked += 1;
+    if (bmlUsedNow && bmlUsedNow.indexOf(name) < 0) bmlUsedNow.push(name);
+    if (bmlTrace) bmlTrace.push(name + " " + from + "-" + to);
+  }
+
+  // The marks ONE line gets, as `name from-to` strings joined by `;` - for the host's tests, which cannot read
+  // a mark back. The line's depth is worked out from the top, as a pass does.
+  var bmlTrace = null;
+  function bmlTraceLine(row) {
+    var lines = document.$("#bml-text").children;
+    var stack = [], depth = -1;
+    for (var i = 0; i <= row && i < lines.length; i++) depth = bmlBidDepth(stack, bmlLineText(lines[i]), lines[i]);
+    bmlTrace = [];
+    try { bmlColorizeLine(lines[row], depth); } finally { var out = bmlTrace; bmlTrace = null; }
+    return out.join(";");
   }
 
   // `marks` is the list this editor's colorizer applies, so a buffer is only ever cleared of its own:
@@ -1200,44 +1416,263 @@
     r.clearMark(marks || BML_MARKS);
   }
 
-  function bmlMarkAll(el, text, re, name) {
+  // Every match of `re` in `text[from:to]`, marked `name` at its place in the whole line.
+  function bmlMarkIn(el, text, from, to, re, name) {
+    var part = text.slice(from, to);
     var m;
     re.lastIndex = 0;
-    while ((m = re.exec(text)) !== null) {
-      bmlMark(el, m.index, m.index + m[0].length, name);
-      if (m[0].length === 0) re.lastIndex += 1; // a zero-width match would spin here
+    while ((m = re.exec(part)) !== null) {
+      if (m[0].length === 0) { re.lastIndex += 1; continue; } // a zero-width match would spin here
+      bmlMark(el, from + m.index, from + m.index + m[0].length, name);
     }
   }
 
-  function bmlColorizeLine(el) {
+  function bmlIsSpace(c) { return c == " " || c == "\t" || c == "\r" || c == "\n"; }
+
+  // A text style opening at `at` (`*strong*`, `/em/`, `=code=`, `_underline_`): where its closing character is,
+  // or -1. The renderer's rule: `*` starts the text or follows a space or `>`, `/` and `=` follow a space, `_`
+  // goes anywhere; the first character inside and the last are not spaces, and the close is the next one.
+  function bmlStyleClose(text, at, from, to) {
+    var c = text.charAt(at);
+    var before = at > from ? text.charAt(at - 1) : "";
+    if (c == "*" && before && !bmlIsSpace(before) && before != ">") return -1;
+    if ((c == "/" || c == "=") && before && !bmlIsSpace(before)) return -1;
+    var close = text.indexOf(c, at + 1);
+    if (close < 0 || close >= to || close == at + 1) return -1;
+    if (bmlIsSpace(text.charAt(at + 1)) || bmlIsSpace(text.charAt(close - 1))) return -1;
+    return close;
+  }
+
+  // The marks of ordinary TEXT in `text[from:to]`: a description, a paragraph, a list item, a title. `desc`
+  // is a bid row's description, the only place the renderer tags seat and vulnerability conditions.
+  function bmlMarkText(el, text, from, to, desc) {
+    var re = BML_INLINE;
+    var m;
+    re.lastIndex = from;
+    while ((m = re.exec(text)) !== null && m.index < to) {
+      var at = m.index, end = at + m[0].length;
+      if (end > to) { re.lastIndex = at + 1; continue; }
+      if (m[1]) {
+        bmlMark(el, at, end, "bml-link");
+        for (var s = text.indexOf("!", at); s >= 0 && s < end - 1; s = text.indexOf("!", s + 1)) {
+          if ("cdhs".indexOf(text.charAt(s + 1)) >= 0) bmlMark(el, s, s + 2, "bml-suit");
+        }
+      } else if (m[2]) {
+        bmlMark(el, at, end, "bml-suit");
+      } else if (m[3]) {
+        if (desc) bmlMark(el, at, end, "bml-cond");
+      } else if (m[4]) {
+        bmlMark(el, at, end, "bml-num");
+      } else if (m[5]) {
+        var close = bmlStyleClose(text, at, from, to);
+        if (close < 0) { re.lastIndex = at + 1; continue; }
+        bmlMark(el, at, close + 1, BML_STYLE_MARK[m[5]]);
+        bmlMarkText(el, text, at + 1, close, desc); // what is inside is text too, and shares this regex
+        end = close + 1;
+      } else if (m[6] && bmlNames) {
+        var list = bmlNames[m[6]];
+        for (var k = 0; list && k < list.length; k++) {
+          var name = list[k];
+          if (at + name.length <= to && text.substr(at, name.length) === name &&
+              !/[A-Za-z0-9]/.test(text.charAt(at + name.length))) {
+            bmlMark(el, at, at + name.length, "bml-name");
+            end = at + name.length;
+            break;
+          }
+        }
+      }
+      re.lastIndex = end;
+    }
+  }
+
+  // Where a trailing class hook starts, or the line's length when it has none (and the hook is marked).
+  function bmlClassHook(el, text) {
+    var hook = BML_CLASS_HOOK.exec(text);
+    if (!hook) return text.length;
+    var at = hook.index + (hook[0].length - hook[0].replace(/^[ \t]+/, "").length);
+    bmlMark(el, at, text.replace(/[ \t\r\n]+$/, "").length, "bml-class");
+    return hook.index;
+  }
+
+  // An auction row: every token a call (or every token a seat, the `W N E S` header), two at least. Marks it
+  // and says whether it was one. The renderer decides per BLOCK; a line can only be judged by itself, which
+  // misses a one-call row and that is all.
+  function bmlAuctionRow(el, text) {
+    var tokens = bmlAuctionTokens(text);
+    if (!tokens) return false;
+    var seats = BML_SEAT.test(tokens[0][1]);
+    for (var k = 0; k < tokens.length; k++) {
+      var at = tokens[k][0], token = tokens[k][1];
+      if (seats) { bmlMark(el, at, at + token.length, "bml-seat"); continue; }
+      var call = BML_CALL.exec(token);
+      bmlMark(el, at, at + call[1].length, call[1].charAt(0) == "(" ? "bml-opp" : "bml-bid");
+      if (call[2]) bmlMark(el, at + call[1].length, at + token.length, "bml-alert");
+    }
+    return true;
+  }
+
+  // An auction row's tokens as [at, token], or null when the line is not one.
+  function bmlAuctionTokens(text) {
+    var tokens = [];
+    var re = /\S+/g;
+    var m;
+    while ((m = re.exec(text)) !== null) tokens.push([m.index, m[0]]);
+    if (tokens.length < 2) return null;
+    var seats = true, calls = true;
+    for (var i = 0; i < tokens.length; i++) {
+      if (!BML_SEAT.test(tokens[i][1])) seats = false;
+      if (!BML_CALL.test(tokens[i][1])) calls = false;
+    }
+    return (seats || calls) ? tokens : null;
+  }
+
+  // Where a bid row's call is: [start, end, the `=` or -1, the label's start or -1 for a link-bid], or null for a
+  // line that is not a bid row. `<call> = <description>` is the usual spelling and its call is everything
+  // before the `=` (pseudo-bids: `next =`, `higher = cue`); `<call> <description>` without it is the rest
+  // (`1C [Weak or Strong Club](#1C Weak Strong):`, `2N [19--20 NT]`, `[1D](#1C--1D) Negative`). An auction
+  // row, every token a call, is not one. The caller has ruled out comments, directives and headings.
+  function bmlBidCall(text) {
+    var lead = text.length - text.replace(/^[ \t]+/, "").length;
+    if (lead == text.length) return null;
+    var eq = text.indexOf("=");
+    var before = eq > 0 ? text.slice(0, eq) : "";
+    if (eq > 0 && /\S/.test(before) && before.indexOf("[") < 0) {
+      return [lead, eq - (before.length - before.replace(/\s+$/, "").length), eq, -1];
+    }
+    var rest = text.slice(lead);
+    var link = BML_LINK_BID.exec(rest);
+    var stop = -1, label = -1;
+    if (link && BML_CALL_TOKEN.test(link[1])) { stop = lead + link[0].length; label = lead + 1; }
+    else {
+      var token = /^\S+/.exec(rest)[0];
+      if (!BML_CALL_TOKEN.test(token) || bmlAuctionTokens(text)) return null;
+      // A bare `Pass` / `X` starts prose as often as a row (`X then shows a HCR.`), so alone it is a call only
+      // with an `=` (above) or in a sequence, as bml.py's `_BIDTABLE_FIRST_RE` has it.
+      if (/^(?:Pass|Dbl|Rdbl|XX|X|P|R)(?:\*+|\^[0-9]+|!)?$/.test(token)) return null;
+      stop = lead + token.length;
+    }
+    var after = /^[ \t]*=/.exec(text.slice(stop));
+    return [lead, stop, after ? stop + after[0].length - 1 : -1, label];
+  }
+
+  // `depth` is a bid row's nesting in its table (`bmlBidDepth`), whose ODD levels take the second colour the
+  // way the preview's `startOddIndent` cells take the second tint; -1 or absent for any other line.
+  function bmlColorizeLine(el, depth) {
     var text = bmlLineText(el);
     if (text === null) return;
     // Only a line that was marked before has marks to clear. A freshly loaded buffer is all new line
     // elements (no `bmlSeen` yet), and the clear's Range was ~40% of opening a chapter. A line element the
-    // widget REUSES still carries its `bmlSeen`, so it is still cleared.
-    if (typeof el.bmlSeen == "string") bmlClear(el, text.length, BML_MARKS);
+    // widget REUSES still carries its `bmlSeen`, so it is still cleared - of the marks it was given, when
+    // those are known (`bmlUsedNow`).
+    if (typeof el.bmlSeen == "string") {
+      var used = el.bmlUsed || BML_MARKS;
+      if (used.length) bmlClear(el, text.length, used);
+    }
+    bmlUsedNow = [];
+    try { bmlMarkLine(el, text, depth); } finally { el.bmlUsed = bmlUsedNow; bmlUsedNow = null; }
+  }
+
+  function bmlMarkLine(el, text, depth) {
     if (!text.length) return;
 
-    if (BML_DIRECTIVE.test(text)) { bmlMark(el, 0, text.length, "bml-key"); return; }
-    if (BML_HEADER.test(text))    { bmlMark(el, 0, text.length, "bml-head"); return; }
+    // A comment is `//` at column 0 and nothing else (bml.py drops `^//.*` lines); an indented `//` is text.
+    if (text.charAt(0) == "/" && text.charAt(1) == "/") { bmlMark(el, 0, text.length, "bml-comment"); return; }
 
-    // A bid row is `<call> = <description>`, and the call is what the eye needs to find. An opposition
-    // call is written in brackets and gets its own colour, the way the notes themselves distinguish them.
-    var eq = text.indexOf("=");
-    if (eq > 0) {
-      var call = text.slice(0, eq);
-      var lead = call.length - call.replace(/^\s+/, "").length;
-      var end  = eq - (call.length - call.replace(/\s+$/, "").length);
-      var opp  = /^\s*\(/.test(call);
-      bmlMark(el, lead, end, opp ? "bml-opp" : "bml-bid");
-      bmlMark(el, eq, eq + 1, "bml-op");
+    var box = BML_BOX.exec(text);
+    if (box) {
+      bmlMark(el, 0, box[0].length, "bml-key");
+      bmlMarkText(el, text, box[0].length, bmlClassHook(el, text), false);
+      return;
+    }
+    var directive = BML_DIRECTIVE.exec(text);
+    if (directive) {
+      if (!BML_TEXT_DIRECTIVE.test(text)) { bmlMark(el, 0, text.length, "bml-key"); return; }
+      bmlMark(el, 0, directive[0].length, "bml-key");
+      bmlMarkText(el, text, directive[0].length, bmlClassHook(el, text), false);
+      return;
+    }
+    var header = BML_HEADER.exec(text);
+    if (header) {
+      var end = bmlClassHook(el, text);
+      bmlMark(el, 0, end, "bml-h" + Math.min(header[1].length, 4));
+      bmlMarkIn(el, text, 0, end, BML_SUIT, "bml-suit");
+      bmlMarkIn(el, text, 0, end, BML_LINK, "bml-link");
+      return;
     }
 
-    // Suit symbols and cross-references, wherever they are - including inside a call, which is why these
-    // run after the call above rather than instead of it.
-    bmlMarkAll(el, text, BML_SUIT, "bml-suit");
-    bmlMarkAll(el, text, BML_LINK, "bml-link");
+    var hand = BML_HAND.exec(text);
+    if (hand) {
+      var seat = hand[1].length;
+      bmlMark(el, seat, seat + hand[2].length, "bml-seat");
+      var cards = seat + hand[2].length + hand[3].length;
+      bmlMark(el, cards, cards + hand[4].length, "bml-hand");
+      return;
+    }
+    if (BML_HOLDINGS.test(text)) { bmlMark(el, text.length - text.replace(/^[ \t]+/, "").length, text.replace(/[ \t]+$/, "").length, "bml-hand"); return; }
+
+    // A bid row (`bmlBidCall`), and the call is what the eye needs to find. An opposition call is written in
+    // brackets and gets its own colour, the way the notes themselves distinguish them.
+    var bid = bmlBidCall(text);
+    if (bid) {
+      var lead = bid[0], stop = bid[1], eq = bid[2], label = bid[3];
+      var callFrom = lead, callTo = stop;
+      if (label >= 0) {
+        // A link whose label is the call: the label in the call's colour, the brackets and target as a link.
+        callFrom = label;
+        callTo = text.indexOf("]", label);
+        bmlMark(el, lead, callFrom, "bml-link");
+        bmlMark(el, callTo, stop, "bml-link");
+      }
+      var opp = text.charAt(callFrom) == "(";
+      bmlMark(el, callFrom, callTo, opp ? "bml-opp" : (depth > 0 && depth % 2 == 1 ? "bml-bid-odd" : "bml-bid"));
+      bmlMarkIn(el, text, callFrom, callTo, BML_PSEUDO, "bml-pseudo");
+      bmlMarkIn(el, text, callFrom, callTo, BML_CALL_MARK, "bml-alert");
+      bmlMarkIn(el, text, callFrom, callTo, BML_SUIT, "bml-suit");
+      if (label < 0) bmlMarkIn(el, text, callFrom, callTo, BML_LINK, "bml-link");
+      if (eq >= 0) bmlMark(el, eq, eq + 1, "bml-op");
+      bmlMarkText(el, text, eq >= 0 ? eq + 1 : stop, text.length, true);
+      return;
+    }
+
+    if (bmlAuctionRow(el, text)) return;
+
+    var from = 0;
+    var note = BML_NOTE.exec(text) || BML_LIST.exec(text);
+    if (note) {
+      from = note[0].length;
+      bmlMark(el, from - note[0].replace(/^[ \t]+/, "").length, from, note[0].indexOf("^") >= 0 ? "bml-alert" : "bml-list");
+    }
+    bmlMarkText(el, text, from, text.length, false);
   }
+
+  // A bid row's nesting in its table: how many rows above it, in the same table, are indented less and are
+  // still open. `stack` holds those rows' indents and is the pass's, from the top of the buffer down; a blank
+  // line or a heading ends a table. The corpus indents by 2 and by 4, so the depth is the count of open
+  // indents rather than columns over a step. -1 for a line that is not a bid row.
+  function bmlBidDepth(stack, text, el) {
+    var lead;
+    if (el && el.bmlLeadOf === text) lead = el.bmlLead;
+    else {
+      lead = bmlBidLead(text);
+      if (el) { el.bmlLeadOf = text; el.bmlLead = lead; }
+    }
+    if (lead == -2) { stack.length = 0; return -1; }
+    if (lead < 0) return -1;
+    while (stack.length && stack[stack.length - 1] >= lead) stack.pop();
+    stack.push(lead);
+    return stack.length - 1;
+  }
+
+  // What a line is to `bmlBidDepth`, which keeps it on the line element with the text it was worked out from,
+  // so a pass over unchanged text does no regex work: -2 ends a table (a blank line, a heading), -1 is not a
+  // bid row, and anything else is a bid row's indent.
+  function bmlBidLead(text) {
+    if (text === null || !/\S/.test(text) || BML_HEADER.test(text)) return -2;
+    if ((text.charAt(0) == "/" && text.charAt(1) == "/") || BML_DIRECTIVE.test(text) || BML_BOX.test(text)) return -1;
+    var bid = bmlBidCall(text);
+    return bid ? bid[0] : -1;
+  }
+
 
   // Colour the buffer, and hand back HOW MANY MARKS it applied.
   //
@@ -1271,21 +1706,34 @@
     var mark = lineFn || bmlColorizeLine;
     bmlMarked = 0;
     var lines = editor.children;
+    // A bid row's colour depends on the rows ABOVE it (`bmlBidDepth`), so the depth is worked out for every
+    // line, on every pass - it is a text read and a compare - and a line whose depth moved is re-marked
+    // though its own text did not: re-indenting a row recolours the rows nested under it.
+    var stack = lineFn ? null : [];
     for (var i = 0; i < lines.length; i++) {
       var el = lines[i];
       var text = bmlLineText(el);
-      if (!all && text !== null && el.bmlSeen === text) continue;
+      var depth = stack ? bmlBidDepth(stack, text, el) : -1;
+      if (!all && text !== null && el.bmlSeen === text && el.bmlDepth === depth) continue;
       // Did this line LOSE text? That is the edit that leaves paint behind, and the old text is right here.
       if (typeof el.bmlSeen == "string" && text !== null && text.length < el.bmlSeen.length) bmlShrank = true;
-      mark(el);
+      mark(el, depth);
       el.bmlSeen = text;
+      el.bmlDepth = depth;
     }
     if (lines.length < (editor.wbLastLines | 0)) bmlShrank = true;
     editor.wbLastLines = lines.length;
     return bmlMarked;
   }
 
-  function bmlColorize()      { bmlColorEnabled = true; return bmlColorizePass(true); }
+  // A whole pass follows new text (a file opened, a tidy): its line elements are new, so the caret line is found again.
+  function bmlColorize() {
+    bmlColorEnabled = true;
+    var marks = bmlColorizePass(true);
+    var editor = document.$("#bml-text");
+    if (editor) bmlCaretLine(editor);
+    return marks;
+  }
   function bmlColorizeDirty() { return bmlColorEnabled ? bmlColorizePass(false) : 0; }
 
   // TIDY'S EDIT (`tidy_bml`): `[[line, text], ...]` written into those lines of the source as ONE transaction
@@ -1585,6 +2033,38 @@
 
   // Both editors: the scenario editor is the same widget with the same ghost (reported 2026-10-19 as the caret
   // vanishing after ctrl+backspace and coming back near the top, with the model's caret row unchanged).
+  /* THE NOTES EDITOR'S LOOK (workbench/editor_look.odin, Settings: Notes editor). The host passes the font, size and
+     line height ("" for the sheet's own) as inline style, and every colour as a variable on the editor, `--ed-<token>`,
+     which the `::mark` rules read (the sheet declares each as the theme's `--syn-<token>`). An empty colour comes as `var(--syn-<token>)`
+     rather than as nothing: a variable set from script cannot be unset again (measured), and a reference back to the
+     theme's token is resolved at paint time, so it follows a theme change by itself. */
+  var WB_CARET_LINE = true;
+  function wbEditorLook(look) {
+    var editor = document.$("#bml-text");
+    if (!editor) return false;
+    editor.style.fontFamily = look.font || "";
+    editor.style.fontSize = look.size || "";
+    editor.style.lineHeight = look.line || "";
+    for (var name in look.vars) editor.style.variable(name, look.vars[name]);
+    WB_CARET_LINE = !!look.caretLine;
+    bmlCaretLine(editor);
+    return true;
+  }
+
+  /* THE CARET LINE: the line holding the caret carries `wb-caret-line`, tinted by the sheet. The engine has no caret
+     width, so this is what makes the caret easy to find. The line is the caret's (`selectionEnd`), not the anchor's.
+     A line element the widget has replaced keeps nothing on screen, so a stale one is only let go of. */
+  function bmlCaretLine(editor) {
+    var old = editor.bmlCaretLineEl || null, line = null;
+    if (WB_CARET_LINE) {
+      try { line = editor.children[editor.plaintext.selectionEnd[0]] || null; } catch (x) { line = null; }
+    }
+    if (old && old !== line) { try { old.classList.remove("wb-caret-line"); } catch (x) {} }
+    if (line) line.classList.add("wb-caret-line");
+    editor.bmlCaretLineEl = line;
+    return line;
+  }
+
   document.on("keyup", "#bml-text, #scn-text", function (event) {
     if (!BML_CARET_KEYS[event.code]) return false;
     var editor = this;
@@ -1607,16 +2087,52 @@
   }
   document.on("keyup", "#bml-text", function (event) {
     if (event.ctrlKey || event.altKey) return false;
-    // A caret key moves away from whatever was offered; a letter (or `-`, `'`) asks again (`bmlSuggest`).
+    // The EDITOR by name: `this` here is not it (it has no `plaintext`). This listener used to ask for a
+    // completion with `this` too, and that call cleared the suggestion the key-DOWN had just made before it
+    // failed - so TAB found nothing to write and the status line kept "tab -> ..." (reported 2026-10-28, the key
+    // log showing tab indent). Completions are asked for on key-down only now.
+    var editor = document.$("#bml-text");
+    // A caret key moves away from whatever was offered.
     if (BML_CARET_KEYS[event.code]) { bmlDropCompletion(); return false; }
-    try { bmlLinkTrigger(this); } catch (x) {}
-    if (/^Key[A-Z]$|^Minus$|^Quote$/.test(event.code)) {
-      try { bmlSuggest(this); } catch (x) {}
-    } else if (event.code !== "Tab" && event.code !== "Escape" && !/^(Shift|Control|Alt|Meta)/.test(event.code)) {
-      bmlDropCompletion(); // a modifier's own key-up (the shift of a capital) is not a key that moves on
+    try { bmlLinkTrigger(editor); } catch (x) {}
+    if (!/^Key[A-Z]$|^Minus$|^Quote$/.test(event.code) && event.code !== "Tab" && event.code !== "Escape" &&
+        !/^(Shift|Control|Alt|Meta)/.test(event.code)) {
+      bmlDropCompletion(); // any other key moves on; a modifier's own key-up (the shift of a capital) does not
     }
     return false;
   });
+
+  // THE FIND BAR'S KEYS, in its fields: enter the next match (shift: the previous), esc closes; typing finds again.
+  // In the capture phase, before the field's own edit behavior answers enter.
+  ["#bml-find-input", "#bml-replace-input"].forEach(function (sel) {
+    var field = document.$(sel);
+    if (!field) return;
+    field.addEventListener("keydown", function (event) {
+      if (event.code === "Escape") { bmlFindClose(); event.preventDefault(); return true; }
+      if (event.code === "Enter" || event.code === "NumpadEnter") {
+        if (sel === "#bml-replace-input" && !event.shiftKey) bmlReplaceOne();
+        else bmlFindStep(event.shiftKey ? -1 : 1);
+        event.preventDefault();
+        return true;
+      }
+      return false;
+    }, { capture: true });
+  });
+  document.on("input", "#bml-find-input", function () { bmlFindScan(); bmlFind.fresh = true; });
+  document.on("click", "#bml-find-next", function () { bmlFindStep(1); });
+  document.on("click", "#bml-find-prev", function () { bmlFindStep(-1); });
+  document.on("click", "#bml-find-case", function () { bmlFindToggle("matchCase"); });
+  document.on("click", "#bml-find-word", function () { bmlFindToggle("word"); });
+  document.on("click", "#bml-replace-one", function () { bmlReplaceOne(); });
+  document.on("click", "#bml-replace-all", function () { bmlReplaceAll(); });
+  document.on("click", "#bml-find-close", function () { bmlFindClose(); });
+  // An edit while the bar is open: the matches again, the current one kept where it was.
+  document.on("change", "#bml-text", function () {
+    if (bmlFindOpenNow()) setTimeout(function () { bmlFindScan(bmlFind.at); }, 0);
+  });
+
+  // A click moves the caret away from whatever was offered, as a caret key does.
+  document.on("mousedown", "#bml-text", function () { bmlDropCompletion(); });
 
   // THE PALETTE'S WRITE (`insert_into_source`): at [row, col], `drop` characters before it removed, `before`
   // then `after` inserted, and the caret left between them - one `plaintext.update`, so one ctrl+z.
@@ -1733,6 +2249,26 @@
   function bmlSetLexicon(json) {
     bmlLexicon = JSON.parse(json) || [];
     bmlCompletion = null;
+    // The NAMES among the terms colour the source (`bmlNames`), longest first so `Puppet Stayman` is one
+    // name rather than `Stayman` after a word. A whole pass follows only when the names CHANGED: the host
+    // sends the lexicon on every visit to the view, and a pass over a big chapter is a felt pause.
+    var names = [];
+    for (var i = 0; i < bmlLexicon.length; i++) {
+      var term = bmlLexicon[i];
+      if (typeof term == "string" && term.length > 1 && /^[A-Z]/.test(term)) names.push(term);
+    }
+    names.sort(function (a, b) { return b.length - a.length || (a < b ? -1 : a > b ? 1 : 0); });
+    var key = names.join("\n");
+    if (key !== bmlNamesKey) {
+      bmlNamesKey = key;
+      bmlNames = null;
+      for (var n = 0; n < names.length; n++) {
+        var first = /^[A-Za-z0-9]+/.exec(names[n])[0];
+        if (!bmlNames) bmlNames = Object.create(null);
+        (bmlNames[first] || (bmlNames[first] = [])).push(names[n]);
+      }
+      if (bmlColorEnabled) bmlColorizePass(true);
+    }
     return bmlLexicon.length;
   }
 
@@ -1755,9 +2291,21 @@
     return true;
   }
 
+  /* A term in the CASE it should be written here. A term with a capital in it is a name or an acronym
+     (Lebensohl, RKCB) and is written as it is. An all-lower-case one takes the case being typed: `OPE` (two or
+     more capitals) writes it in capitals, `Ope` capitalises it - and so does the start of a sentence, after a
+     `.`, `!` or `?`, whatever was typed (reported: `Ope` wrote `opener`). */
+  function bmlShapeTerm(term, prefix, sentence) {
+    if (term !== term.toLowerCase()) return term;
+    if (prefix.length >= 2 && prefix === prefix.toUpperCase() && prefix !== prefix.toLowerCase()) return term.toUpperCase();
+    var first = prefix.charAt(0);
+    if (sentence || (first !== first.toLowerCase())) return term.charAt(0).toUpperCase() + term.slice(1);
+    return term;
+  }
+
   // The suggestion for the word the caret is at the end of, if any. Returns the term offered, or "".
   function bmlSuggest(editor) {
-    bmlCompletion = null;
+    bmlDropCompletion(); // the last offer goes, and its words with it: the status line never shows an old one
     var at = editor.plaintext.selectionStart, end = editor.plaintext.selectionEnd;
     if (!at || !end || at[0] !== end[0] || at[1] !== end[1] || !bmlLexicon.length) return "";
     var el = editor.children[at[0]];
@@ -1769,9 +2317,13 @@
     var m = /[A-Za-z][A-Za-z'\-]*$/.exec(text.slice(0, col));
     if (!m || m[0].length < 3) return "";
     var prefix = m[0], lower = prefix.toLowerCase(), list = [];
+    // The start of a sentence: a `.`, `!` or `?` before the word, with nothing but spaces between.
+    var sentence = /[.!?]\s+$/.test(text.slice(0, col - prefix.length));
     for (var i = 0; i < bmlLexicon.length && list.length < 20; i++) {
       var term = bmlLexicon[i];
-      if (term !== prefix && term.toLowerCase().indexOf(lower) === 0) list.push(term);
+      if (term.toLowerCase().indexOf(lower) !== 0) continue;
+      var shaped = bmlShapeTerm(term, prefix, sentence);
+      if (shaped !== prefix) list.push(shaped);
     }
     if (!list.length) return "";
     bmlCompletion = { row: at[0], start: col - prefix.length, end: col, list: list, index: 0 };
@@ -1846,6 +2398,83 @@
     return ok;
   }
 
+  /* AUCTIONS LINE UP (2026-10-27). Enter at the end of a line of an auction (BML's test: every token of its call
+     rows a call, a `W N E S` row first if wanted, `*` / `^1` notes after - bml.py `_is_auction`) re-spaces the
+     header and call rows into columns, so one player's calls sit under each other in the text as they do on
+     the page, and writes the calls in capitals. Notes are left alone. Lines rewritten with `setText`, one
+     update, so ctrl+z puts the spacing back; then the enter's own update. */
+  var wbAuctionAligns = 0; // how many enter lined up: the test's proof that it ran
+  var BML_AUCTION_CALL = /^\(?(?:[1-7](?:NT|[CDHSN])|P|X|XX|D|R|AP|\?|-)\)?(?:!|\*+|\^[0-9]+)?$/;
+  var BML_AUCTION_NOTE = /^(\*|\^[0-9])/;
+
+  function bmlAlignAuction(editor, row, col) {
+    var el = editor.children[row];
+    var here = el ? (bmlLineText(el) || "") : "";
+    if (!el || !el.firstChild || col !== here.length || !here.trim().length) return false;
+    // The block: the lines between blank ones, and between `#BOX` / `#ENDBOX` lines, which are blocks of their own.
+    var BOX_MARK = /^[ \t]*#[ \t]*(?:endbox[ \t]*|box(?:[ \t].*)?)$/i; // `#BOX warning Title` too
+    var inBlock = function (r) {
+      var t = bmlLineText(editor.children[r]) || "";
+      return t.trim().length > 0 && !BOX_MARK.test(t);
+    };
+    if (!inBlock(row)) return false;
+    var lo = row, hi = row;
+    while (lo > 0 && inBlock(lo - 1)) lo--;
+    while (hi + 1 < editor.children.length && inBlock(hi + 1)) hi++;
+    // A `#+CAPTION:` line over the auction is a block of its own on the page.
+    if (/^[ \t]*#\+caption:/i.test(bmlLineText(editor.children[lo]) || "")) lo++;
+    if (row < lo || lo > hi) return false;
+    var rows = [];
+    for (var r = lo; r <= hi; r++) rows.push((bmlLineText(editor.children[r]) || "").trim().split(/\s+/));
+    if (rows[0][0] === "-") return false; // a block starting `-` is a list on the page (`- 1C` / `- 1D`)
+    var first = 0;
+    if (rows[0].every(function (t) { return /^[NESW]$/i.test(t); })) first = 1;
+    var last = rows.length; // the call rows end where the notes start
+    for (var n = first + 1; n < rows.length; n++) {
+      if (BML_AUCTION_NOTE.test(rows[n][0])) { last = n; break; }
+    }
+    if (row - lo >= last || last - first < 1) return false; // on a note, or no calls
+    var calls = 0;
+    for (var c = first; c < last; c++) {
+      for (var t = 0; t < rows[c].length; t++) {
+        if (!BML_AUCTION_CALL.test(rows[c][t].toUpperCase())) return false;
+        calls++;
+      }
+    }
+    if (calls < 2 || last < 2) return false; // one row has nothing to line up with
+    var widths = [];
+    for (var a = 0; a < last; a++) {
+      rows[a].forEach(function (tok, i) { widths[i] = Math.max(widths[i] || 0, tok.length); });
+    }
+    var indent = (bmlLineText(editor.children[lo]) || "").match(/^ */)[0];
+    var wanted = [];
+    for (var b = 0; b < last; b++) {
+      wanted.push(indent + rows[b].map(function (tok, i) {
+        tok = tok.toUpperCase();
+        return i === rows[b].length - 1 ? tok : tok + " ".repeat(widths[i] + 2 - tok.length);
+      }).join(""));
+    }
+    var changed = false;
+    var ok = editor.plaintext.update(function (tctx) {
+      for (var k = 0; k < wanted.length; k++) {
+        var line = editor.children[lo + k];
+        if ((bmlLineText(line) || "") !== wanted[k] && line.firstChild) {
+          tctx.setText(line.firstChild, wanted[k]);
+          changed = true;
+        }
+      }
+      return true;
+    });
+    if (ok && changed) {
+      var end = wanted[row - lo].length;
+      editor.plaintext.selectRange(row, end, row, end);
+      wbAuctionAligns += 1;
+    }
+    return true; // an auction, lined up or already in line: enter does not continue a "list" (`- 1H P`)
+  }
+
+  var BML_LIST_ITEM = /^( *)(?:-|(\d+)\.) /; // a list item's indent and marker: `- `, `2. `
+
   function bmlIndentKey(editor, code, shift) {
     var at = editor.plaintext.selectionStart, end = editor.plaintext.selectionEnd;
     if (!at || !end) return false;
@@ -1853,14 +2482,35 @@
     var collapsed = at[0] === end[0] && at[1] === end[1];
     var spaces = function (n) { return new Array(n + 1).join(" "); };
     // Leaving a line with enter: its bids in capitals first (the notes editor only - a scenario is not BML).
+    var inAuction = false;
     if ((code === "Enter" || code === "NumpadEnter") && editor.getAttribute("id") === "bml-text") {
       try { bmlCapitaliseBids(editor, first); } catch (x) {}
+      if (collapsed) {
+        try { inAuction = bmlAlignAuction(editor, first, at[1]); } catch (x) {}
+      }
     }
-    return editor.plaintext.update(function (tctx) {
+    var caretTo = null; // where a `setText` leaves the caret, which it does not place itself
+    var done = editor.plaintext.update(function (tctx) {
       if (code === "Enter" || code === "NumpadEnter") {
         var line = editor.children[first];
         var text = line ? (bmlLineText(line) || "") : "";
         var indent = Math.min(bmlLeading(text), Math.min(at[1], end[1]));
+        // In a LIST (2026-10-27): the next item's marker comes with the newline - `- ` for a list or a
+        // description list, the next number for a numbered one. On an item with nothing after its marker the
+        // marker goes instead and the list ends there. Shift+enter is a plain newline (not this key).
+        var item = editor.getAttribute("id") === "bml-text" && collapsed && !inAuction ? BML_LIST_ITEM.exec(text) : null;
+        if (item && at[1] >= item[0].length) {
+          if (!text.slice(item[0].length).trim().length) {
+            // `setText`, not `deleteRange`: deleting the whole marker left NUL characters in its place in the
+            // real window (the colouring's marks on it, presumably), saved into the file as `\0\0` lines that
+            // are not blank - the list ran on through them (reported 2026-10-27). The windowless view did not.
+            tctx.setText(line.firstChild, item[1]);
+            caretTo = [first, item[1].length];
+            return true;
+          }
+          tctx.execCommand("edit:insert-text", "\n" + item[1] + (item[2] ? (parseInt(item[2], 10) + 1) + ". " : "- "));
+          return true;
+        }
         if (!collapsed) tctx.deleteSelection();
         // A newline IN the inserted text, not `edit:insert-break`: that command did nothing inside an update
         // (measured, at the end of a line), where `insert-text` with "\n" breaks it and leaves the caret on the
@@ -1890,6 +2540,129 @@
       tctx.execCommand("edit:insert-text", spaces(BML_STEP - (col % BML_STEP)));
       return true;
     });
+    if (done && caretTo) editor.plaintext.selectRange(caretTo[0], caretTo[1], caretTo[0], caretTo[1]);
+    return done;
+  }
+
+  /* BACKSPACE IN AN INDENT (2026-10-27, reported): enter keeps a bid table's indent, and backspace then took
+     ONE space off it, four presses to get back a level. With only spaces before the caret, backspace goes to
+     the next indent out that the lines above it use - the block above, up to a blank line - so it walks back
+     through the bid table's own levels (8, 4, 0). Nothing above narrower than the caret, or anything but
+     spaces before it: the engine's own backspace. One `plaintext.update`, so one ctrl+z. */
+  var wbDedents = 0; // how many backspace took: the test's proof that it, not the widget, ran
+
+  function bmlDedentBack(editor) {
+    var at = editor.plaintext.selectionStart, end = editor.plaintext.selectionEnd;
+    if (!at || !end || at[0] !== end[0] || at[1] !== end[1] || at[1] === 0) return false;
+    var row = at[0], col = at[1];
+    var el = editor.children[row];
+    var node = el && el.firstChild;
+    var text = el ? (bmlLineText(el) || "") : "";
+    if (!node || /[^ ]/.test(text.slice(0, col))) return false;
+    var target = -1;
+    for (var r = row - 1; r >= 0; r--) {
+      var above = bmlLineText(editor.children[r]) || "";
+      if (!above.trim().length) break;
+      var lead = bmlLeading(above);
+      if (lead < col && lead > target) target = lead;
+    }
+    if (target < 0) return false;
+    var ok = editor.plaintext.update(function (tctx) {
+      // `setText`, not `deleteRange`, which left NULs for what it deleted in the real window (see the list's enter).
+      tctx.setText(node, " ".repeat(target) + text.slice(col));
+      return true;
+    });
+    if (ok) editor.plaintext.selectRange(row, target, row, target);
+    return ok;
+  }
+
+  /* TABLES (2026-10-27; reported: an inserted table "is a mess"). TAB in a `|` table lines its columns up and
+     moves the caret to the start of the next cell, SHIFT+TAB the previous one - org-mode's table editor, which
+     is where BML's tables come from. Past the last cell a new empty row is added. The table is every `|` line
+     around the caret, written at its first line's indent; a `|---+---|` rule is redrawn to the widths and
+     skipped over. Only the spaces change, so the page renders the same. One `plaintext.update`: one ctrl+z. */
+  var wbTableTabs = 0; // how many TAB took: the test's proof that it, not the indent, ran
+  var BML_TABLE_RULE = /^\|[-+|\s]*-[-+|\s]*$/;
+
+  function bmlTableCells(trimmed) {
+    var inner = trimmed.slice(1);
+    if (inner.slice(-1) === "|") inner = inner.slice(0, -1);
+    return inner.split("|").map(function (c) { return c.trim(); });
+  }
+
+  function bmlTableTab(editor, back) {
+    var p = editor.plaintext;
+    var at = p.selectionStart, end = p.selectionEnd;
+    if (!at || !end || at[0] !== end[0] || at[1] !== end[1]) return false;
+    var textOf = function (r) {
+      var el = editor.children[r];
+      return el ? bmlLineText(el) : null;
+    };
+    var isRow = function (r) {
+      var t = textOf(r);
+      return t !== null && t.trim().charAt(0) === "|";
+    };
+    if (!isRow(at[0])) return false;
+    var lo = at[0], hi = at[0];
+    while (lo > 0 && isRow(lo - 1)) lo--;
+    while (hi + 1 < p.lines && isRow(hi + 1)) hi++;
+
+    // Each line's cells (null for a rule), and each column's width.
+    var texts = [], rows = [], widths = [];
+    for (var r = lo; r <= hi; r++) {
+      var t = textOf(r);
+      var trimmed = t.trim();
+      var cells = BML_TABLE_RULE.test(trimmed) ? null : bmlTableCells(trimmed);
+      texts.push(t);
+      rows.push(cells);
+      if (cells) cells.forEach(function (c, i) { widths[i] = Math.max(widths[i] || 1, c.length); });
+    }
+    var n = widths.length;
+    if (!n) return false;
+    var indent = new Array(bmlLeading(texts[0]) + 1).join(" ");
+    var format = function (cells) {
+      if (!cells) return indent + "|" + widths.map(function (w) { return new Array(w + 3).join("-"); }).join("+") + "|";
+      return indent + "| " + widths.map(function (w, i) {
+        var c = cells[i] || "";
+        return c + new Array(w - c.length + 1).join(" ");
+      }).join(" | ") + " |";
+    };
+
+    // Where the caret is (the cell is how many bars are before it), then where it goes.
+    var i = at[0] - lo;
+    var k = Math.min(n - 1, Math.max(0, texts[i].slice(0, at[1]).split("|").length - 2));
+    var append = false;
+    var j;
+    if (!back) {
+      if (rows[i] && k + 1 < n) {
+        k += 1;
+      } else {
+        for (j = i + 1; j < rows.length && !rows[j]; j++) {}
+        if (j < rows.length) { i = j; k = 0; } else { append = true; i = rows.length; k = 0; }
+      }
+    } else if (rows[i] && k > 0) {
+      k -= 1;
+    } else {
+      for (j = i - 1; j >= 0 && !rows[j]; j--) {}
+      if (j >= 0) { i = j; k = n - 1; } else if (rows[i]) { k = 0; } else { return false; }
+    }
+
+    // The new row goes in first, at the end of the last line (where the caret is put for it), so the rows
+    // above keep their indices for the `setText`s after it.
+    if (append) p.selectRange(hi, texts[hi - lo].length, hi, texts[hi - lo].length);
+    var ok = p.update(function (tctx) {
+      if (append) tctx.execCommand("edit:insert-text", "\n" + format([]));
+      for (var r = 0; r < rows.length; r++) {
+        var line = format(rows[r]);
+        if (line !== texts[r]) tctx.setText(editor.children[lo + r].firstChild, line);
+      }
+      return true;
+    });
+    if (!ok) return false;
+    var col = indent.length + 2;
+    for (var w = 0; w < k; w++) col += widths[w] + 3;
+    p.selectRange(lo + i, col, lo + i, col);
+    return true;
   }
 
   // In the CAPTURE (sinking) phase, on each editor: the widget handles its keys at the element itself, so a
@@ -1911,6 +2684,385 @@
     }
   }
 
+  /* TAB IN AN EDITOR, asked by the HOST (`editor_tab_key`). In the real window the engine's focus navigation
+     takes TAB before an editor's own keydown listener hears it (reported 2026-10-28: the completion was offered,
+     tab wrote nothing), so the host claims the key on its way down and asks this instead: the completion first,
+     then a table's next cell, then the indent - the order the listener below has. Whether it took the key. */
+  function wbEditorTab(sel, shift) {
+    var editor = document.$(sel);
+    if (!editor) return false;
+    var used = false;
+    if (sel === "#bml-text" && bmlCompletion && !shift) {
+      used = bmlAcceptCompletion(editor);
+      if (used) wbCompletions += 1;
+    }
+    if (!used && sel === "#bml-text") {
+      try { used = bmlTableTab(editor, shift); } catch (x) { used = false; }
+      if (used) wbTableTabs += 1;
+    }
+    if (!used) {
+      try { used = bmlIndentKey(editor, "Tab", shift); } catch (x) { used = false; }
+      if (used) wbIndentKeys += 1;
+    }
+    if (wbKeyLogOn) console.log("wb-key " + sel + " tab from the host -> " + (used ? "taken" : "not taken") + " " + wbCaretText(editor));
+    if (used) bmlSwallowChar = true; // and the tab character the key would type (see bmlSwallowChar)
+    return used;
+  }
+
+  /* WORD MOVEMENT (ctrl+left / ctrl+right), Sublime Text's: past any spaces, then past a run of one CLASS -
+     letters and digits (and `_`, `!` - the suit shorthand `!s` is part of its word), or punctuation. At a line's
+     start, left goes to the end of the line above; at its end, right to the start of the next. SHIFT extends the
+     selection from its anchor. Whether it moved. */
+  var wbWordMoves = 0; // how many this took: the test's proof that it, not the engine, moved
+  var wbLineKeys = 0; // how many line keys (select / delete / move / comment, F3) the editor's listener took
+  function bmlCharClass(ch) {
+    if (ch === " " || ch === "\t") return 0;
+    return /[A-Za-z0-9_!]/.test(ch) ? 1 : 2;
+  }
+  function bmlWordMove(editor, left, extend) {
+    var p = editor.plaintext;
+    // `selectionStart` is the selection's ANCHOR and `selectionEnd` its CARET (measured: a backwards selection
+    // reads back [1,5][0,2]), so extending moves the caret and keeps the anchor; a plain move leaves a selection
+    // from the edge it is moving towards.
+    var anchor = p.selectionStart, caret = p.selectionEnd;
+    if (!anchor || !caret) return false;
+    var before = caret[0] < anchor[0] || (caret[0] === anchor[0] && caret[1] < anchor[1]);
+    var from = extend ? caret : (left ? (before ? caret : anchor) : (before ? anchor : caret));
+    var row = from[0], col = from[1];
+    var lineOf = function (r) { var el = editor.children[r]; return el ? (bmlLineText(el) || "") : ""; };
+    var text = lineOf(row);
+    if (left) {
+      if (col === 0) {
+        if (row === 0) return true; // the top: nowhere to go, but the key is still ours
+        row -= 1; col = lineOf(row).length;
+      } else {
+        while (col > 0 && bmlCharClass(text.charAt(col - 1)) === 0) col--;
+        if (col > 0) {
+          var k = bmlCharClass(text.charAt(col - 1));
+          while (col > 0 && bmlCharClass(text.charAt(col - 1)) === k) col--;
+        }
+      }
+    } else {
+      if (col >= text.length) {
+        if (row >= p.lines - 1) return true;
+        row += 1; col = 0;
+      } else {
+        while (col < text.length && bmlCharClass(text.charAt(col)) === 0) col++;
+        if (col < text.length) {
+          var c = bmlCharClass(text.charAt(col));
+          while (col < text.length && bmlCharClass(text.charAt(col)) === c) col++;
+        }
+      }
+    }
+    if (extend) bmlSelect(editor, anchor[0], anchor[1], row, col);
+    else p.selectRange(row, col, row, col);
+    return true;
+  }
+
+
+  /* A SELECTION from an anchor to a caret, through the element's own `selection.setBaseAndExtent` on the lines'
+     text nodes. NOT `plaintext.selectRange` for anything wider than a caret: that collapsed a range to its far end
+     (measured: `selectRange(0, 0, 1, 0)` read back `[1,0]`), which is why ctrl+l moved the caret down instead of
+     selecting the line (reported). This one holds, across lines, in either direction. */
+  function bmlSelect(editor, aRow, aCol, fRow, fCol) {
+    var lines = editor.children, n = lines.length;
+    // A position past the last line is the end of it: a selection of whole lines ends at the NEXT line's start,
+    // which the last line does not have (moving such a block down to the bottom made one).
+    if (aRow >= n) { aRow = n - 1; aCol = (bmlLineText(lines[aRow]) || "").length; }
+    if (fRow >= n) { fRow = n - 1; fCol = (bmlLineText(lines[fRow]) || "").length; }
+    var a = lines[aRow], f = lines[fRow];
+    if (!a || !f) return false;
+    editor.selection.setBaseAndExtent(a.firstChild || a, aCol, f.firstChild || f, fCol);
+    bmlCaretLine(editor);
+    return true;
+  }
+
+  /* FIND AND REPLACE in the notes source (ctrl+f / ctrl+h; the host claims both on the way down, so they work from
+     the find fields too). Plain text, not a pattern; `Aa` matches case, `W` whole words. Every match is MARKED
+     (`::mark(bml-find)`, the current one `bml-find-at`) - its own marks, which the colorizer's clear never
+     touches - and the bar says "3 of 12". Enter / F3 the next, shift the previous; replace writes the current one
+     and steps on, all writes every one as ONE transaction, so a single ctrl+z takes it back. The matches are
+     found again after an edit while the bar is open. */
+  var BML_FIND_MARKS = ["bml-find", "bml-find-at"];
+  var bmlFind = { matchCase: false, word: false, matches: [], at: -1, marked: [] };
+  var wbFindSteps = 0; // how many matches the bar has gone to: a test's proof
+
+  function bmlFindQuery() {
+    var input = document.$("#bml-find-input");
+    return input ? String(input.value || "") : "";
+  }
+
+  // The query as a pattern over one line: escaped, `i` unless case matters, `\b` round it for whole words.
+  function bmlFindPattern(query) {
+    var body = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (bmlFind.word) body = "\\b" + body + "\\b";
+    return new RegExp(body, bmlFind.matchCase ? "g" : "gi");
+  }
+
+  function bmlFindClearMarks(editor) {
+    for (var i = 0; i < bmlFind.marked.length; i++) {
+      var el = editor.children[bmlFind.marked[i]];
+      var text = el ? bmlLineText(el) : null;
+      if (text) bmlClear(el, text.length, BML_FIND_MARKS);
+    }
+    bmlFind.marked = [];
+  }
+
+  // Every match, marked; the current one the first at or after the caret (or `keep`, after an edit or a replace).
+  function bmlFindScan(keep) {
+    var editor = document.$("#bml-text");
+    if (!editor) return 0;
+    bmlFindClearMarks(editor);
+    bmlFind.matches = [];
+    var query = bmlFindQuery();
+    if (query.length) {
+      var re = bmlFindPattern(query), lines = editor.children;
+      for (var row = 0; row < lines.length; row++) {
+        var text = bmlLineText(lines[row]);
+        if (!text) continue;
+        var m, any = false;
+        re.lastIndex = 0;
+        while ((m = re.exec(text)) !== null) {
+          if (!m[0].length) { re.lastIndex += 1; continue; }
+          bmlFind.matches.push({ row: row, start: m.index, end: m.index + m[0].length });
+          bmlMark(lines[row], m.index, m.index + m[0].length, "bml-find");
+          any = true;
+        }
+        if (any) bmlFind.marked.push(row);
+      }
+    }
+    if (typeof keep === "number") {
+      bmlFind.at = bmlFind.matches.length ? Math.min(keep, bmlFind.matches.length - 1) : -1;
+    } else {
+      bmlFind.at = -1;
+      var caret = editor.plaintext.selectionStart || [0, 0];
+      for (var k = 0; k < bmlFind.matches.length; k++) {
+        var f = bmlFind.matches[k];
+        if (f.row > caret[0] || (f.row === caret[0] && f.start >= caret[1])) { bmlFind.at = k; break; }
+      }
+      if (bmlFind.at < 0 && bmlFind.matches.length) bmlFind.at = 0;
+    }
+    bmlFindMarkCurrent(editor);
+    bmlFindCount();
+    return bmlFind.matches.length;
+  }
+
+  function bmlFindMarkCurrent(editor) {
+    var lines = editor.children;
+    for (var i = 0; i < bmlFind.marked.length; i++) {
+      var el = lines[bmlFind.marked[i]], t = el ? bmlLineText(el) : null;
+      if (t) { var r = new Range(); r.setStart(el.firstChild, 0); r.setEnd(el.firstChild, t.length); r.clearMark(["bml-find-at"]); }
+    }
+    var f = bmlFind.matches[bmlFind.at];
+    if (f) bmlMark(lines[f.row], f.start, f.end, "bml-find-at");
+  }
+
+  function bmlFindCount() {
+    var count = document.$("#bml-find-count");
+    if (!count) return;
+    var n = bmlFind.matches.length;
+    count.textContent = !bmlFindQuery().length ? "" : n ? (bmlFind.at + 1) + " of " + n : "no matches";
+  }
+
+  // Select the current match and bring its line into view.
+  function bmlFindShow() {
+    var editor = document.$("#bml-text"), f = bmlFind.matches[bmlFind.at];
+    if (!editor || !f) return false;
+    bmlSelect(editor, f.row, f.start, f.row, f.end);
+    var line = editor.children[f.row];
+    if (line) { try { line.scrollIntoView(); } catch (x) {} }
+    bmlFindMarkCurrent(editor);
+    bmlFindCount();
+    wbFindSteps += 1;
+    return true;
+  }
+
+  // The next (`dir` 1) or previous (-1) match, wrapping.
+  function bmlFindStep(dir) {
+    if (!bmlFind.matches.length && !bmlFindScan()) { bmlFindCount(); return false; }
+    var n = bmlFind.matches.length;
+    // A first step from a fresh scan goes TO the match found at the caret rather than past it.
+    if (bmlFind.fresh) { bmlFind.fresh = false; if (dir < 0) bmlFind.at = (bmlFind.at - 1 + n) % n; }
+    else bmlFind.at = (bmlFind.at + dir + n) % n;
+    return bmlFindShow();
+  }
+
+  // Open the bar (with the replace row for ctrl+h), seeded with the selection when it is on one line.
+  function bmlFindOpen(replace) {
+    var bar = document.$("#bml-find"), editor = document.$("#bml-text"), input = document.$("#bml-find-input");
+    if (!bar || !editor || !input) return false;
+    bar.style.display = "block";
+    var row = document.$("#bml-replace-row");
+    if (row) row.style.display = replace ? "block" : "none";
+    var picked = editor.plaintext.selectionText || "";
+    if (picked && picked.indexOf("\n") < 0 && picked.indexOf("\r") < 0) input.value = picked;
+    input.focus();
+    try { input.edit.selectAll(); } catch (x) {}
+    bmlFindScan();
+    bmlFind.fresh = true;
+    return true;
+  }
+
+  function bmlFindClose() {
+    var bar = document.$("#bml-find"), editor = document.$("#bml-text");
+    if (bar) bar.style.display = "none";
+    if (editor) { bmlFindClearMarks(editor); editor.focus(); }
+    bmlFind.matches = [];
+    bmlFind.at = -1;
+    return true;
+  }
+
+  function bmlFindOpenNow() {
+    var bar = document.$("#bml-find");
+    return !!bar && bar.style.display === "block";
+  }
+
+  function bmlFindToggle(which) {
+    bmlFind[which] = !bmlFind[which];
+    var button = document.$(which === "matchCase" ? "#bml-find-case" : "#bml-find-word");
+    if (button) button.attributes["class"] = "ghost small find-opt" + (bmlFind[which] ? " on" : "");
+    bmlFindScan();
+    bmlFind.fresh = true;
+  }
+
+  // Write the replacement over the current match (when it is still the selection's text), then the next.
+  function bmlReplaceOne() {
+    var editor = document.$("#bml-text"), f = bmlFind.matches[bmlFind.at];
+    if (!editor || !f) return false;
+    var el = editor.children[f.row], text = el ? bmlLineText(el) : null;
+    if (text === null) return false;
+    var replacement = String((document.$("#bml-replace-input") || {}).value || "");
+    var at = bmlFind.at;
+    var ok = editor.plaintext.update(function (tctx) {
+      tctx.setText(el.firstChild, text.slice(0, f.start) + replacement + text.slice(f.end));
+      return true;
+    });
+    bmlFindScan(at); // the next match is now the one at the same index
+    bmlFind.fresh = false;
+    if (bmlFind.matches.length) bmlFindShow();
+    return ok;
+  }
+
+  // Every match replaced, in one transaction. How many.
+  function bmlReplaceAll() {
+    var editor = document.$("#bml-text"), query = bmlFindQuery();
+    if (!editor || !query.length) return 0;
+    var replacement = String((document.$("#bml-replace-input") || {}).value || "");
+    var re = bmlFindPattern(query), lines = editor.children, edits = [], count = 0;
+    for (var row = 0; row < lines.length; row++) {
+      var text = bmlLineText(lines[row]);
+      if (!text) continue;
+      var n = 0;
+      var out = text.replace(re, function () { n += 1; return replacement; });
+      if (n) { edits.push([row, out]); count += n; }
+    }
+    if (!edits.length) return 0;
+    editor.plaintext.update(function (tctx) {
+      for (var k = 0; k < edits.length; k++) tctx.setText(lines[edits[k][0]].firstChild, edits[k][1]);
+      return true;
+    });
+    bmlFindScan();
+    var status = document.$("#bml-find-count");
+    if (status) status.textContent = "replaced " + count;
+    return count;
+  }
+
+  /* LINE BASICS, Sublime Text's keys: ctrl+l SELECTS the caret's line (again: the next one too), ctrl+shift+k
+     DELETES the lines of the selection, alt+up / alt+down MOVE them, ctrl+/ COMMENTS them out (or back in). A
+     comment is `//` at column 0 - BML's own rule - so it goes before any indent. Each is one transaction, one
+     ctrl+z. `bmlSelectedRows` is the lines a selection covers: an end at column 0 of a later line does not count
+     that line (a selected line ends there). */
+  function bmlSelectedRows(editor) {
+    var a = editor.plaintext.selectionStart, b = editor.plaintext.selectionEnd;
+    if (!a || !b) return null;
+    var first = Math.min(a[0], b[0]), last = Math.max(a[0], b[0]);
+    var endsAt = (b[0] > a[0] || (b[0] === a[0] && b[1] >= a[1])) ? b : a;
+    if (last > first && endsAt[0] === last && endsAt[1] === 0) last -= 1;
+    return [first, last];
+  }
+
+  function bmlSelectLine(editor) {
+    var rows = bmlSelectedRows(editor);
+    if (!rows) return false;
+    var p = editor.plaintext, a = p.selectionStart, b = p.selectionEnd;
+    var whole = a[1] === 0 && b[0] === rows[1] + 1 && b[1] === 0;
+    var last = whole ? rows[1] + 1 : rows[1];
+    if (last + 1 < p.lines) bmlSelect(editor, rows[0], 0, last + 1, 0);
+    else bmlSelect(editor, rows[0], 0, last, (bmlLineText(editor.children[last]) || "").length);
+    return true;
+  }
+
+  function bmlDeleteLines(editor) {
+    var rows = bmlSelectedRows(editor);
+    if (!rows) return false;
+    var p = editor.plaintext, lines = editor.children, n = p.lines;
+    var first = rows[0], last = rows[1];
+    var ok = p.update(function (tctx) {
+      if (last + 1 < n) {
+        tctx.deleteRange(lines[first].firstChild || lines[first], 0, lines[last + 1].firstChild || lines[last + 1], 0);
+      } else if (first > 0) {
+        var prev = lines[first - 1], prevText = bmlLineText(prev) || "";
+        var lastText = bmlLineText(lines[last]) || "";
+        tctx.deleteRange(prev.firstChild || prev, prevText.length, lines[last].firstChild || lines[last], lastText.length);
+      } else {
+        for (var r = last; r >= first; r--) if (lines[r].firstChild) tctx.setText(lines[r].firstChild, "");
+      }
+      return true;
+    });
+    var row = Math.min(first, p.lines - 1);
+    p.selectRange(row, 0, row, 0);
+    return ok;
+  }
+
+  function bmlMoveLines(editor, up) {
+    var rows = bmlSelectedRows(editor);
+    if (!rows) return false;
+    var p = editor.plaintext, lines = editor.children;
+    var first = rows[0], last = rows[1];
+    if (up ? first === 0 : last >= p.lines - 1) return true; // at the edge: nowhere to go, the key is still ours
+    var lo = up ? first - 1 : first, hi = up ? last : last + 1, texts = [];
+    for (var r = lo; r <= hi; r++) texts.push(bmlLineText(lines[r]) || "");
+    var moved = up ? texts.slice(1).concat([texts[0]]) : [texts[texts.length - 1]].concat(texts.slice(0, -1));
+    var a = p.selectionStart, b = p.selectionEnd, d = up ? -1 : 1;
+    var ok = p.update(function (tctx) {
+      for (var k = 0; k < moved.length; k++) {
+        var node = lines[lo + k].firstChild;
+        if (node) tctx.setText(node, moved[k]);
+      }
+      return true;
+    });
+    if (a[0] === b[0] && a[1] === b[1]) p.selectRange(a[0] + d, a[1], a[0] + d, a[1]);
+    else bmlSelect(editor, a[0] + d, a[1], b[0] + d, b[1]);
+    return ok;
+  }
+
+  function bmlToggleComment(editor) {
+    var rows = bmlSelectedRows(editor);
+    if (!rows) return false;
+    var p = editor.plaintext, lines = editor.children, all = true, any = false;
+    for (var r = rows[0]; r <= rows[1]; r++) {
+      var t = bmlLineText(lines[r]) || "";
+      if (!t.trim().length) continue;
+      any = true;
+      if (t.indexOf("//") !== 0) all = false;
+    }
+    if (!any) all = false;
+    var a = p.selectionStart, delta = 0;
+    var ok = p.update(function (tctx) {
+      for (var r = rows[0]; r <= rows[1]; r++) {
+        var el = lines[r], t = bmlLineText(el) || "", out = t;
+        if (all) out = t.indexOf("// ") === 0 ? t.slice(3) : t.indexOf("//") === 0 ? t.slice(2) : t;
+        else if (t.trim().length) out = "// " + t;
+        if (r === a[0]) delta = out.length - t.length;
+        if (out !== t && el.firstChild) tctx.setText(el.firstChild, out);
+      }
+      return true;
+    });
+    var col = Math.max(0, a[1] + delta);
+    p.selectRange(a[0], col, a[0], col);
+    return ok;
+  }
+
   var bmlSwallowChar = false; // a taken key's character is still to come (the keypress listener below)
   var wbSwallowed = 0; // how many it swallowed: the test's evidence
 
@@ -1918,6 +3070,16 @@
     var editor = document.$(sel);
     if (!editor) return;
     editor.addEventListener("keydown", function (event) {
+      // A LETTER (or `-`, `'`) asks for a completion once it is in the text - from here, the capture phase,
+      // because the `keyup` listener that used to ask was never heard in the real window (reported 2026-10-28:
+      // "Leb" offered nothing). The timeout lets the widget type the letter first.
+      if (sel === "#bml-text" && !event.ctrlKey && !event.altKey && /^Key[A-Z]$|^Minus$|^Quote$/.test(event.code)) {
+        setTimeout(function () {
+          var offered = "";
+          try { offered = bmlSuggest(editor); } catch (x) { offered = "error " + x; }
+          if (wbKeyLogOn) console.log("wb-complete " + wbCaretText(editor) + " -> " + (offered || "nothing") + " (" + bmlLexicon.length + " terms)");
+        }, 0);
+      }
       // Tab / shift+tab / enter, unmodified otherwise: ctrl+tab is the view switch, and ctrl+enter `make quiz`.
       var indentKey = (event.code === "Tab" || event.code === "Enter" || event.code === "NumpadEnter") &&
                       !event.ctrlKey && !event.altKey && !(event.shiftKey && event.code !== "Tab");
@@ -1965,6 +3127,18 @@
         }
         return spaced;
       }
+      // TAB in a table: the next cell, the columns lined up (`bmlTableTab`) - before the indent keys.
+      if (sel === "#bml-text" && event.code === "Tab" && !event.ctrlKey && !event.altKey) {
+        var tabbed = false;
+        try { tabbed = bmlTableTab(editor, event.shiftKey); } catch (x) { tabbed = false; }
+        if (tabbed) {
+          wbTableTabs += 1;
+          bmlSwallowChar = true; // and the character the key would type (see bmlSwallowChar)
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
+      }
       if (indentKey) {
         var took = false;
         try { took = bmlIndentKey(editor, event.code, event.shiftKey); } catch (x) { took = false; }
@@ -1975,6 +3149,51 @@
           event.stopPropagation();
         }
         return took;
+      }
+      // BACKSPACE in an indent: back a level of the block above (`bmlDedentBack`).
+      if (sel === "#bml-text" && event.code === "Backspace" && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        var dedented = false;
+        try { dedented = bmlDedentBack(editor); } catch (x) { dedented = false; }
+        if (dedented) {
+          wbDedents += 1;
+          bmlSwallowChar = true; // and the character the key would type (see bmlSwallowChar)
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
+      }
+      // THE LINE KEYS (`bmlSelectLine` and the rest) and F3 for the find bar's next / previous.
+      if (sel === "#bml-text") {
+        var line = null;
+        if (event.ctrlKey && !event.altKey && !event.shiftKey && event.code === "KeyL") line = bmlSelectLine;
+        else if (event.ctrlKey && event.shiftKey && !event.altKey && event.code === "KeyK") line = bmlDeleteLines;
+        else if (event.altKey && !event.ctrlKey && event.code === "ArrowUp") line = function (e) { return bmlMoveLines(e, true); };
+        else if (event.altKey && !event.ctrlKey && event.code === "ArrowDown") line = function (e) { return bmlMoveLines(e, false); };
+        else if (event.ctrlKey && !event.altKey && (event.code === "Slash" || event.code === "NumpadDivide")) line = bmlToggleComment;
+        else if (event.code === "F3" && !event.ctrlKey && !event.altKey) line = function () { return bmlFindStep(event.shiftKey ? -1 : 1); };
+        if (line) {
+          var lined = false;
+          try { lined = line(editor); } catch (x) { lined = false; }
+          if (lined) {
+            wbLineKeys += 1;
+            bmlSwallowChar = true; // and any character the key would type
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          }
+        }
+      }
+      // CTRL+LEFT / CTRL+RIGHT: word movement of our own (`bmlWordMove`) - the engine's stuck at column 1 of
+      // `S: Qxx ...`, between a one-letter word and its colon, and never reached the line above (reported).
+      if ((event.code === "ArrowLeft" || event.code === "ArrowRight") && event.ctrlKey && !event.altKey) {
+        var moved = false;
+        try { moved = bmlWordMove(editor, event.code === "ArrowLeft", event.shiftKey); } catch (x) { moved = false; }
+        if (moved) {
+          wbWordMoves += 1;
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
       }
       var ours = event.code === "Backspace" && event.ctrlKey && !event.altKey && !event.shiftKey;
       if (wbKeyLogOn) {
@@ -2010,6 +3229,19 @@
       bmlSwallowChar = false;
       return false;
     }, { capture: true });
+    // THE CARET LINE follows the caret: after each key (held arrows repeat the key-down) and each click, a turn
+    // later, once the widget has moved the caret. In the CAPTURE phase on the editor itself: bubbling
+    // `document.on` listeners for these were never heard in the real window (reported 2026-10-29: the tint stayed
+    // on the line the caret started on) - the widget takes its keys and clicks at the element.
+    if (sel === "#bml-text") {
+      var caretLineLater = function () {
+        setTimeout(function () { bmlCaretLine(editor); }, 0);
+        return false;
+      };
+      ["keydown", "keyup", "mousedown", "mouseup", "focus"].forEach(function (type) {
+        editor.addEventListener(type, caretLineLater, { capture: true });
+      });
+    }
   });
 
   document.on("mouseup", "#bml-text, #scn-text", function () {
@@ -2216,6 +3448,26 @@
   // reported. Posted, so the host saves after the zoom has landed.
   function wbZoomed(name) {
     document.postEvent(new Event(name, { bubbles: true }));
+  }
+
+  // NOTES FINE TUNING's colour inputs (notes_look.odin): a change tells the host, which reads the colour and
+  // remembers it. A turn later, because the input's `change` can fire before its new value has landed (measured:
+  // the handler read the old colour).
+  document.on("change", "input.tune-pick", function (evt, input) {
+    setTimeout(function () {
+      wbTuneSwatch(input);
+      input.postEvent(new Event("wb-tune", { bubbles: true }));
+    }, 0);
+  });
+
+  // ONE square per colour, not two. The input draws a swatch on its left and its picker button on its right, and
+  // an empty swatch is a grey square that reads as a second button (reported). The stylesheet hides the swatch;
+  // this paints the BUTTON with the colour instead, so the one square both shows the colour and opens the picker.
+  function wbTuneSwatch(input) {
+    var swatch = input.$("span");
+    if (swatch) swatch.style.display = "none"; // a stylesheet rule does not reach inside the input (measured)
+    var button = input.$("button");
+    if (button) button.style.backgroundColor = input.value ? String(input.value) : "";
   }
 
   function wbSetPageZoom(factor) {

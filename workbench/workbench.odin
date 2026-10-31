@@ -89,6 +89,7 @@ HEADING :: uintptr(11) // a heading in the notes preview was clicked; go to it (
 LINKED_FILE :: uintptr(12) // a link in the notes preview names another notes file; open it (`on_preview_click`)
 UPDATE :: uintptr(13) // the About panel's release check answered; the sentence is in `App.update_text`
 ANALYSE_PART :: uintptr(14) // lparam = thousandths of the board under way, while its make-chance layouts are solved
+GUIDE_INSERT :: uintptr(15) // an example's `insert` in the BML guide was clicked; write it at the caret (`guide_insert`)
 
 Job_Kind :: enum {
 	Generate,
@@ -227,6 +228,10 @@ App :: struct {
 	previewed:          bool,
 	// Settings changed how the notes look while the preview was hidden: re-render it when it is next shown.
 	notes_look_stale:   bool,
+	// A profile action waiting for its second click (`profile_guard`, notes_look.odin): `save:<name>`,
+	// `delete:<name>` or `load:<name>`, in a buffer of its own so nothing has to be freed.
+	profile_armed:      [96]u8,
+	profile_armed_len:  int,
 	docs:               string,
 	notes_found:        string, // the notes folder found at startup: always first in the folders list (`notes_dirs.odin`)
 	bml_names:          []string,
@@ -249,6 +254,11 @@ App :: struct {
 	// links to headings in its sibling files on purpose, so on one chapter the check is mostly noise. On
 	// `bidding-system.bml`, which includes them all, every warning it raises is a real broken link.
 	bml_links:          bool,
+	// The BML guide in the preview pane instead of the notes (`notes_guide.odin`): on, loaded into the frame,
+	// and which example's `insert` was clicked.
+	bml_guide:          bool,
+	bml_guide_loaded:   bool,
+	guide_insert:       int,
 	// How much of the notes the preview shows, and whether the pane is up at all. `bml_scope` is per FILE
 	// (see `scope_for_file`): remembered if it was chosen, otherwise decided by the document's size.
 	bml_scope:          Preview_Scope,
@@ -759,6 +769,9 @@ on_posted :: proc(handler: ^sa.Host_Handler, posted: sa.Posted) {
 
 	case LINKED_FILE:
 		switch_bml_file(app, app.preview_clicked)
+
+	case GUIDE_INSERT:
+		guide_insert(app)
 
 	case LIVE:
 		// The only message that does not come from a worker thread. It comes from the frame`s TIMER handler,
@@ -2002,6 +2015,14 @@ show_view :: proc(app: ^App, view: View) {
 	if view == .Panes && app.hand_look_stale {
 		app.hand_look_stale = false
 		reshow_page_for_look(app)
+	}
+	// A notes look chosen in Settings since the preview last rendered: it re-renders now it can be seen. HERE,
+	// not in `show_editor`: closing Settings goes straight back to the view underneath, and the preview was left
+	// in the old look until something else re-rendered it (reported).
+	if view == .Editor && app.notes_look_stale && app.bml_showing {
+		app.notes_look_stale = false
+		_, why := preview_bml(app)
+		bml_status(app, why)
 	}
 	if view in app.theme_stale {
 		app.theme_stale -= {view}
@@ -3263,12 +3284,6 @@ show_editor :: proc(app: ^App) {
 			return
 		}
 	}
-	// A look chosen in Settings since the preview last rendered: it re-renders now it can be seen.
-	if app.notes_look_stale && app.bml_showing {
-		app.notes_look_stale = false
-		_, why := preview_bml(app)
-		bml_status(app, why)
-	}
 	// And the source pane takes the FOCUS. Without it the view opens with the text on screen and nothing in
 	// the window holding the caret, which is a pane that answers no keystroke until it is clicked — read,
 	// reasonably, as a viewer rather than an editor. The engine only paints a caret in a focused widget.
@@ -3497,6 +3512,9 @@ preview_bml :: proc(app: ^App) -> (ok: bool, why: string) {
 	}
 	app.bml_rendering = true
 	defer app.bml_rendering = false
+	if app.bml_guide {
+		return show_guide(app)
+	}
 	started := time.tick_now()
 
 	source, got := bml_source(app, context.temp_allocator)
@@ -3544,6 +3562,24 @@ preview_bml :: proc(app: ^App) -> (ok: bool, why: string) {
 	}
 
 	page := preview_document(app, html, section, context.temp_allocator)
+	// What this render held, for a preview that looks wrong only in the real window (2026-10-27: a diagram
+	// missing under a list). Opt-in with the scroll log's `WORKBENCH_SCROLL_LOG=1`, to the console.
+	if app.scroll_log_on {
+		kinds := strings.builder_make(context.temp_allocator)
+		for block in doc.blocks {
+			fmt.sbprintf(&kinds, "%v ", block.kind)
+		}
+		log.infof(
+			"preview render: %d bytes of source, caret row %d, section %d of %d, diagrams in html %d / in page %d, blocks: %s",
+			len(source),
+			caret_row(app),
+			section,
+			sections,
+			strings.count(html, "bml-diagram"),
+			strings.count(page, "bml-diagram"),
+			strings.to_string(kinds),
+		)
+	}
 	if !show_preview_html(app, page) {
 		return false, "the preview could not be loaded into the frame"
 	}
@@ -3894,14 +3930,8 @@ dialog_script :: proc(call: string, caption: string, path: string, save := false
 // inlined instead. `bml.css` is ~6.6 KB, well under the 32 KiB an inline `<style>` is capped at in this
 // engine — and past that cap the WHOLE block is discarded, first rule included, so the number matters.
 preview_document :: proc(app: ^App, html: string, section := -1, allocator := context.allocator) -> string {
-	css := ""
-	if app.docs != "" {
-		if path, jerr := filepath.join({app.docs, "bml.css"}, context.temp_allocator); jerr == nil {
-			if data, err := os.read_entire_file_from_path(path, context.temp_allocator); err == nil {
-				css = string(data)
-			}
-		}
-	}
+	css := notes_css(app) // the folder's, else the bundled one
+	own := own_stylesheets(app.docs, html, context.temp_allocator) // `#+CSS:` sheets, read before their links go
 	stripped := strip_link_tags(html, context.temp_allocator)
 	head := strings.index(stripped, "<head>")
 	if head < 0 { 	// no head to put a stylesheet in: hand back the markup rather than mangling it
@@ -3914,6 +3944,7 @@ preview_document :: proc(app: ^App, html: string, section := -1, allocator := co
 	strings.write_string(&b, strip_width_media_blocks(css, context.temp_allocator))
 	strings.write_string(&b, "</style>")
 	strings.write_string(&b, notes_look_css(notes_look(&app.prefs), context.temp_allocator)) // after the sheet: it wins
+	strings.write_string(&b, strip_width_media_blocks(own, context.temp_allocator)) // the author's own, after both
 	strings.write_string(&b, preview_override_css(css, context.temp_allocator))
 
 	/*
@@ -3954,13 +3985,24 @@ preview_document :: proc(app: ^App, html: string, section := -1, allocator := co
 //
 // The column stays a column: `max-width` still caps the body, so the preview keeps the shape the published
 // page has, on cream that now reaches both edges.
+// A `#BOX` side by side. The sheet lays it out as a row of two `table-cell` divs, which a browser draws side
+// by side and this engine stacks (seen 2026-10-27); its own way is a horizontal flow, the text column taking
+// the width that is left.
+PREVIEW_BOX_CSS :: " div.bml-box { display: block; flow: horizontal; } div.bml-box-side, div.bml-box-text { display: block; } div.bml-box-text { width: *; }"
+
+// The page's `.nav-links`, a link to every top heading, written after the body. A wide browser window pins it
+// as a sidebar and a narrow one hides it, both from width `@media` blocks the preview has to strip; without
+// them it falls to the bottom of the page as a second, confusing list of links. The preview has its own way
+// to a heading (the go-to box), so it goes, and the single `Top` link stays.
+PREVIEW_NAV_CSS :: " .nav-links { display: none; }"
+
 preview_override_css :: proc(css: string, allocator := context.allocator) -> string {
 	background := preview_page_background(css)
 	if background == "" {
 		// Nothing to mirror: fill the body instead, so a sheet with no page colour of its own at least has
 		// no white gutters where its text is.
-		return strings.clone(
-			"<style>html { size: *; } body { size: *; max-width: none; } h1, h2, h3, h4 { cursor: pointer; }</style>",
+		return strings.concatenate(
+			{"<style>html { size: *; } body { size: *; max-width: none; } h1, h2, h3, h4 { cursor: pointer; }", PREVIEW_BOX_CSS, PREVIEW_NAV_CSS, "</style>"},
 			allocator,
 		)
 	}
@@ -3975,7 +4017,10 @@ preview_override_css :: proc(css: string, allocator := context.allocator) -> str
 			background,
 			"; } body { size: *; } .wb-folded { color: #8a8a8a; margin: 2px 0 10px 0; }",
 			// A heading is clickable (`on_preview_click`): it says so with the pointer.
-			" h1, h2, h3, h4 { cursor: pointer; }</style>",
+			" h1, h2, h3, h4 { cursor: pointer; }",
+			PREVIEW_BOX_CSS,
+			PREVIEW_NAV_CSS,
+			"</style>",
 		},
 		allocator,
 	)
@@ -4156,7 +4201,10 @@ bml_source :: proc(app: ^App, allocator := context.allocator) -> (text: string, 
 		}
 		line, terr := sa.text(child, context.temp_allocator)
 		if terr == nil {
-			strings.write_string(&b, line)
+			// Never a NUL: the engine has left them in a line for deleted text (2026-10-27), and saved, they
+			// made "blank" lines that were not blank - a list ran on through two of them and took a diagram.
+			clean, _ := strings.remove_all(line, "\x00", context.temp_allocator)
+			strings.write_string(&b, clean)
 		}
 	}
 	return strings.to_string(b), true
@@ -4388,8 +4436,8 @@ switch_bml_file :: proc(app: ^App, name: string, repreview := true) {
 // CTRL+R in the notes view, then type. This is Sublime Text's `goto symbol` and the muscle memory is the
 // reason for the key: the notes ARE the symbols of this repository, and the way anyone refers to a place in
 // them is by heading ("Lebensohl", "2NT rebid") rather than by a file and a line. CTRL+F was refused for
-// the obvious reason - it means "find text" everywhere - and so was CTRL+O, which means "open" and would be
-// a lie for something that never opens a dialog.
+// the obvious reason - it means "find text" everywhere. CTRL+O is the same palette over FILES (`file_rows`):
+// it opens one, which is what the key means.
 //
 // It searches the WHOLE corpus rather than the open file, which is what a file list cannot do: the folder's
 // other chapters are where half the destinations are, and the row says which file each one is in. The open
@@ -4431,11 +4479,14 @@ toggle_goto :: proc(app: ^App, mode := Goto_Mode.Jump, typed := false) {
 	if mode == .Insert {
 		free_goto_index(app)
 		app.goto_all = snippet_rows(app.allocator)
+	} else if mode == .File {
+		free_goto_index(app)
+		app.goto_all = file_rows(app, app.allocator)
 	} else {
 		build_goto_index(app)
 	}
 	if len(app.goto_all) == 0 {
-		bml_status(app, "no headings in this folder's .bml files")
+		bml_status(app, "no .bml files in the notes folders" if mode == .File else "no headings in this folder's .bml files")
 		return
 	}
 	app.goto_open = true
@@ -4450,9 +4501,24 @@ toggle_goto :: proc(app: ^App, mode := Goto_Mode.Jump, typed := false) {
 			placeholder = "link to heading — type part of its name, enter writes the link at the caret, esc to close"
 		case .Insert:
 			placeholder = "insert — cut, paste, vul, seat, hide, include, list, bold … enter writes it at the caret"
+		case .File:
+			placeholder = "open a file — type part of its name, enter opens it (another folder's too), esc to close"
 		}
 		_ = sa.set_attribute(input, "placeholder", placeholder)
 	}
+	// The mode, in words in front of the field: the four share one list, and only this says what enter will do
+	// (reported: ctrl+k "seems to do the same as ctrl+r" - it does list the same headings, and writes a link).
+	mode_label := "go to"
+	switch mode {
+	case .Jump:
+	case .Link:
+		mode_label = "link"
+	case .Insert:
+		mode_label = "insert"
+	case .File:
+		mode_label = "open"
+	}
+	set_text_at(app, "#bml-goto-mode", mode_label)
 	draw_goto_list(app)
 	if input := find(app, "#bml-goto-input"); input != nil {
 		_ = sa.set_focus(input)
@@ -4464,7 +4530,31 @@ toggle_goto :: proc(app: ^App, mode := Goto_Mode.Jump, typed := false) {
 		bml_status(app, fmt.tprintf("link to heading - %d in %d files", len(app.goto_all), len(app.bml_names)))
 	case .Insert:
 		bml_status(app, "insert a BML construct at the caret")
+	case .File:
+		bml_status(app, fmt.tprintf("open a file - %d in %d folders", len(app.goto_all), len(notes_dirs(app))))
 	}
+}
+
+/*
+The open-file palette's rows: every `.bml` file in every notes folder (`notes_dirs`), the open folder's first.
+A row is an `outline.Heading` so the palette's ranking and keys serve it unchanged: `text` is the file's name
+(what is matched), `file` the FOLDER it is in - and the open folder is what `draw_goto_list` passes as the
+active one, so its files get the ranking's same-file bonus and lead the list.
+*/
+file_rows :: proc(app: ^App, allocator := context.allocator) -> []outline.Heading {
+	rows := make([dynamic]outline.Heading, 0, 64, context.temp_allocator)
+	dirs := notes_dirs(app)
+	for open_first in ([]bool{true, false}) {
+		for dir in dirs {
+			if same_dir(dir, app.docs) != open_first || !os.is_dir(dir) {
+				continue
+			}
+			for name, order in list_bml_files(dir, context.temp_allocator) {
+				append(&rows, outline.Heading{file = dir, text = name, level = 1, order = order})
+			}
+		}
+	}
+	return outline.clone_headings(rows[:], allocator)
 }
 
 // Close it, and hand the keyboard back to the SOURCE rather than to whatever had it before: the palette is
@@ -4534,7 +4624,12 @@ free_goto_index :: proc(app: ^App) {
 // The strings are borrowed from `goto_all`, which outlives the list, so only the slice is owned here.
 draw_goto_list :: proc(app: ^App) {
 	query := read_text(app, "#bml-goto-input")
-	ranked := outline.rank(app.goto_all, query, app.bml_open, GOTO_ROWS, context.temp_allocator)
+	// The insert list is a MENU, not a search over a thousand headings: every construct is offered (the list
+	// scrolls), since one cut off below row twelve is one nobody knows is there.
+	limit := len(app.goto_all) if app.goto_mode == .Insert else GOTO_ROWS
+	// For files, the "active" one is the open FOLDER (`file_rows` puts the folder in `file`).
+	active := app.docs if app.goto_mode == .File else app.bml_open
+	ranked := outline.rank(app.goto_all, query, active, limit, context.temp_allocator)
 
 	if app.goto_rows != nil {
 		delete(app.goto_rows, app.allocator)
@@ -4551,10 +4646,32 @@ draw_goto_list :: proc(app: ^App) {
 		return
 	}
 	if len(rows) == 0 {
-		sa.set_html(list, `<div class="empty">no heading matches</div>`)
+		sa.set_html(list, `<div class="empty">no file matches</div>` if app.goto_mode == .File else `<div class="empty">no heading matches</div>`)
 		return
 	}
 	b := strings.builder_make(context.temp_allocator)
+	if app.goto_mode == .File {
+		// A file: its name, the open one marked, and its folder - "this folder", or the other folder's name.
+		for entry, i in rows {
+			here := same_dir(entry.file, app.docs)
+			folder := "this folder" if here else filepath.base(strings.trim_right(entry.file, "/\\"))
+			fmt.sbprintf(
+				&b,
+				`<div class="%s" data-goto="%d"><span class="depth">%s</span><span class="name">%s</span><span class="where" title="%s">%s</span></div>`,
+				"hit sel" if i == app.goto_sel else "hit",
+				i,
+				"•" if here && entry.text == app.bml_open else "",
+				escape_html(entry.text, context.temp_allocator),
+				escape_html(entry.file, context.temp_allocator),
+				escape_html(folder, context.temp_allocator),
+			)
+		}
+		sa.set_html(list, strings.to_string(b))
+		if row := find(app, fmt.tprintf(`#bml-goto-list .hit[data-goto="%d"]`, app.goto_sel)); row != nil {
+			_ = sa.scroll_to_view(row)
+		}
+		return
+	}
 	for entry, i in rows {
 		// The LEVEL as leading dots, so the shape of the outline survives into a flat list: `2N rebid`
 		// under `Responses` under `1C opening` reads as a place rather than as three unrelated names.
@@ -4573,6 +4690,11 @@ draw_goto_list :: proc(app: ^App) {
 		)
 	}
 	sa.set_html(list, strings.to_string(b))
+	// The list is taller than its box (the insert list's 23 constructs), and `set_html` puts the scroll back at
+	// the top: the arrows would walk the highlight off the bottom, out of sight. `select_scenario`'s answer.
+	if row := find(app, fmt.tprintf(`#bml-goto-list .hit[data-goto="%d"]`, app.goto_sel)); row != nil {
+		_ = sa.scroll_to_view(row)
+	}
 }
 
 // Move the highlight, wrapping at both ends: a twelve-row list is a ring, and hitting a wall on a key you
@@ -4598,11 +4720,41 @@ jump_to_goto :: proc(app: ^App) {
 		return
 	}
 	target := app.goto_rows[clamp(app.goto_sel, 0, len(app.goto_rows) - 1)]
+	if app.goto_mode == .File {
+		open_from_palette(app, target)
+		return
+	}
 	if app.goto_mode != .Jump {
 		write_from_palette(app, target)
 		return
 	}
 	go_to_heading(app, target)
+}
+
+/*
+Open the file a row names: in another folder, that folder first (`switch_notes_dir`). Either step can be
+REFUSED over unsaved text, and then the palette stays up - the status line says to save or press enter again,
+as it does for a heading in another file. The row's strings are copied first: opening a folder frees the
+palette's rows.
+*/
+open_from_palette :: proc(app: ^App, target: outline.Heading) {
+	dir := strings.clone(target.file, context.temp_allocator)
+	name := strings.clone(target.text, context.temp_allocator)
+	if !same_dir(dir, app.docs) {
+		switch_notes_dir(app, dir)
+		if !same_dir(dir, app.docs) {
+			return // refused: unsaved changes
+		}
+		app.bml_armed = false // the folder's guard was the one warning; the file is in the folder just opened
+	}
+	if name != app.bml_open {
+		switch_bml_file(app, name)
+		if name != app.bml_open {
+			return
+		}
+	}
+	close_goto(app)
+	bml_status(app, fmt.tprintf("%s - %s", name, dir))
 }
 
 // The caret to a heading, loading its chapter first if it is another one; then the preview, if it is up,
@@ -5109,7 +5261,7 @@ on_preview_click :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		return false
 	}
 	heading, rank, found := clicked_heading(me.target)
-	if !found {
+	if !found || app.bml_guide { 	// a heading in the guide is an example's, not one in the notes
 		return false
 	}
 	id, _ := sa.attribute(heading, "id", context.temp_allocator)
@@ -5139,6 +5291,16 @@ follow_preview_link :: proc(app: ^App, link: sa.Element) -> bool {
 	href = strings.trim_space(href)
 	if href == "" || strings.has_prefix(href, "#") {
 		return false
+	}
+	// The guide's `insert` (`notes_guide.odin`): posted, since writing to the editor from inside the frame's
+	// click would run the page script under the engine's dispatch.
+	if strings.has_prefix(href, "wbinsert:") {
+		index, parsed := strconv.parse_int(href[len("wbinsert:"):])
+		if parsed {
+			app.guide_insert = index
+			sa.post_callback(app.window, GUIDE_INSERT)
+		}
+		return true
 	}
 	if strings.contains(href, "://") || strings.has_prefix(href, "mailto:") {
 		open_in_browser(href)
@@ -5463,6 +5625,42 @@ next_pane_mode :: proc(mode: Pane_Mode, back: bool) -> Pane_Mode {
 }
 
 /*
+TAB in the notes or scenario editor, claimed on its way DOWN and handed to the page script (`wbEditorTab`):
+the completion, a table's next cell, or the indent. The editors' own keydown listener does the same, but in
+the real window the engine's focus navigation takes TAB before that listener hears it - the completion was
+offered and tab wrote nothing (reported 2026-10-28), a gap the tests could not see because they sent the key
+to the editor itself. CTRL and ALT are left alone: CTRL+TAB is the view switch.
+*/
+editor_tab_key :: proc(app: ^App, target: sa.Element, key_code: u32, modifiers: sciter.Keyboard_States) -> bool {
+	if sciter.Sc_Kb_Codes(key_code) != .TAB {
+		return false
+	}
+	if (sciter.KEYBOARD_STATE_CONTROL | sciter.KEYBOARD_STATE_ALT) & modifiers != {} {
+		return false
+	}
+	// Which editor the key is aimed at: the target or one of its ancestors (a line of the plaintext is its child).
+	editor := ""
+	for at, depth := target, 0; at != nil && depth < 6 && editor == ""; depth += 1 {
+		if id, _ := sa.attribute(at, "id", context.temp_allocator); id == "bml-text" || id == "scn-text" {
+			editor = id
+		}
+		at = sa.parent(at) or_else nil
+	}
+	if editor == "" {
+		return false
+	}
+	shift := sciter.KEYBOARD_STATE_SHIFT & modifiers != {}
+	script := fmt.tprintf(`wbEditorTab("#%s", %v)`, editor, shift)
+	result, err := sa.eval(app.window, script)
+	defer sa.value_clear(&result)
+	if err != nil {
+		return false
+	}
+	taken, _ := sa.value_to_bool(&result)
+	return taken
+}
+
+/*
 The palette's keys. Reported like `zoom_key` so the caller can leave everything else alone.
 
 INTERCEPTED AT THE SINKING PHASE by the caller, which is the whole trick: the query is typed into an
@@ -5476,16 +5674,43 @@ goto_key :: proc(app: ^App, key_code: u32, modifiers: sciter.Keyboard_States) ->
 		if current_view(app) != .Editor {
 			return false
 		}
-		// CTRL+L a LINK to a heading, CTRL+I INSERT a construct (`notes_insert.odin`): the same palette, writing.
+		// CTRL+K a LINK to a heading, CTRL+I INSERT a construct (`notes_insert.odin`): the same palette, writing.
+		// K, not L: CTRL+L is the editor's select-line, as in Sublime Text (the page script's).
 		#partial switch sciter.Sc_Kb_Codes(key_code) {
 		case .R:
 			toggle_goto(app)
 			return true
-		case .L:
+		case .K:
+			if sciter.KEYBOARD_STATE_SHIFT & modifiers != {} {
+				return false // ctrl+shift+k is the editor's delete-line
+			}
 			toggle_goto(app, .Link)
+			return true
+		case .F, .H:
+			// FIND (and REPLACE): the page script's bar. Claimed here so it also works from inside its fields.
+			close_goto(app, refocus = false)
+			script := "bmlFindOpen(true)" if sciter.Sc_Kb_Codes(key_code) == .H else "bmlFindOpen(false)"
+			if result, err := sa.eval(app.window, script); err == nil {
+				sa.value_clear(&result)
+			}
 			return true
 		case .I:
 			toggle_goto(app, .Insert)
+			return true
+		case .G:
+			// The BML GUIDE in the preview, or back to the notes (`notes_guide.odin`). Ctrl+G is the deals
+			// view's groups key too; this one is only the notes view's.
+			toggle_guide(app)
+			return true
+		case .O:
+			// CTRL+O OPENS A FILE by name (the palette, over every notes folder); SHIFT adds a FOLDER, by
+			// dialog. Here rather than with the editor's other keys so it also works from inside the palette.
+			if sciter.KEYBOARD_STATE_SHIFT & modifiers != {} {
+				close_goto(app)
+				choose_bml_folder(app)
+			} else {
+				toggle_goto(app, .File)
+			}
 			return true
 		}
 		return false
@@ -6999,8 +7224,13 @@ window_shortcut_key :: proc(app: ^App, key_code: u32, modifiers: sciter.Keyboard
 			}
 			return true
 		case .O:
-			// OPEN A FOLDER, in both editors. The deals view's CTRL+O is its formats; "open" either way.
-			choose_bml_folder(app)
+			// "OPEN", in both editors (the deals view's CTRL+O is its formats). The notes view's own is
+			// `goto_key`'s - a file by name, SHIFT a folder - which sees the key first; this is the fallback.
+			if shift {
+				choose_bml_folder(app)
+			} else {
+				toggle_goto(app, .File)
+			}
 			return true
 		}
 		return false
@@ -7874,6 +8104,9 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		if ke.code == .DOWN && ke.phase == .Sinking && goto_key(app, ke.key_code, ke.modifiers) {
 			return true
 		}
+		if ke.code == .DOWN && ke.phase == .Sinking && editor_tab_key(app, ke.target, ke.key_code, ke.modifiers) {
+			return true
+		}
 		// The scenario filter's keys, on the way down for exactly the same reason (see `scenario_filter_key`).
 		// After the palette's, not before: each claims the key in one view only and the two views are
 		// different, so the order is a formality — but the palette is the one with a modal state to get out
@@ -7966,6 +8199,9 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 			// The settings' quiz fields are remembered on the way out too: a path is typed or pasted whole.
 			remember_quiz_pref(app, id)
 			remember_share_pref(app, id)
+			if !remember_notes_tune(app, id) {
+				remember_tune(app, editor_tune_set(), id)
+			}
 		}
 		return false
 	}
@@ -7990,6 +8226,12 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 			factor := page_zoom_factor(app)
 			set_note(app, fmt.tprintf("hand page %d%%", int(factor * 100 + 0.5)))
 			remember_page_zoom(app, factor)
+			return true
+		case "wb-tune":
+			// A fine-tuning colour input changed (its script posts this once the value has landed).
+			if id, _ := sa.attribute(be.target, "id", context.temp_allocator); id != "" && !remember_notes_tune(app, id) {
+				remember_tune(app, editor_tune_set(), id)
+			}
 			return true
 		case "wb-link":
 			// `](#` typed in the notes source (the page script's keyup): the link palette, to finish it.
@@ -8051,6 +8293,60 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		choose_notes_complete(app, word)
 		return true
 	}
+	// A PROFILE button, of the notes look or of the editor: `data-<word>-profile-...` (`Profile_Set`).
+	for set in ([]Profile_Set{notes_profiles(), editor_profiles()}) {
+		note := "#prefs-profile-note" if set.word == "notes" else "#prefs-editor-profile-note"
+		attribute :: proc(be: sa.Behavior_Event, set: Profile_Set, action: string) -> string {
+			name := strings.concatenate({"data-", set.word, "-", action}, context.temp_allocator)
+			value, _ := sa.attribute(be.target, name, context.temp_allocator)
+			return value
+		}
+		if name := attribute(be, set, "profile-load"); name != "" {
+			set_text_at(app, note, load_profile(app, set, name))
+			return true
+		}
+		if attribute(be, set, "profile-builtin") != "" {
+			set_text_at(app, note, load_builtin_profile(app, set))
+			return true
+		}
+		if name := attribute(be, set, "profile-delete"); name != "" {
+			set_text_at(app, note, delete_profile(app, set, name))
+			return true
+		}
+		if name := attribute(be, set, "profile-restore"); name != "" {
+			set_text_at(app, note, restore_profile(app, set, name))
+			return true
+		}
+		if attribute(be, set, "trash-empty") != "" {
+			set_text_at(app, note, empty_profile_trash(app, set))
+			return true
+		}
+		if attribute(be, set, "profile-save") != "" {
+			field := "#prefs-profile-name" if set.word == "notes" else "#prefs-editor-profile-name"
+			said := save_profile(app, set, read_text(app, field))
+			set_text_at(app, note, said)
+			if strings.has_prefix(said, "saved") || strings.has_prefix(said, "replaced") {
+				set_input(app, field, "")
+			}
+			return true
+		}
+	}
+	if token, _ := sa.attribute(be.target, "data-editor-tune-reset", context.temp_allocator); token != "" {
+		reset_tune(app, editor_tune_set(), token)
+		return true
+	}
+	if word, _ := sa.attribute(be.target, "data-editor-caret-line", context.temp_allocator); word != "" {
+		choose_editor_caret_line(app, word == "on")
+		return true
+	}
+	if toggle, _ := sa.attribute(be.target, "data-notes-tune-toggle", context.temp_allocator); toggle != "" {
+		toggle_notes_tunes(app)
+		return true
+	}
+	if token, _ := sa.attribute(be.target, "data-notes-tune-reset", context.temp_allocator); token != "" {
+		reset_notes_tune(app, token)
+		return true
+	}
 	if word, _ := sa.attribute(be.target, "data-notes-built", context.temp_allocator); word != "" {
 		set_text_at(app, "#prefs-notes-note", set_built_pages_look(app, word == "on"))
 		draw_notes_look_prefs(app)
@@ -8070,7 +8366,7 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 			return true
 		}
 	}
-	for pair in ([][2]string{{"data-notes-page", NOTES_PAGE_PREF}, {"data-notes-font", NOTES_FONT_PREF}}) {
+	for pair in ([][2]string{{"data-notes-page", NOTES_PAGE_PREF}, {"data-notes-font", NOTES_FONT_PREF}, {"data-notes-bids", NOTES_BIDS_PREF}}) {
 		if word, _ := sa.attribute(be.target, pair[0], context.temp_allocator); word != "" {
 			choose_notes_look(app, pair[1], word)
 			return true
@@ -8308,6 +8604,10 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		}
 		return true
 
+	case "bml-guide":
+		toggle_guide(app)
+		return true
+
 	case "bml-links":
 		app.bml_links = !app.bml_links
 		mark_toggle(app, "#bml-links", app.bml_links)
@@ -8326,7 +8626,7 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		make_quiz(app)
 		return true
 
-	// The palette's three modes from the bar (CTRL+R / CTRL+L / CTRL+I from the keyboard).
+	// The palette's three modes from the source pane's head (CTRL+R / CTRL+K / CTRL+I from the keyboard).
 	case "bml-goto-open":
 		toggle_goto(app)
 		return true
@@ -8356,6 +8656,10 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 
 	case "bml-export-all":
 		export_notes_to_zip(app, all = true)
+		return true
+
+	case "bml-build":
+		build_notes(app)
 		return true
 
 	case "bml-save":

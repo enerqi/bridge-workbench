@@ -9,7 +9,8 @@ package main
 	reading the bid tables out of the editor's buffer (`quiz_corpus`, held auction for auction to the python
 	quiz over every file in the corpus), writing them as JSON into that slot, and saving the result.
 
-	THE QUIZ GROUP is in the source pane's head, after `save` - both act on the open file: `make quiz`
+	THE QUIZ GROUP is in the sidebar's "this document" group (the source pane's head until 2026-10-27, which
+	needed the room for the heading palette's buttons): `make quiz`
 	(`remake quiz` once a page exists), `↗ run` (in a browser) when a page exists, and a sentence saying whether this file has a
 	quiz page, how old it is, and whether the notes were saved after it.
 
@@ -165,7 +166,7 @@ stylesheet's other fonts.
 */
 quiz_notes_document :: proc(app: ^App, html: string, allocator := context.allocator) -> string {
 	look := notes_look_css(notes_look(&app.prefs), context.temp_allocator) // the look chosen in Settings
-	return standalone_notes_page(html, notes_css(app), look, allocator)
+	return standalone_notes_page(html, notes_css(app), look, app.docs, allocator)
 }
 
 // How many different meanings a corpus has to ask about (a row with no description cannot be asked).

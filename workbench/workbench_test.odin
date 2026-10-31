@@ -21,6 +21,7 @@ import "core:log"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -4136,6 +4137,97 @@ test_the_bml_editor_colours_what_it_loads :: proc(t: ^testing.T) {
 	testing.expect(t, marks >= 6, "every one of those lines carries at least one token to colour")
 }
 
+// WHAT each kind of line is marked with, token by token. `bmlTraceLine(row)` re-marks one line and hands back
+// its marks as `name from-to`, which is the only way to see them from here (a mark is no attribute).
+@(test)
+test_the_bml_editor_marks_each_kind_of_line :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.docs = ""
+
+	set_bml_source(
+		&app,
+		strings.join(
+			{
+				"// a comment = not a bid", // 0
+				"#+CAPTION: Hands {.wide}",
+				"#BOX tip Mind the gap",
+				"** Stayman over 1NT",
+				"N: AKxx Qxx Kxx Axx",
+				"W N E S", // 5
+				"1C (2D)* X P!",
+				"",
+				"1N = 15--17, *strong* NV",
+				"    2C = Stayman, see [x](#Puppet_Stayman)",
+				"        next = relay", // 10
+				"    2D = transfer",
+				"- a /list/ item",
+				"^1 the note",
+				"", // 14
+				"1C [Weak or Strong](#1C Weak Strong):",
+				"  [1D](#1C--1D) Negative 0--7",
+				"  3CD invitational ~7--9 hcp",
+				"3rd seat openings are lighter",
+				"2N [19--20 NT]", // 19
+				"X then shows a HCR.",
+				"Pass--(1H)--X--(2H)",
+			},
+			"\n",
+			context.temp_allocator,
+		),
+	)
+	pump(&app)
+	lexicon, lerr := sa.eval(app.window, `bmlSetLexicon('["Stayman", "Puppet Stayman", "forcing"]')`)
+	sa.value_clear(&lexicon)
+	testing.expect_value(t, lerr, nil)
+
+	Want :: struct {
+		row:   int,
+		marks: []string, // each must be among the line's marks
+		not:   []string, // and none of these (a prefix of a mark: a NAME, or a name and a start)
+	}
+	wants := []Want {
+		{0, {"bml-comment 0-24"}, {"bml-bid", "bml-op"}},
+		{1, {"bml-key 0-10", "bml-class 17-24"}, {}},
+		{2, {"bml-key 0-8"}, {}},
+		{3, {"bml-h2 0-19"}, {"bml-h1"}},
+		{4, {"bml-seat 0-2", "bml-hand 3-19"}, {}},
+		{5, {"bml-seat 0-1", "bml-seat 6-7"}, {}},
+		{6, {"bml-bid 0-2", "bml-opp 3-7", "bml-alert 7-8", "bml-bid 9-10", "bml-bid 11-12", "bml-alert 12-13"}, {}},
+		{8, {"bml-bid 0-2", "bml-op 3-4", "bml-num 5-11", "bml-strong 13-21", "bml-cond 22-24"}, {}},
+		// Depth 1 takes the second colour; a convention name, but not the one inside the link's target.
+		{9, {"bml-bid-odd 4-6", "bml-name 9-16", "bml-link 22-42"}, {"bml-u", "bml-name 3", "bml-name 2"}},
+		{10, {"bml-bid 8-12", "bml-pseudo 8-12"}, {}},
+		{11, {"bml-bid-odd 4-6"}, {}},
+		{12, {"bml-list 0-1", "bml-em 4-10"}, {}},
+		{13, {"bml-alert 0-2"}, {}},
+		// Bid rows with no `=`: the call is the first token, or a link whose label is a call.
+		{15, {"bml-bid 0-2", "bml-link 3-36"}, {}},
+		{16, {"bml-link 2-3", "bml-bid-odd 3-5", "bml-link 5-15", "bml-num 25-29"}, {"bml-link 2-15"}},
+		{17, {"bml-bid-odd 2-5"}, {}},
+		{18, {}, {"bml-bid"}},
+		{19, {"bml-bid 0-2"}, {}},
+		{20, {}, {"bml-bid"}},
+		{21, {"bml-bid 0-19"}, {}},
+	}
+	for want in wants {
+		result, err := sa.eval(app.window, fmt.tprintf("bmlTraceLine(%d)", want.row))
+		testing.expect_value(t, err, nil)
+		got, _ := sa.value_to_string(&result, context.temp_allocator)
+		sa.value_clear(&result)
+		marks := strings.split(got, ";", context.temp_allocator)
+		for name in want.marks {
+			testing.expectf(t, slice.contains(marks, name), "line %d: no %q in %q", want.row, name, got)
+		}
+		for name in want.not {
+			for mark in marks {
+				testing.expectf(t, !strings.has_prefix(mark, name), "line %d: %q should not be there: %q", want.row, mark, got)
+			}
+		}
+	}
+}
+
 // A save must give the file back BYTE FOR BYTE when nothing was edited. That is not a tautology here: the
 // widget hands its content back as `\n` with no trailing newline, and the corpus is CRLF with one — so a
 // round trip that did not restore both would rewrite every line of every file anyone opened.
@@ -4204,6 +4296,184 @@ test_the_bml_preview_renders_the_buffer :: proc(t: ^testing.T) {
 	// a heading would still be there if the bid-table path had produced nothing.
 	_, table := preview_selection(&app, "div.bidtable")
 	testing.expect(t, table, "the preview has no bid table")
+}
+
+// THE GUIDE'S EXAMPLES ARE GOOD BML: each parses with no problem reported and draws something, and each draws
+// what it is there to show - the guide is rendered at run time, so this is what holds it to the renderer.
+@(test)
+test_the_guide_examples_render :: proc(t: ^testing.T) {
+	wants := [][2]string {
+		{"headings", `<h2 id="One_of_a_major">`},
+		{"text styles", `<u>forcing</u>`},
+		{"bid table", `<div class="bidtable">`},
+		{"a longer meaning", `<div class="descRow">`},
+		{"bullet list", `<ul><li>`},
+		{"numbered list", `<ol><li>`},
+		{"description list", `<dl class="bml-desc">`},
+		{"table", `<table class="bml-table">`},
+		{"auction", `<table class="bml-auction">`},
+		{"auction with notes", `<div class="bml-auction-notes">`},
+		{"deal diagram", `<div class="bml-diagram">`},
+		{"caption", `<div class="bml-caption">`},
+		{"side by side", `<div class="bml-box"><div class="bml-box-side">`},
+		{"callout", `<div class="bml-callout bml-warning"><div class="bml-callout-head"><span class="bml-callout-label">Warning</span>`},
+		{"links", `href="https://github.com/enerqi/bml"`},
+		{"cut and paste", `transfer`},
+		{"competitive bid table", `<div class="bidtable">`},
+		{"seat and vulnerability", `<span class="bml-cond">passed hand</span>`},
+	}
+	examples := GUIDE_EXAMPLES
+	for example in examples {
+		doc := bml.parse(example.source)
+		testing.expectf(t, len(doc.diagnostics) == 0, "%s: %v", example.label, doc.diagnostics)
+		html := bml.render_html(doc, context.temp_allocator)
+		bml.destroy(doc)
+		body := html[strings.index(html, `<body class="content">`):]
+		testing.expectf(t, len(body) > len(`<body class="content"><a class="top-link"`) + 40, "%s draws nothing", example.label)
+		for want in wants {
+			if want[0] == example.label {
+				testing.expectf(t, strings.contains(html, want[1]), "%s: no %s in %s", example.label, want[1], body)
+			}
+		}
+	}
+	// The paste writes both transfers, with the replacements made.
+	paste := bml.parse(examples[len(examples) - 1].source)
+	defer bml.destroy(paste)
+	html := bml.render_html(paste, context.temp_allocator)
+	testing.expect(t, !strings.contains(html, "SUIT") && !strings.contains(html, "MAJOR"), "the replacements were made")
+	// Both pastes, each with its own suits: 2D then 2H/3H, and 2H then 2S/3S.
+	for want in ([]string{`<div class="startOddIndent">2<span class="dcolor">`, `<div class="start">3<span class="scolor">`}) {
+		testing.expectf(t, strings.contains(html, want), "no %s in %s", want, html)
+	}
+}
+
+// THE GUIDE IN THE PREVIEW: `guide` puts it in the frame, the live preview leaves it there while you type,
+// `insert` writes an example at the caret, and `guide` again brings the notes back.
+@(test)
+test_the_guide_shows_and_inserts :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.docs = ""
+	app.bml_open = "scratch.bml"
+	defer app.bml_open = ""
+	show_editor(&app)
+	defer set_shown(&app, "#bml-preview-pane", false)
+
+	set_bml_source(&app, "* My notes\n\n")
+	pump(&app)
+	// CTRL+G, the key, through the window handler as `main` attaches it.
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+	press_key(&app, .G, ctrl = true)
+	pump(&app)
+	testing.expect(t, app.bml_guide, "ctrl+g shows the guide")
+	count := func_count(&app, `document.$("#bml-page").frame.document.$$("div.wb-guide").length`)
+	examples := GUIDE_EXAMPLES
+	testing.expect_value(t, count, len(examples) + 1) // and the undrawn directives
+
+	// NO SOURCE IS CUT SHORT: each example's text box is as tall as its lines, wrapped ones included. Laid out
+	// as a horizontal flow, the row took the rendered side's height and cut the source off (reported
+	// 2026-10-28: `text styles` lost its wrapped end, `cut and paste` its last line).
+	probe, _ := sa.eval(
+		app.window,
+		`(function(){ var d = document.$("#bml-page").frame.document; var out = []; d.$$("pre.wb-guide-src").forEach(function(p){` +
+		` out.push(p.state.box("height", "inner") + "/" + p.scrollHeight); }); return out.join(" "); })()`,
+	)
+	heights, _ := sa.value_to_string(&probe, context.temp_allocator)
+	sa.value_clear(&probe)
+	pairs := strings.fields(heights, context.temp_allocator)
+	testing.expect_value(t, len(pairs), len(examples))
+	for pair, i in pairs {
+		shown, _, needed := strings.partition(pair, "/")
+		have, _ := strconv.parse_int(shown)
+		need, _ := strconv.parse_int(needed)
+		testing.expectf(t, have >= need, "%s's text is cut short: %s", examples[i].label, pair)
+	}
+	first, _ := preview_selection(&app, "h1") // the guide's own heading example, not the notes'
+	testing.expect(t, first != "My notes", "the guide replaces the notes")
+
+	// Typing goes on under it: the live preview does not put the notes back.
+	set_bml_source(&app, "* My notes\n\nmore\n\n")
+	pump(&app)
+	live_preview_tick(&app)
+	pump(&app)
+	testing.expect_value(t, func_count(&app, `document.$("#bml-page").frame.document.$$("div.wb-guide").length`), len(examples) + 1)
+
+	// `insert` on the bullet list, with the caret on the blank last line.
+	bullets := -1
+	for example, i in examples {
+		if example.label == "bullet list" {
+			bullets = i
+		}
+	}
+	moved, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(4, 0, 4, 0)`)
+	sa.value_clear(&moved)
+	app.guide_insert = bullets
+	guide_insert(&app)
+	pump(&app)
+	written, _ := bml_source(&app, context.temp_allocator)
+	testing.expect(t, strings.contains(written, "more\n\n- 5+ hearts\n- 10+ points"), written)
+
+	toggle_guide(&app)
+	pump(&app)
+	heading, back := preview_selection(&app, "h1")
+	testing.expect(t, back && heading == "My notes", "guide again shows the notes")
+	testing.expect_value(t, func_count(&app, `document.$("#bml-page").frame.document.$$("div.wb-guide").length`), 0)
+}
+
+// A number the page script works out (`-1` when it fails).
+@(private = "file")
+func_count :: proc(app: ^App, script: string) -> int {
+	result, err := sa.eval(app.window, script)
+	defer sa.value_clear(&result)
+	if err != nil {
+		return -1
+	}
+	n, ierr := sa.value_to_int(&result)
+	return int(n) if ierr == nil else -1
+}
+
+// A `#BOX` in the preview is SIDE BY SIDE: the hands' column left of the text's, their tops level. `bml.css`
+// draws it as two table cells, which this engine stacked (reported 2026-10-27); `PREVIEW_BOX_CSS` flows it
+// horizontally. Measured in the frame.
+@(test)
+test_a_box_in_the_preview_is_side_by_side :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.docs = ""
+	app.bml_open = "scratch.bml"
+	defer app.bml_open = ""
+	show_editor(&app)
+	set_shown(&app, "#bml-preview-pane", true)
+	defer set_shown(&app, "#bml-preview-pane", false)
+
+	set_bml_source(&app, "#BOX\nN: AKxx Qxx Kxx Axx\nS: Qxx AKxx Axx Kxx\n\nThe words beside the hands.\n#ENDBOX\n")
+	pump(&app)
+	ok, why := preview_bml(&app)
+	testing.expectf(t, ok, "the preview did not render: %s", why)
+	pump(&app)
+
+	result, err := sa.eval(
+		app.window,
+		`(function(){ var d = document.$("#bml-page").frame.document; var s = d.$("div.bml-box-side"), x = d.$("div.bml-box-text");` +
+		// In the box's coordinates (`parent`): both columns are its children.
+		` if (!s || !x) return "missing"; return [s.state.box("right", "border", "parent"), x.state.box("left", "border", "parent"),` +
+		` s.state.box("top", "border", "parent"), x.state.box("top", "border", "parent")].join(","); })()`,
+	)
+	defer sa.value_clear(&result)
+	testing.expect_value(t, err, nil)
+	got, _ := sa.value_to_string(&result, context.temp_allocator)
+	parts := strings.split(got, ",", context.temp_allocator)
+	testing.expectf(t, len(parts) == 4, "no box in the preview: %q", got)
+	if len(parts) != 4 {return}
+	side_right, _ := strconv.parse_f64(parts[0])
+	text_left, _ := strconv.parse_f64(parts[1])
+	side_top, _ := strconv.parse_f64(parts[2])
+	text_top, _ := strconv.parse_f64(parts[3])
+	testing.expectf(t, side_right <= text_left, "the text should be right of the hands: %q", got)
+	testing.expectf(t, abs(side_top - text_top) <= 2, "and level with them: %q", got)
 }
 
 // The same, with the notes' OWN stylesheet inlined — which is the shape the application actually loads, and
@@ -5098,6 +5368,10 @@ test_the_preview_override_mirrors_the_page_background :: proc(t: ^testing.T) {
 	// Nothing to mirror: fill the body instead, so its text at least has no white gutters beside it.
 	plain := preview_override_css(".content { max-width: 900px; }", context.temp_allocator)
 	testing.expect(t, strings.contains(plain, "max-width: none"), "with no page colour, the body fills instead")
+
+	// The heading links the page writes after its body are hidden either way: only `Top` stays.
+	testing.expect(t, strings.contains(mirrored, ".nav-links { display: none; }"), "the nav links must be hidden")
+	testing.expect(t, strings.contains(plain, ".nav-links { display: none; }"), "the nav links must be hidden here too")
 }
 
 // The header bar has to survive a NARROW window, and it gained a button this session (`bml`), which is
@@ -5218,7 +5492,7 @@ test_the_editor_bar_survives_a_narrow_window :: proc(t: ^testing.T) {
 			"#bml-export",
 			"#bml-export-zip",
 			"#bml-export-all",
-			// The palette's buttons in the bar.
+			// The palette's buttons, in the source pane's head.
 			"#bml-goto-open",
 			"#bml-link-open",
 			"#bml-insert-open",
@@ -10721,9 +10995,9 @@ test_a_chosen_notes_look_reaches_the_preview :: proc(t: ^testing.T) {
 	testing.expectf(t, heart != "" && !strings.contains(heart, "255,0,0") && !strings.contains(heart, "255, 0, 0"), "the heart is %q, want the colour-blind vermillion", heart)
 }
 
-// THE BUILT PAGES' LOOK IS A FILE IN THE NOTES FOLDER, and the switch is whether it is there: `this look` writes
+// THE BUILT PAGES' LOOK IS A FILE IN THE NOTES FOLDER, and the switch is whether it is there: `same as preview` writes
 // the chosen `:root` block to `bml-look.css` (which `just bml` appends to `bml.css`), a change of look rewrites
-// it, and `own look` removes it.
+// it, and `original look` removes it.
 @(test)
 test_the_built_pages_look_is_a_file_in_the_notes_folder :: proc(t: ^testing.T) {
 	app: App
@@ -10741,7 +11015,7 @@ test_the_built_pages_look_is_a_file_in_the_notes_folder :: proc(t: ^testing.T) {
 	testing.expect(t, !built_pages_use_look(&app), "a fresh folder has no look of its own")
 	prefs.set(&app.prefs, NOTES_PAGE_PREF, "dark")
 	set_built_pages_look(&app, true)
-	testing.expect(t, built_pages_use_look(&app), "`this look` should write the file")
+	testing.expect(t, built_pages_use_look(&app), "`same as preview` should write the file")
 	data, _ := os.read_entire_file_from_path(path, context.temp_allocator)
 	testing.expectf(t, strings.contains(string(data), "--bml-page-bg: #1e1f26"), "the file holds %q", string(data))
 	testing.expect(t, !strings.contains(string(data), "<style>"), "it is CSS for a stylesheet, not an element")
@@ -10752,7 +11026,7 @@ test_the_built_pages_look_is_a_file_in_the_notes_folder :: proc(t: ^testing.T) {
 	testing.expectf(t, strings.contains(string(data), "--bml-page-bg: white"), "after choosing white the file holds %q", string(data))
 
 	set_built_pages_look(&app, false)
-	testing.expect(t, !built_pages_use_look(&app), "`own look` should remove the file")
+	testing.expect(t, !built_pages_use_look(&app), "`original look` should remove the file")
 }
 
 /*
@@ -11022,6 +11296,47 @@ test_the_notes_export_takes_the_root_of_the_open_file :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(both), "zip all takes every document")
 }
 
+// BUILD writes every notes file as a page beside it, as `just bml` does: chapters too, from the saved text,
+// linking `bml.css` (not standalone), Windows newlines; then `bml.css` from the tools' sheet with the look
+// appended, written only when it differs.
+@(test)
+test_the_notes_build_writes_a_page_beside_each_file :: proc(t: ^testing.T) {
+	dir := scratch_scenario_dir(t, "wb-notes-build")
+	if dir == "" {return}
+	files := [][2]string {
+		{"system.bml", "* System\n#INCLUDE chapter.bml\n"},
+		{"chapter.bml", "* Chapter on disk\n\nline one\nline two\n"}, // a paragraph keeps its line break
+		{"bml-look.css", ":root{--look:1}"},
+		{"bml.css", "an earlier run's sheet"},
+	}
+	for f in files {
+		if !write_scenario_file(dir, f[0], f[1]) {return}
+	}
+	built, refreshed, why := build_notes_in_place(dir, ".tools{}")
+	testing.expect_value(t, why, "")
+	testing.expect_value(t, built, 2)
+	testing.expect(t, refreshed, "bml.css should be written")
+	system_path, _ := filepath.join({dir, "system.html"}, context.temp_allocator)
+	data, err := os.read_entire_file_from_path(system_path, context.temp_allocator)
+	testing.expectf(t, err == nil, "no page at %s", system_path)
+	page := string(data)
+	testing.expect(t, strings.contains(page, "Chapter on disk"), "the chapter is included")
+	testing.expect(t, strings.contains(page, `href="bml.css"`), "the page links the stylesheet")
+	when ODIN_OS == .Windows {
+		testing.expect(t, strings.count(page, "\n") > 0 && strings.count(page, "\n") == strings.count(page, "\r\n"), "Windows newlines throughout")
+	}
+	chapter_path, _ := filepath.join({dir, "chapter.html"}, context.temp_allocator)
+	testing.expect(t, os.exists(chapter_path), "a chapter is a page of its own too")
+	css_path, _ := filepath.join({dir, "bml.css"}, context.temp_allocator)
+	css, _ := os.read_entire_file_from_path(css_path, context.temp_allocator)
+	testing.expect_value(t, string(css), ".tools{}\n:root{--look:1}")
+
+	_, again, _ := build_notes_in_place(dir, ".tools{}")
+	testing.expect(t, !again, "an unchanged bml.css is not written again")
+	_, without, _ := build_notes_in_place(dir, "")
+	testing.expect(t, !without, "no tools sheet leaves bml.css alone")
+}
+
 // A STORED zip: one local header per entry carrying the CRC-32 of the bytes, the entries under the folder,
 // and the end record counting them. "hello" has the CRC-32 0x3610A686.
 @(test)
@@ -11154,6 +11469,47 @@ test_the_indent_keys_write_spaces :: proc(t: ^testing.T) {
 	key(&app, editor, .TAB, {.LSHIFT})
 	testing.expect_value(t, text(&app), "1C = strong\n    1D = negative")
 
+	// In a list, enter starts the next item: `- ` (a description list's too), the next number in a numbered
+	// one. Enter on an item with nothing after its marker takes the marker away, ending the list.
+	set_bml_source(&app, "  - term :: what")
+	pump(&app)
+	caret(&app, 0, 16)
+	key(&app, editor, .ENTER)
+	testing.expect_value(t, text(&app), "  - term :: what\n  - ")
+	key(&app, editor, .ENTER)
+	testing.expect_value(t, text(&app), "  - term :: what\n  ")
+	set_bml_source(&app, "1. one")
+	pump(&app)
+	caret(&app, 0, 6)
+	key(&app, editor, .ENTER)
+	testing.expect_value(t, text(&app), "1. one\n2. ")
+
+	// In an AUCTION, enter at the end of a line lines the header and calls up in columns, in capitals; the notes
+	// are left alone, and a row that starts `-` is not taken for a list item.
+	set_bml_source(&app, "w n e s\n- 1h 2c* 2nt\np 3nt ap\n* natural")
+	pump(&app)
+	caret(&app, 2, 8)
+	key(&app, editor, .ENTER)
+	testing.expect_value(t, text(&app), "W  N    E    S\n-  1H   2C*  2NT\nP  3NT  AP\n\n* natural")
+	aligned, _ := sa.eval(app.window, "wbAuctionAligns")
+	aligns, _ := sa.value_to_int(&aligned)
+	sa.value_clear(&aligned)
+	testing.expect_value(t, aligns, 1)
+
+	// A `#+CAPTION:` line over the auction is left as it is, and the auction under it still lines up.
+	set_bml_source(&app, "#+CAPTION: Lebensohl\n1n 2h 2nt\np 3c")
+	pump(&app)
+	caret(&app, 2, 4)
+	key(&app, editor, .ENTER)
+	testing.expect_value(t, text(&app), "#+CAPTION: Lebensohl\n1N  2H  2NT\nP   3C")
+
+	// So are the `#BOX` / `#ENDBOX` lines around one: blocks of their own.
+	set_bml_source(&app, "#BOX\n1n 2h\np 3c\n#ENDBOX")
+	pump(&app)
+	caret(&app, 2, 4)
+	key(&app, editor, .ENTER)
+	testing.expect_value(t, text(&app), "#BOX\n1N  2H\nP   3C\n\n#ENDBOX")
+
 	// NOT HERE: tab on several selected lines. This view keeps no selection - `selectRange` across lines, and
 	// even `selectAll`, read back as a caret with `selectionText` empty (measured) - so that path is the real
 	// window's to show.
@@ -11161,7 +11517,7 @@ test_the_indent_keys_write_spaces :: proc(t: ^testing.T) {
 	taken, _ := sa.eval(app.window, "wbIndentKeys")
 	count, _ := sa.value_to_int(&taken)
 	sa.value_clear(&taken)
-	testing.expect_value(t, count, 5)
+	testing.expect_value(t, count, 11)
 	testing.expect(t, !strings.contains(text(&app), "\t"), "no tab character")
 }
 
@@ -11269,6 +11625,8 @@ test_the_insert_palette_writes_a_construct :: proc(t: ^testing.T) {
 	sa.value_clear(&result)
 	toggle_goto(&app, .Insert)
 	testing.expect(t, app.goto_open && len(app.goto_all) > 10, "the insert palette lists the constructs")
+	// All of them with nothing typed, not the heading palette's first twelve.
+	testing.expect_value(t, len(app.goto_rows), len(BML_SNIPPETS))
 	set_input(&app, "#bml-goto-input", "cut")
 	draw_goto_list(&app)
 	jump_to_goto(&app)
@@ -11280,9 +11638,90 @@ test_the_insert_palette_writes_a_construct :: proc(t: ^testing.T) {
 	row, col := caret_position(&app)
 	testing.expect_value(t, row, 1)
 	testing.expect_value(t, col, 9)
+
+	// At column 0 of a line that only HAS an indent (enter keeps a bid table's on the blank lines after it):
+	// the block at column 0, every line of it - the indent is what is before the caret, not the line's.
+	set_bml_source(&app, "1C = strong\n    1D = negative\n    \n")
+	pump(&app)
+	result, _ = sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(2, 0, 2, 0)`)
+	sa.value_clear(&result)
+	toggle_goto(&app, .Insert)
+	set_input(&app, "#bml-goto-input", "table")
+	draw_goto_list(&app)
+	jump_to_goto(&app)
+	pump(&app)
+	got, _ = bml_source(&app, context.temp_allocator)
+	got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+	testing.expect_value(t, strings.trim_right(got, "\n"), "1C = strong\n    1D = negative\n|  | |\n|---+---|\n| | |    ")
 }
 
-// THE BAR'S PALETTE BUTTONS open the three modes, and a link chosen after a CLICK still lands at the caret the
+// TAB IN A TABLE lines its columns up and moves to the next cell, skipping the rule; past the last cell it adds
+// a row, and shift+tab goes back. Through real keys, so it is the page script's handler that is proved.
+@(test)
+test_tab_in_a_table_moves_between_cells :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-table")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "table.bml", "* T\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "table.bml")
+	if !testing.expectf(t, opened, "could not open table.bml: %s", why) {return}
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	if editor == nil {return}
+	_ = sa.set_focus(editor)
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+	tab :: proc(app: ^App, editor: sa.Element, shift := false) {
+		_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.TAB), {.LSHIFT} if shift else {})
+		pump(app)
+	}
+
+	set_bml_source(&app, "* T\n\n| a | bb |\n|-+-|\n| ccc | d |\n")
+	pump(&app)
+	result, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(2, 3, 2, 3)`)
+	sa.value_clear(&result)
+
+	aligned :: "* T\n\n| a   | bb |\n|-----+----|\n| ccc | d  |"
+	tab(&app, editor) // to `bb`, everything lined up
+	testing.expect_value(t, text(&app), aligned)
+	row, col := caret_position(&app)
+	testing.expect_value(t, row, 2)
+	testing.expect_value(t, col, 8)
+
+	tab(&app, editor) // over the rule, to `ccc`
+	row, col = caret_position(&app)
+	testing.expect_value(t, row, 4)
+	testing.expect_value(t, col, 2)
+
+	tab(&app, editor)
+	tab(&app, editor) // past the last cell: a new row
+	testing.expect_value(t, text(&app), aligned + "\n|     |    |")
+	row, col = caret_position(&app)
+	testing.expect_value(t, row, 5)
+	testing.expect_value(t, col, 2)
+
+	tab(&app, editor, shift = true) // back to `d`
+	row, col = caret_position(&app)
+	testing.expect_value(t, row, 4)
+	testing.expect_value(t, col, 8)
+
+	taken, _ := sa.eval(app.window, "wbTableTabs")
+	count, _ := sa.value_to_int(&taken)
+	sa.value_clear(&taken)
+	testing.expect_value(t, count, 5)
+}
+
+// THE SOURCE HEAD'S PALETTE BUTTONS open the three modes, and a link chosen after a CLICK still lands at the caret the
 // source had: the button takes the focus, the plaintext keeps its caret, and the palette reads it on opening.
 @(test)
 test_the_palette_buttons_write_at_the_source_caret :: proc(t: ^testing.T) {
@@ -11473,7 +11912,7 @@ test_the_completion_terms :: proc(t: ^testing.T) {
 	dir := scratch_scenario_dir(t, "wb-bml-lexicon")
 	if dir == "" {return}
 	if !write_scenario_file(dir, "lexicon.txt", "# ours\nTwo-under transfer\nlebensohl\n") {return}
-	if !write_scenario_file(dir, "notes.bml", "1C = Kokish relay, see lebensohl; puppetry too\n") {return}
+	if !write_scenario_file(dir, "notes.bml", "1C = Kokish relay, see lebensohl; puppetry too. Partnership agreements\nfirst, then partnership style\n") {return}
 
 	testing.expect_value(t, len(completion_terms(dir, "off")), 0)
 	terms := completion_terms(dir, "terms")
@@ -11485,6 +11924,8 @@ test_the_completion_terms :: proc(t: ^testing.T) {
 	folder := completion_terms(dir, "folder")
 	testing.expect(t, slice.contains(folder, "Kokish") && slice.contains(folder, "puppetry"), "the notes' words")
 	testing.expect(t, !slice.contains(folder, "see"), "short words are left out")
+	// A word written in lower case anywhere is an ordinary word, whatever case it had starting a sentence.
+	testing.expect(t, slice.contains(folder, "partnership") && !slice.contains(folder, "Partnership"), "a sentence's capital is not a name's")
 }
 
 // COMPLETION in the source: three letters of a description word name a term (`bmlSuggest`), TAB writes it,
@@ -11531,6 +11972,12 @@ test_completion_writes_a_lexicon_term :: proc(t: ^testing.T) {
 	testing.expect_value(t, text(&app), "1C = see Lebensohl")
 
 	testing.expect_value(t, offer(&app, "1N = then rkcb", 14), "RKCB") // differs only in case
+	// CASE: a name keeps its capitals; an ordinary word takes the case typed, and a sentence's start capitalises it.
+	testing.expect_value(t, offer(&app, "1C = see Ope", 12), "Opener")
+	testing.expect_value(t, offer(&app, "1C = see OPE", 12), "OPENER")
+	testing.expect_value(t, offer(&app, "1C = the ope", 12), "opener")
+	testing.expect_value(t, offer(&app, "1C = weak. ope", 14), "Opener")
+	testing.expect_value(t, offer(&app, "1C = the spl", 12), "splinter") // a generic phrase, not a name
 	testing.expect_value(t, offer(&app, "leb = no", 3), "") // the bid column
 	testing.expect_value(t, offer(&app, "1C = le", 7), "") // two letters
 
@@ -11549,6 +11996,52 @@ test_completion_writes_a_lexicon_term :: proc(t: ^testing.T) {
 	count, _ := sa.value_to_int(&taken)
 	sa.value_clear(&taken)
 	testing.expect_value(t, count, 2)
+
+	// AN OLD OFFER'S WORDS GO WITH IT: the next ask that finds nothing clears the status line too - it kept
+	// "tab -> Lebensohl" long after (reported). (The key-up path that used to clear the offer cannot be driven
+	// here: a synthetic key-up crashes the windowless engine.)
+	testing.expect_value(t, offer(&app, "1C = see leb", 12), "Lebensohl")
+	testing.expect_value(t, offer(&app, "1C = see qqq", 12), "")
+	old_status, _ := sa.text(find(&app, "#bml-status"), context.temp_allocator)
+	testing.expect_value(t, old_status, "")
+
+	// THE HOST'S TAB (`editor_tab_key`), the way the real window delivers it: claimed on the way down, before the
+	// engine's focus navigation can take it - the editor's own listener never heard TAB there (reported).
+	testing.expect_value(t, offer(&app, "1C = see leb", 12), "Lebensohl")
+	testing.expect(t, editor_tab_key(&app, editor, u32(sciter.Sc_Kb_Codes.TAB), {}), "the host's tab should take the completion")
+	pump(&app)
+	testing.expect_value(t, text(&app), "1C = see Lebensohl")
+	// No completion up: the same key indents (and is still the host's, so focus stays in the editor).
+	set_bml_source(&app, "1C = strong")
+	pump(&app)
+	r0, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(0, 0, 0, 0); bmlSwallowChar = false`)
+	sa.value_clear(&r0)
+	testing.expect(t, editor_tab_key(&app, editor, u32(sciter.Sc_Kb_Codes.TAB), {}), "tab with nothing offered indents")
+	pump(&app)
+	testing.expect_value(t, text(&app), "    1C = strong")
+	testing.expect(t, !editor_tab_key(&app, editor, u32(sciter.Sc_Kb_Codes.TAB), {.LCONTROL}), "ctrl+tab is the view switch, not the editor's")
+	r1, _ := sa.eval(app.window, `bmlSwallowChar = false`)
+	sa.value_clear(&r1)
+
+	// TYPED, the way a real letter arrives - key down, then its character - the offer appears with no call
+	// from here. It was asked for on key-up, which the real window never delivered (reported 2026-10-28: "Leb"
+	// offered nothing); now from the key-down, once the letter is in.
+	set_bml_source(&app, "1C = see le")
+	pump(&app)
+	_ = sa.set_focus(editor)
+	// The tabs above were sent as key-downs only, so each left its character to be swallowed; a real key's
+	// character always follows, so clear that before typing.
+	moved, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(0, 11, 0, 11); bmlSwallowChar = false`)
+	sa.value_clear(&moved)
+	_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.B), {})
+	_, _ = sa.send_key(editor, .CHAR, u32('b'))
+	pump(&app)
+	pump(&app)
+	testing.expect_value(t, text(&app), "1C = see leb")
+	status, _ := sa.eval(app.window, `document.$("#bml-status").textContent`)
+	shown, _ := sa.value_to_string(&status, context.temp_allocator)
+	sa.value_clear(&status)
+	testing.expectf(t, strings.contains(shown, "Lebensohl"), "typing leb should offer Lebensohl, the status says %q", shown)
 }
 
 // A TAKEN KEY'S CHARACTER IS SWALLOWED. This engine types on the key-char that FOLLOWS a key-down, so a key the
@@ -11609,3 +12102,900 @@ test_a_taken_key_does_not_type_its_character :: proc(t: ^testing.T) {
 	press(&app, editor, .Y, 'y')
 	testing.expect_value(t, text(&app), "1C = xy")
 }
+
+// BACKSPACE IN AN INDENT goes back a level of the block above (`bmlDedentBack`): enter keeps a bid table's
+// indent, and backspace took one space at a time back out of it (reported 2026-10-27).
+@(test)
+test_backspace_in_an_indent_goes_back_a_level :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+
+	dir := scratch_scenario_dir(t, "wb-bml-dedent")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "dedent.bml", "* T\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	draw_bml_files(&app)
+	opened, why := open_bml(&app, "dedent.bml")
+	if !testing.expectf(t, opened, "could not open dedent.bml: %s", why) {return}
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	if editor == nil {return}
+	_ = sa.set_focus(editor)
+
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return got
+	}
+	backspace :: proc(app: ^App, editor: sa.Element) {
+		_, _ = sa.send_key(editor, .DOWN, u32(sciter.Sc_Kb_Codes.BACKSPACE), {})
+		pump(app)
+	}
+
+	table :: "* T\n\n1C\n    1D = negative\n        1H = natural\n"
+	set_bml_source(&app, table + "          ")
+	pump(&app)
+	result, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(5, 10, 5, 10)`)
+	sa.value_clear(&result)
+
+	for level in ([]int{8, 4, 0}) {
+		backspace(&app, editor)
+		testing.expect_value(t, text(&app), strings.concatenate({table, strings.repeat(" ", level, context.temp_allocator)}, context.temp_allocator))
+		row, col := caret_position(&app)
+		testing.expect_value(t, row, 5)
+		testing.expect_value(t, col, level)
+	}
+	taken, _ := sa.eval(app.window, "wbDedents")
+	count, _ := sa.value_to_int(&taken)
+	sa.value_clear(&taken)
+	testing.expect_value(t, count, 3)
+
+	// At column 0 it is not ours: the engine's backspace joins the line to the one above. (That key itself is
+	// not sent: the engine's backspace at column 0 crashes the windowless view, with or without this script.)
+	declined, _ := sa.eval(app.window, `bmlDedentBack(document.$("#bml-text"))`)
+	ours, _ := sa.value_to_bool(&declined)
+	sa.value_clear(&declined)
+	testing.expect(t, !ours, "backspace at column 0 should be the engine's")
+}
+
+
+// FINE TUNING TAKES ONLY WHAT IS SAFE TO WRITE INTO A STYLESHEET: a hex colour (a `#rgb` widened and lower-cased)
+// or a percentage from 50 to 200. Anything else - a colour name, a `;` that would end the declaration - is refused.
+@(test)
+test_fine_tuning_values_are_checked :: proc(t: ^testing.T) {
+	colour := Notes_Tune{token = "heart"}
+	size := Notes_Tune{token = "font-size", percent = true}
+	for c in ([][2]string{{"#C00", "#cc0000"}, {" #12aBcD ", "#12abcd"}}) {
+		value, ok := tune_value(colour, c[0], context.temp_allocator)
+		testing.expectf(t, ok && value == c[1], "%q gave %q, want %q", c[0], value, c[1])
+	}
+	for bad in ([]string{"red", "#12345", "#12345g", "#123;}", "", "#"}) {
+		_, ok := tune_value(colour, bad, context.temp_allocator)
+		testing.expectf(t, !ok, "%q should be refused", bad)
+	}
+	for c in ([][2]string{{"120", "120"}, {"90%", "90"}}) {
+		value, ok := tune_value(size, c[0], context.temp_allocator)
+		testing.expectf(t, ok && value == c[1], "%q gave %q, want %q", c[0], value, c[1])
+	}
+	for bad in ([]string{"49", "201", "1e2", "12.5", "%"}) {
+		_, ok := tune_value(size, bad, context.temp_allocator)
+		testing.expectf(t, !ok, "%q should be refused", bad)
+	}
+	font := Notes_Tune{token = "heading-font", font = true}
+	value, ok := tune_value(font, `  Georgia, 'Times New Roman', "Noto Serif", serif `, context.temp_allocator)
+	testing.expectf(t, ok && value == `Georgia, 'Times New Roman', "Noto Serif", serif`, "a font list gave %q", value)
+	for bad in ([]string{"serif; } body {", "a<b", "", "123", "url(x)"}) {
+		_, refused := tune_value(font, bad, context.temp_allocator)
+		testing.expectf(t, !refused, "%q should be refused as a font", bad)
+	}
+}
+
+// A SET ROW WINS, AND RESET PUTS THE LOOK BACK. The tuned tokens come after the presets' in the `:root` block (a
+// later declaration wins), a translucent token and a callout's tint are written as `rgba` of the same colour, and
+// `reset all` empties every row: the block is then the presets' alone again.
+@(test)
+test_a_fine_tuned_row_wins_and_reset_restores_the_look :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	plain := notes_look_rules(notes_look(&app.prefs), context.temp_allocator)
+
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "heart", "#123456")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "note", "#336699")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "table-line", "#808080")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "font-size", "120")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "ink", "black; } body {") // an edited prefs file: ignored
+	rules := notes_look_rules(notes_look(&app.prefs), context.temp_allocator)
+	for want in ([]string {
+			"--bml-heart: #123456;",
+			"--bml-note: #336699; --bml-note-tint: rgba(51, 102, 153, 0.09);",
+			"--bml-table-line: rgba(128, 128, 128, 0.45);",
+			"--bml-font-size: 120%;",
+		}) {
+		testing.expectf(t, strings.contains(rules, want), "no %q in %s", want, rules)
+	}
+	testing.expect(t, strings.index(rules, "--bml-heart: #123456") > strings.index(rules, "--bml-heart: Red"), "the tuned heart must come after the preset's")
+	testing.expect(t, !strings.contains(rules, "body {"), "a value that is not a colour must not reach the sheet")
+
+	reset_notes_tune(&app, "heart")
+	testing.expect(t, !strings.contains(notes_look_rules(notes_look(&app.prefs), context.temp_allocator), "#123456"), "one row's reset")
+	reset_notes_tune(&app, "*")
+	testing.expect_value(t, notes_look_rules(notes_look(&app.prefs), context.temp_allocator), plain)
+}
+
+// THE ROWS ARE IN SETTINGS, FOLDED, IN GROUPS, AND A CHANGE IS REMEMBERED: one line per group, every token a
+// field; the block is hidden until its toggle opens it; a colour picked in a colour input is kept (lower-cased)
+// and the toggle counts it; a bad size is refused with a word in the note; `reset all` empties the inputs.
+@(test)
+test_the_fine_tuning_rows_remember_what_is_typed :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	// The host's event handler, so the colour input's posted `wb-tune` reaches it.
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	draw_notes_look_prefs(&app)
+	list := find(&app, "#prefs-notes-tune")
+	if !testing.expect(t, list != nil, "no #prefs-notes-tune in Settings") {return}
+	count, _ := sa.child_count(list)
+	testing.expect_value(t, count, len(NOTES_TUNE_GROUPS))
+	for tune in NOTES_TUNES {
+		testing.expectf(t, find(&app, strings.concatenate({"#", TUNE_FIELD_PREFIX, tune.token}, context.temp_allocator)) != nil, "no field for %s", tune.token)
+	}
+	testing.expect(t, effective_display_is_hidden(&app, "#prefs-notes-tune-box"), "folded to start with")
+	toggle_notes_tunes(&app)
+	testing.expect(t, !effective_display_is_hidden(&app, "#prefs-notes-tune-box"), "the toggle opens it")
+	toggle_text, _ := sa.text(find(&app, "#prefs-tune-toggle"), context.temp_allocator)
+	testing.expect_value(t, toggle_text, "fine tuning ▾")
+
+	// Grouped, not stacked: in the settings view, the suits' four inputs share one line.
+	press_key(&app, .COMMA, ctrl = true)
+	pump(&app)
+	pump(&app)
+	measured, _ := sa.eval(app.window, `(function(){ var g = document.$("#prefs-tune-club").parentElement.parentElement.getBoundingClientRect(); var i = document.$("#prefs-tune-club").parentElement.getBoundingClientRect(); return g.height < 2 * i.height && i.height > 0; })()`)
+	one_line, _ := sa.value_to_bool(&measured)
+	sa.value_clear(&measured)
+	testing.expect(t, one_line, "the suits' inputs should share one line")
+	// Lined up: every input in a group at one top, each label above its input, and the page group's text-size
+	// field level with its colour inputs.
+	measured, _ = sa.eval(app.window, `(function(){
+		var bad = [];
+		for (var g of document.$$("#prefs-notes-tune .tune-group")) {
+			var tops = [];
+			for (var f of g.$$("span.tune-field")) tops.push(Math.round(f.getBoundingClientRect().top));
+			var first = g.$("span.tune-field").getBoundingClientRect().top;
+			for (var i = 0; i < tops.length; i++) if (Math.abs(tops[i] - tops[0]) > 1 && Math.abs(tops[i] - tops[0]) < 20) bad.push("tops " + tops.join(","));
+			var label = g.$("span.tune-item > label").getBoundingClientRect();
+			if (label.bottom > first + 1) bad.push("label not above its field");
+		}
+		return bad.join("; ");
+	})()`)
+	misaligned, _ := sa.value_to_string(&measured, context.temp_allocator)
+	sa.value_clear(&measured)
+	testing.expectf(t, misaligned == "", "fine tuning misaligned: %s", misaligned)
+
+	// What the colour input's own field or picker does: a value set on it.
+	result, _ := sa.eval(app.window, `document.$("#prefs-tune-heart").value = "#a0b"`)
+	sa.value_clear(&result)
+	testing.expect(t, remember_notes_tune(&app, "prefs-tune-heart"))
+	value, _ := prefs.get(&app.prefs, NOTES_TUNE_PREF_PREFIX + "heart")
+	testing.expect_value(t, value, "#aa00bb")
+	// One square: the input's swatch hidden, its picker button painted with the colour once it is drawn.
+	pump(&app)
+	square, _ := sa.eval(app.window, `(function(){ var c = document.$("#prefs-tune-heart"); var sw = c.$("span"); return (sw ? Math.round(sw.getBoundingClientRect().width) : -1) + " " + String(c.$("button").style.backgroundColor); })()`)
+	painted, _ := sa.value_to_string(&square, context.temp_allocator)
+	sa.value_clear(&square)
+	testing.expectf(t, strings.has_prefix(painted, "0 ") && strings.contains(strings.to_lower(painted, context.temp_allocator), "aa00bb"), "swatch width and button colour: %q", painted)
+	said, _ := sa.text(find(&app, "#prefs-notes-tune-count"), context.temp_allocator)
+	testing.expect_value(t, said, "1 set")
+	// The reset shows only on a set row.
+	// Read as the ENGINE has it - the computed visibility after a pump - not the attribute written: an inline style
+	// passed an attribute check here and showed no reset in the window.
+	resets_shown :: proc(app: ^App) -> string {
+		pump(app)
+		value, _ := sa.eval(app.window, `(function(){ function v(id) { var b = document.$(id); return b ? (b.style.visibility || "visible") : "none"; } return v("#prefs-tune-heart-reset") + "," + v("#prefs-tune-spade-reset"); })()`)
+		defer sa.value_clear(&value)
+		text, _ := sa.value_to_string(&value, context.temp_allocator)
+		return text
+	}
+	testing.expect_value(t, resets_shown(&app), "visible,hidden")
+	// And still after another redraw (Settings is redrawn each time it opens).
+	draw_notes_look_prefs(&app)
+	testing.expect_value(t, resets_shown(&app), "visible,hidden")
+
+	// And the way the window does it: the input's `change`, which its script turns into `wb-tune` for the host.
+	result, _ = sa.eval(app.window, `(function(){ var c = document.$("#prefs-tune-club"); c.value = "#0072b2"; c.dispatchEvent(new Event("change", { bubbles: true })); })()`)
+	sa.value_clear(&result)
+	pump(&app) // the script's turn later
+	pump(&app) // and the posted event
+	value, _ = prefs.get(&app.prefs, NOTES_TUNE_PREF_PREFIX + "club")
+	testing.expect_value(t, value, "#0072b2")
+
+	set_input(&app, "#prefs-tune-font-size", "300")
+	remember_notes_tune(&app, "prefs-tune-font-size")
+	_, found := prefs.get(&app.prefs, NOTES_TUNE_PREF_PREFIX + "font-size")
+	testing.expect(t, !found, "a size out of range is not remembered")
+	said, _ = sa.text(find(&app, "#prefs-notes-tune-note"), context.temp_allocator)
+	testing.expectf(t, strings.contains(said, "not a whole percentage"), "note: %q", said)
+
+	// The rows survive a redraw (they are made once), and `reset all` empties the inputs.
+	draw_notes_look_prefs(&app)
+	count, _ = sa.child_count(list)
+	testing.expect_value(t, count, len(NOTES_TUNE_GROUPS))
+	reset_notes_tune(&app, "*")
+	empty, _ := sa.eval(app.window, `String(document.$("#prefs-tune-heart").value)`)
+	defer sa.value_clear(&empty)
+	text, _ := sa.value_to_string(&empty, context.temp_allocator)
+	testing.expect_value(t, text, "undefined")
+	said, _ = sa.text(find(&app, "#prefs-notes-tune-count"), context.temp_allocator)
+	testing.expect_value(t, said, "none set")
+}
+
+// AND A TUNED TOKEN REACHES THE PREVIEW: the note box's edge, read back as a computed style - the callout colours
+// are `:root` tokens now, and this is what proves the preview engine resolves them.
+@(test)
+test_a_fine_tuned_callout_reaches_the_preview :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	dir, note := bml_docs_dir(context.temp_allocator)
+	if dir == "" {
+		log.warnf("no corpus (%s) — skipping", note)
+		return
+	}
+	app.docs = dir
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "note", "#008000")
+
+	source := strings.join({"#+TITLE: tune", "", "#BOX note Heads up {.mine}", "Text.", "#ENDBOX"}, "\n", context.temp_allocator)
+	doc := bml.parse(source, {resolve_include = bml_include, include_user = &app})
+	defer bml.destroy(doc)
+	page := preview_document(&app, bml.render_html(doc, context.temp_allocator), allocator = context.temp_allocator)
+	testing.expect_value(t, sa.load_html(g_view.window, page, "file://workbench/bml-preview.html"), nil)
+	pump_view()
+
+	value, err := sa.eval(g_view.window, "String(document.querySelector('div.bml-callout.bml-note.mine').style.getPropertyValue('border-left-color') || getComputedStyle(document.querySelector('div.bml-callout.bml-note.mine')).borderLeftColor)")
+	defer sa.value_clear(&value)
+	text, _ := sa.value_to_string(&value, context.temp_allocator)
+	lower := strings.to_lower(text, context.temp_allocator)
+	testing.expectf(t, err == nil && (lower == "#008000" || strings.contains(lower, "0, 128, 0") || strings.contains(lower, "0,128,0")), "the note's edge is %q, want #008000", text)
+}
+
+// THE DOCUMENT'S OWN STYLESHEET REACHES THE PREVIEW AND THE STANDALONE PAGES: `#+CSS: mine.css` is read from the
+// notes folder and inlined after the sheet and the look (the links are stripped), so a rule aimed at a class hook
+// shows in the preview; a missing file or a remote one is skipped.
+@(test)
+test_the_documents_own_stylesheet_is_inlined :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	dir := scratch_scenario_dir(t, "wb-own-css")
+	if dir == "" {return}
+	old_docs := app.docs
+	app.docs = dir
+	defer app.docs = old_docs
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	path, _ := filepath.join({dir, "mine.css"}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)string("h2.danger { color: #00ff00; }")) == nil)
+
+	source := "#+CSS: mine.css missing.css https://example.com/x.css\n\n** Defence {.danger}\n"
+	doc := bml.parse(source)
+	defer bml.destroy(doc)
+	html := bml.render_html(doc, context.temp_allocator)
+
+	own := own_stylesheets(dir, html, context.temp_allocator)
+	testing.expect_value(t, own, "<style>h2.danger { color: #00ff00; }</style>")
+	page := standalone_notes_page(html, ".sheet{}", "<style>:root{}</style>", dir, context.temp_allocator)
+	testing.expectf(t, strings.contains(page, "<style>.sheet{}</style><style>:root{}</style><style>h2.danger"), "order: %s", page)
+	testing.expect(t, !strings.contains(page, "<link"), "the links go")
+
+	preview := preview_document(&app, html, allocator = context.temp_allocator)
+	testing.expect_value(t, sa.load_html(g_view.window, preview, "file://workbench/bml-preview.html"), nil)
+	pump_view()
+	value, err := sa.eval(g_view.window, "String(getComputedStyle(document.querySelector('h2.danger')).color)")
+	defer sa.value_clear(&value)
+	text, _ := sa.value_to_string(&value, context.temp_allocator)
+	lower := strings.to_lower(text, context.temp_allocator)
+	testing.expectf(t, err == nil && (lower == "#00ff00" || strings.contains(lower, "0, 255, 0") || strings.contains(lower, "0,255,0")), "the heading is %q, want #00ff00", text)
+}
+
+// CTRL+O OPENS A FILE BY NAME, from any notes folder: the palette lists every `.bml` in every folder, the open
+// folder's first; enter on one in this folder opens it, and on one in another folder opens that folder too.
+@(test)
+test_the_open_file_palette_opens_a_file_in_any_notes_folder :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	here := scratch_scenario_dir(t, "wb-open-here")
+	there := scratch_scenario_dir(t, "wb-open-there")
+	if here == "" || there == "" {return}
+	if !write_scenario_file(here, "alpha.bml", "* Alpha\n") || !write_scenario_file(here, "beta.bml", "* Beta\n") {return}
+	if !write_scenario_file(there, "gamma.bml", "* Gamma\n") {return}
+	prefs.set(&app.prefs, NOTES_DIRS_PREF, there)
+	old_docs := app.docs
+	defer app.docs = old_docs
+	use_bml_dir(&app, here)
+	opened, why := open_bml(&app, "alpha.bml")
+	if !testing.expectf(t, opened, "could not open alpha.bml: %s", why) {return}
+	pump(&app)
+
+	toggle_goto(&app, .File)
+	testing.expect(t, app.goto_open && app.goto_mode == .File, "ctrl+o's palette is open")
+	testing.expect_value(t, len(app.goto_all), 3)
+	if len(app.goto_rows) == 3 {
+		testing.expect(t, same_dir(app.goto_rows[0].file, here) && same_dir(app.goto_rows[1].file, here), "this folder's files first")
+		testing.expect_value(t, app.goto_rows[2].text, "gamma.bml")
+	}
+
+	set_input(&app, "#bml-goto-input", "bet")
+	draw_goto_list(&app)
+	jump_to_goto(&app)
+	pump(&app)
+	testing.expect_value(t, app.bml_open, "beta.bml")
+	testing.expect(t, !app.goto_open, "the palette closes on open")
+
+	toggle_goto(&app, .File)
+	set_input(&app, "#bml-goto-input", "gam")
+	draw_goto_list(&app)
+	jump_to_goto(&app)
+	pump(&app)
+	testing.expect(t, same_dir(app.docs, there), "the other folder is opened")
+	testing.expect_value(t, app.bml_open, "gamma.bml")
+}
+
+// THE BUNDLED STYLESHEET: a notes folder with no `bml.css` (any machine without the BML tools) still gets the notes'
+// stylesheet, and the bundled copy is the tools' own - when the tools are here to compare with (`just vendor-bml-css`).
+@(test)
+test_the_notes_stylesheet_is_bundled :: proc(t: ^testing.T) {
+	app: App
+	app.docs = scratch_scenario_dir(t, "wb-no-bml-css")
+	if app.docs == "" {return}
+	path, _ := filepath.join({app.docs, "bml.css"}, context.temp_allocator)
+	_ = os.remove(path)
+	testing.expect(t, strings.contains(BUNDLED_BML_CSS, "--bml-page-bg"), "the bundled sheet has the look's tokens")
+	testing.expect_value(t, notes_css(&app), BUNDLED_BML_CSS)
+
+	tools := os.get_env("BML_TOOLS_DIRECTORY", context.temp_allocator)
+	if tools == "" {
+		tools, _ = filepath.join({os.get_env("USERPROFILE", context.temp_allocator), "dev", "bml"}, context.temp_allocator)
+	}
+	tools_css, _ := filepath.join({tools, "bml.css"}, context.temp_allocator)
+	data, err := os.read_entire_file_from_path(tools_css, context.temp_allocator)
+	if err != nil {
+		log.warnf("no BML tools at %s - not comparing the bundled copy", tools)
+		return
+	}
+	normal :: proc(text: string) -> string {
+		out, _ := strings.replace_all(text, "\r\n", "\n", context.temp_allocator)
+		return out
+	}
+	testing.expectf(t, normal(string(data)) == normal(BUNDLED_BML_CSS), "ui/bml.css is behind %s: run `just vendor-bml-css`", tools_css)
+}
+
+// THE BID CELLS' SHAPES REACH THE PREVIEW: each preset's `:root` tokens, read back from a bid cell's computed
+// style in the preview engine - the rounding, the fade's gradient, the bar's inset shadow - and the square
+// original paints the plain tint with none of them.
+@(test)
+test_the_bid_cell_shapes_reach_the_preview :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	dir, note := bml_docs_dir(context.temp_allocator)
+	if dir == "" {
+		log.warnf("no corpus (%s) — skipping", note)
+		return
+	}
+	app.docs = dir
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	doc := bml.parse("* Openings\n\n1C = strong\n    1D = negative\n")
+	defer bml.destroy(doc)
+	html := bml.render_html(doc, context.temp_allocator)
+
+	style_of :: proc(app: ^App, html: string) -> string {
+		page := preview_document(app, html, allocator = context.temp_allocator)
+		_ = sa.load_html(g_view.window, page, "file://workbench/bml-preview.html")
+		pump_view()
+		value, err := sa.eval(g_view.window, `(function(){ var c = document.$("div.start"); var s = getComputedStyle(c); return [s.borderTopLeftRadius, s.backgroundImage, s.boxShadow, s.backgroundColor].join(" | "); })()`)
+		defer sa.value_clear(&value)
+		if err != nil {return ""}
+		text, _ := sa.value_to_string(&value, context.temp_allocator)
+		return text
+	}
+	// The engine reports a gradient and a shadow but not a radius, so the corners are told apart by the
+	// cell's own pixels: a snapshot of a rounded cell is not the square one's.
+	// THE GAP: the description starts 4px after the cell's paint ends, and still 80px in - where a nested table's
+	// cells start, so the two columns line up.
+	page := preview_document(&app, html, allocator = context.temp_allocator)
+	_ = sa.load_html(g_view.window, page, "file://workbench/bml-preview.html")
+	pump_view()
+	gap_value, _ := sa.eval(g_view.window, `(function(){ var c = document.$("div.start"); var r = c.getBoundingClientRect(); var li = c.parentElement.getBoundingClientRect(); var kid = document.$("li li div.startOddIndent").getBoundingClientRect(); return Math.round(r.left - li.left) + "," + Math.round(r.right - li.left) + "," + Math.round(kid.left - li.left); })()`)
+	gap, _ := sa.value_to_string(&gap_value, context.temp_allocator)
+	sa.value_clear(&gap_value)
+	testing.expect_value(t, gap, "0,76,80") // paint 0..76, then 4px of gap, the nested cell at 80
+
+	snapshot :: proc(app: ^App) -> string {
+		cell := find(app, "div.start")
+		if cell == nil {return ""}
+		img, err := sa.image_from_element(cell)
+		if err != nil {return ""}
+		defer sa.release_image(img)
+		png, _ := sa.save_image(img, .PNG)
+		return string(png)
+	}
+	styles: [len(NOTES_BIDS)]string
+	shots: [len(NOTES_BIDS)]string
+	bids := NOTES_BIDS
+	for name, i in bids {
+		prefs.set(&app.prefs, NOTES_BIDS_PREF, name)
+		styles[i] = style_of(&app, html)
+		shots[i] = snapshot(&app)
+	}
+	// square, rounded, fade, bar
+	testing.expectf(t, !strings.contains(styles[0], "gradient") && !strings.contains(styles[0], "inset") && !strings.has_suffix(styles[0], "transparent"), "square: %s", styles[0])
+	testing.expectf(t, shots[0] != "" && shots[1] != "" && shots[0] != shots[1], "a rounded cell should not paint as the square one")
+	testing.expectf(t, strings.contains(styles[2], "linear-gradient"), "fade: %s", styles[2])
+	testing.expectf(t, strings.contains(styles[3], "inset") && strings.has_suffix(styles[3], "transparent"), "bar: %s", styles[3])
+}
+
+// CLOSING SETTINGS REFRESHES THE PREVIEW: a notes look chosen in Settings re-renders the preview on the way back to
+// the notes view by Settings' own close - not only by the notes tab, which was the one way it did (reported).
+@(test)
+test_closing_settings_refreshes_the_preview_look :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	app.docs = scratch_scenario_dir(t, "wb-look-refresh")
+	if app.docs == "" {return}
+	defer app.docs = ""
+	app.bml_open = "scratch.bml"
+	defer app.bml_open = ""
+	show_editor(&app)
+	set_shown(&app, "#bml-preview-pane", true)
+	defer set_shown(&app, "#bml-preview-pane", false)
+	set_bml_source(&app, "* Openings\n\n1C = strong\n")
+	pump(&app)
+	ok, why := preview_bml(&app)
+	if !testing.expectf(t, ok, "the preview did not render: %s", why) {return}
+	pump(&app)
+
+	dark_in_preview :: proc(app: ^App) -> bool {
+		value, err := sa.eval(app.window, `document.$("#bml-page").frame.document.head.innerHTML.indexOf("--bml-page-bg: #1e1f26") >= 0`)
+		defer sa.value_clear(&value)
+		on, _ := sa.value_to_bool(&value)
+		return err == nil && on
+	}
+	testing.expect(t, !dark_in_preview(&app), "the classic page to start with")
+
+	show_prefs(&app, true)
+	pump(&app)
+	choose_notes_look(&app, NOTES_PAGE_PREF, "dark")
+	show_prefs(&app, false) // Settings' close button
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Editor)
+	testing.expect(t, dark_in_preview(&app), "closing Settings should re-render the preview in the chosen look")
+}
+
+// PROFILES: the whole notes look saved under a name and loaded back - presets and fine tuning, a row the profile
+// does not hold emptied on load, the button of the look in use lit, a bad name refused, a profile deleted.
+@(test)
+test_a_notes_look_profile_saves_and_loads :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+
+	prefs.set(&app.prefs, NOTES_PAGE_PREF, "dark")
+	prefs.set(&app.prefs, NOTES_BIDS_PREF, "fade")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "heart", "#aa00bb")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "font", "Georgia, serif")
+	night := notes_look_snapshot(&app.prefs, context.temp_allocator)
+	testing.expectf(t, strings.has_prefix(save_notes_profile(&app, " Night play "), "saved"), "save")
+	testing.expectf(t, strings.has_prefix(save_notes_profile(&app, "bad;name"), "a profile's name"), "a bad name is refused")
+	testing.expect_value(t, len(notes_profile_names(&app.prefs)), 1)
+
+	// Another look, with a row the profile does not have.
+	prefs.set(&app.prefs, NOTES_PAGE_PREF, "white")
+	prefs.set(&app.prefs, NOTES_BIDS_PREF, "square")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "heart", "")
+	prefs.set(&app.prefs, NOTES_TUNE_PREF_PREFIX + "tip", "#00ff00")
+	draw_notes_look_prefs(&app)
+	lit, _ := sa.eval(app.window, `document.$$("#prefs-notes-profiles button.profile.on").length`)
+	count, _ := sa.value_to_int(&lit)
+	sa.value_clear(&lit)
+	testing.expect_value(t, count, 0)
+
+	// The look now is in no profile: loading over it takes a second click.
+	testing.expectf(t, strings.has_prefix(load_notes_profile(&app, "Night play"), "the look now is in no profile"), "the first load is refused")
+	testing.expect(t, notes_look_snapshot(&app.prefs, context.temp_allocator) != night, "and nothing changed")
+	testing.expect_value(t, load_notes_profile(&app, "Night play"), `loaded profile "Night play"`)
+	testing.expect_value(t, notes_look_snapshot(&app.prefs, context.temp_allocator), night)
+	tip, _ := prefs.get(&app.prefs, NOTES_TUNE_PREF_PREFIX + "tip")
+	testing.expect_value(t, tip, "")
+	lit, _ = sa.eval(app.window, `document.$$("#prefs-notes-profiles button.profile.on").length`)
+	count, _ = sa.value_to_int(&lit)
+	sa.value_clear(&lit)
+	testing.expect_value(t, count, 1)
+
+	// Replacing a saved profile takes a second click; saving the same look again is a no-op.
+	testing.expectf(t, strings.contains(save_notes_profile(&app, "Night play"), "already this look"), "same look")
+	prefs.set(&app.prefs, NOTES_PAGE_PREF, "white")
+	testing.expectf(t, strings.contains(save_notes_profile(&app, "Night play"), "press save again"), "the first replace is refused")
+	stored, _ := prefs.get(&app.prefs, NOTES_PROFILE_PREF_PREFIX + "Night play")
+	testing.expect_value(t, stored, night)
+	testing.expectf(t, strings.has_prefix(save_notes_profile(&app, "Night play"), "replaced"), "the second replaces")
+
+	// Deleting is one click, into the trash, and ↺ undoes it.
+	save_notes_profile(&app, "Other")
+	night_now, _ := prefs.get(&app.prefs, NOTES_PROFILE_PREF_PREFIX + "Night play")
+	testing.expectf(t, strings.has_prefix(delete_notes_profile(&app, "Night play"), "deleted"), "delete")
+	testing.expect_value(t, len(notes_profile_names(&app.prefs)), 1)
+	testing.expect_value(t, len(notes_profile_names(&app.prefs, NOTES_PROFILE_TRASH_PREFIX)), 1)
+	testing.expect(t, !effective_display_is_hidden(&app, "#prefs-notes-trash-line"), "the deleted line shows")
+	testing.expect_value(t, restore_notes_profile(&app, "Night play"), `restored profile "Night play"`)
+	back, _ := prefs.get(&app.prefs, NOTES_PROFILE_PREF_PREFIX + "Night play")
+	testing.expect_value(t, back, night_now)
+	testing.expect(t, effective_display_is_hidden(&app, "#prefs-notes-trash-line"), "and goes once the trash is empty")
+
+	// Restoring over a live profile of that name, a different look, takes a second click.
+	delete_notes_profile(&app, "Night play")
+	prefs.set(&app.prefs, NOTES_PAGE_PREF, "classic")
+	save_notes_profile(&app, "Night play") // a new one, under the deleted one's name
+	testing.expectf(t, strings.contains(restore_notes_profile(&app, "Night play"), "press ↺ again"), "the first restore over it is refused")
+	testing.expect_value(t, restore_notes_profile(&app, "Night play"), `restored profile "Night play"`)
+
+	// Emptying the trash takes a second click and is for good.
+	delete_notes_profile(&app, "Other")
+	testing.expectf(t, strings.contains(empty_notes_trash(&app), "press empty again"), "the first empty is refused")
+	testing.expect_value(t, empty_notes_trash(&app), "the trash is emptied")
+	testing.expect_value(t, len(notes_profile_names(&app.prefs, NOTES_PROFILE_TRASH_PREFIX)), 0)
+	testing.expectf(t, strings.has_prefix(restore_notes_profile(&app, "Other"), "no deleted profile"), "gone for good")
+}
+
+// CTRL+LEFT / CTRL+RIGHT MOVE BY WORDS ACROSS LINES: our word movement, not the engine's, which stuck at column 1
+// of `S: Qxx ...` (between a one-letter word and its colon) and never reached the line above (reported).
+@(test)
+test_ctrl_arrows_move_by_words_across_lines :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	dir := scratch_scenario_dir(t, "wb-ctrl-arrows")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "a.bml", "#1, Dealer N\nS: Qxx AKxx\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	show_editor(&app)
+	opened, _ := open_bml(&app, "a.bml")
+	if !testing.expect(t, opened) {return}
+	pump(&app)
+	editor := find(&app, "#bml-text")
+	_ = sa.set_focus(editor)
+	caret :: proc(app: ^App) -> string {
+		v, _ := sa.eval(app.window, `JSON.stringify(document.$("#bml-text").plaintext.selectionStart) + JSON.stringify(document.$("#bml-text").plaintext.selectionEnd)`)
+		defer sa.value_clear(&v)
+		s, _ := sa.value_to_string(&v, context.temp_allocator)
+		return s
+	}
+	walk :: proc(app: ^App, editor: sa.Element, row, col: int, key: sciter.Sc_Kb_Codes, steps: int, shift := false) -> string {
+		r, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(%d, %d, %d, %d)`, row, col, row, col))
+		sa.value_clear(&r)
+		trail := strings.builder_make(context.temp_allocator)
+		mods: sciter.Keyboard_States = {.LCONTROL}
+		if shift {mods += {.LSHIFT}}
+		for _ in 0 ..< steps {
+			_, _ = sa.send_key(editor, .DOWN, u32(key), mods)
+			pump(app)
+			v, _ := sa.eval(app.window, `JSON.stringify(document.$("#bml-text").plaintext.selectionStart)`)
+			s, _ := sa.value_to_string(&v, context.temp_allocator)
+			sa.value_clear(&v)
+			strings.write_string(&trail, s)
+		}
+		return strings.to_string(trail)
+	}
+	// "S: Qxx AKxx" from its end: AKxx, Qxx, the colon, S, then the line above's end, then N, then Dealer.
+	testing.expect_value(t, walk(&app, editor, 1, 11, .LEFT, 7), "[1,7][1,3][1,1][1,0][0,12][0,11][0,4]")
+	testing.expect_value(t, walk(&app, editor, 0, 6, .RIGHT, 4), "[0,10][0,12][1,0][1,1]") // Dealer's end, N's, the next line, past S
+	// SHIFT extends from the anchor: twice left from the end of "S: Qxx AKxx" selects "Qxx AKxx" (anchor first).
+	_ = walk(&app, editor, 1, 11, .LEFT, 2, shift = true)
+	testing.expect_value(t, caret(&app), "[1,11][1,3]")
+	r, _ := sa.eval(app.window, "bmlSwallowChar = false")
+	sa.value_clear(&r)
+}
+
+// FIND AND REPLACE, and the LINE KEYS, in the notes source (the page script's). Find: every match counted and
+// stepped through, wrapping, `Aa` and `W` narrowing it; replace one then the rest, each undoable. The line keys
+// on the caret's line: move it down and back up, comment it out and in (`//` at column 0, BML's rule), delete it.
+@(test)
+test_find_replace_and_line_keys :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	dir := scratch_scenario_dir(t, "wb-find")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "a.bml", "* Openings\n1NT = 15-17\n    2C = Stayman\n    2D = transfer, not stayman\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	show_editor(&app)
+	opened, _ := open_bml(&app, "a.bml")
+	if !testing.expect(t, opened) {return}
+	pump(&app)
+	js :: proc(app: ^App, script: string) -> string {
+		v, err := sa.eval(app.window, script)
+		defer sa.value_clear(&v)
+		if err != nil {return "error"}
+		s, _ := sa.value_to_string(&v, context.temp_allocator)
+		return s
+	}
+	text :: proc(app: ^App) -> string {
+		got, _ := bml_source(app, context.temp_allocator)
+		got, _ = strings.replace_all(got, "\r\n", "\n", context.temp_allocator)
+		return strings.trim_right(got, "\n")
+	}
+
+	// ctrl+f, the way the window sends it: the host opens the bar.
+	testing.expect(t, goto_key(&app, u32(sciter.Sc_Kb_Codes.F), {.LCONTROL}), "ctrl+f is the host's")
+	pump(&app)
+	testing.expect_value(t, js(&app, `document.$("#bml-find").style.display`), "block")
+	testing.expect_value(t, js(&app, `document.$("#bml-replace-row").style.display`), "none")
+	testing.expect_value(t, js(&app, `document.$("#bml-find-input").value = "stayman"; String(bmlFindScan())`), "2")
+	testing.expect_value(t, js(&app, `bmlFindStep(1); document.$("#bml-find-count").textContent`), "1 of 2")
+	testing.expect_value(t, js(&app, `document.$("#bml-text").plaintext.selectionText`), "Stayman") // the match is selected
+	testing.expect_value(t, js(&app, `bmlFindStep(1); bmlFindStep(1); document.$("#bml-find-count").textContent`), "1 of 2") // wraps
+	testing.expect_value(t, js(&app, `bmlFindToggle("matchCase"); String(bmlFind.matches.length)`), "1")
+	testing.expect_value(t, js(&app, `bmlFindToggle("matchCase"); document.$("#bml-find-input").value = "st"; bmlFindToggle("word"); String(bmlFind.matches.length)`), "0")
+	testing.expect_value(t, js(&app, `bmlFindToggle("word"); String(bmlFind.matches.length)`), "2") // inside Stayman and stayman, once whole words are off
+
+	// ctrl+h: the replace row. One, then all.
+	testing.expect(t, goto_key(&app, u32(sciter.Sc_Kb_Codes.H), {.LCONTROL}), "ctrl+h is the host's")
+	pump(&app)
+	testing.expect_value(t, js(&app, `document.$("#bml-replace-row").style.display`), "block")
+	_ = js(&app, `document.$("#bml-find-input").value = "stayman"; document.$("#bml-replace-input").value = "Puppet"; bmlFindScan(); bmlFind.at = 0; String(bmlReplaceOne())`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n1NT = 15-17\n    2C = Puppet\n    2D = transfer, not stayman")
+	testing.expect_value(t, js(&app, `String(bmlReplaceAll())`), "1")
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n1NT = 15-17\n    2C = Puppet\n    2D = transfer, not Puppet")
+	_ = js(&app, `bmlFindClose()`)
+	testing.expect_value(t, js(&app, `document.$("#bml-find").style.display`), "none")
+
+	// CTRL+L selects the line, newline and all; again, the next one too (it moved the caret down instead - reported).
+	_ = js(&app, `document.$("#bml-text").plaintext.selectRange(1, 3, 1, 3); bmlSelectLine(document.$("#bml-text")); ""`)
+	testing.expect_value(t, js(&app, `JSON.stringify(document.$("#bml-text").plaintext.selectionStart) + JSON.stringify(document.$("#bml-text").plaintext.selectionEnd)`), "[1,0][2,0]")
+	_ = js(&app, `bmlSelectLine(document.$("#bml-text")); ""`)
+	testing.expect_value(t, js(&app, `JSON.stringify(document.$("#bml-text").plaintext.selectionEnd)`), "[3,0]")
+	// ...and the lines a selection covers are what the line keys act on: two lines moved down together.
+	_ = js(&app, `bmlMoveLines(document.$("#bml-text"), false); ""`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n    2D = transfer, not Puppet\n1NT = 15-17\n    2C = Puppet")
+	_ = js(&app, `bmlMoveLines(document.$("#bml-text"), true); ""`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n1NT = 15-17\n    2C = Puppet\n    2D = transfer, not Puppet")
+
+	// The line keys on the caret's line (row 1).
+	at :: proc(app: ^App, row, col: int) {
+		r, _ := sa.eval(app.window, fmt.tprintf(`document.$("#bml-text").plaintext.selectRange(%d, %d, %d, %d)`, row, col, row, col))
+		sa.value_clear(&r)
+	}
+	at(&app, 1, 2)
+	_ = js(&app, `String(bmlMoveLines(document.$("#bml-text"), false))`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n    2C = Puppet\n1NT = 15-17\n    2D = transfer, not Puppet")
+	testing.expect_value(t, js(&app, `JSON.stringify(document.$("#bml-text").plaintext.selectionStart)`), "[2,2]")
+	_ = js(&app, `String(bmlMoveLines(document.$("#bml-text"), true))`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n1NT = 15-17\n    2C = Puppet\n    2D = transfer, not Puppet")
+	at(&app, 2, 6)
+	_ = js(&app, `String(bmlToggleComment(document.$("#bml-text")))`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n1NT = 15-17\n//     2C = Puppet\n    2D = transfer, not Puppet")
+	_ = js(&app, `String(bmlToggleComment(document.$("#bml-text")))`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n1NT = 15-17\n    2C = Puppet\n    2D = transfer, not Puppet")
+	at(&app, 1, 0)
+	_ = js(&app, `String(bmlDeleteLines(document.$("#bml-text")))`)
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n    2C = Puppet\n    2D = transfer, not Puppet")
+	at(&app, 2, 3)
+	_ = js(&app, `String(bmlDeleteLines(document.$("#bml-text")))`) // the last line
+	pump(&app)
+	testing.expect_value(t, text(&app), "* Openings\n    2C = Puppet")
+
+	// ctrl+k is the link palette now; ctrl+shift+k is left to the editor (delete line).
+	testing.expect(t, !goto_key(&app, u32(sciter.Sc_Kb_Codes.K), {.LCONTROL, .LSHIFT}), "ctrl+shift+k is the editor's")
+	testing.expect(t, goto_key(&app, u32(sciter.Sc_Kb_Codes.K), {.LCONTROL}), "ctrl+k opens the palette")
+	mode_label, _ := sa.text(find(&app, "#bml-goto-mode"), context.temp_allocator)
+	testing.expect_value(t, mode_label, "link") // its mode in words: it lists the same headings as ctrl+r
+	close_goto(&app)
+	r, _ := sa.eval(app.window, "bmlSwallowChar = false")
+	sa.value_clear(&r)
+}
+
+
+// THE NOTES EDITOR'S LOOK (editor_look.odin) reaches the editor: font, size and line height as its style, a colour
+// as a variable the sheet reads (seen through the caret colour, which is the editor's own property), and a reset puts
+// every one back to the theme's - the variable pointing at the theme's token, since a script cannot unset it.
+@(test)
+test_the_editor_look_reaches_the_editor :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	show_view(&app, .Editor)
+	pump(&app)
+	text := find(&app, "#bml-text")
+	if text == nil {
+		testing.fail_now(t, "there is no source pane")
+	}
+	read :: proc(element: sa.Element, name: string) -> string {
+		value, _ := sa.style(element, name, context.temp_allocator)
+		return value
+	}
+	size, family, caret := read(text, "font-size"), read(text, "font-family"), read(text, "text-selection-caret-color")
+
+	rows := EDITOR_TUNES
+	for tune in rows {
+		switch tune.token {
+		case "font":
+			prefs.set(&app.prefs, editor_tune_pref(&app, tune), "Georgia, serif")
+		case "size":
+			prefs.set(&app.prefs, editor_tune_pref(&app, tune), "20px")
+		case "line":
+			prefs.set(&app.prefs, editor_tune_pref(&app, tune), "150")
+		case "caret":
+			prefs.set(&app.prefs, editor_tune_pref(&app, tune), "#ff0000")
+		}
+	}
+	apply_editor_look(&app)
+	pump(&app)
+	testing.expect_value(t, read(text, "font-size"), "15pt") // 20px
+	testing.expect_value(t, read(text, "line-height"), "150%")
+	testing.expect(t, strings.contains(read(text, "font-family"), "Georgia"), "the font must be the editor's")
+	set_caret := read(text, "text-selection-caret-color")
+	testing.expectf(t, set_caret != caret, "the caret is still %q", set_caret)
+
+	reset_tune(&app, editor_tune_set(), "*")
+	pump(&app)
+	testing.expect_value(t, read(text, "font-size"), size)
+	testing.expect_value(t, read(text, "font-family"), family)
+	testing.expect_value(t, read(text, "text-selection-caret-color"), caret)
+}
+
+// THE CARET LINE: the line holding the caret is tinted, one line at a time, and not at all when it is turned off.
+@(test)
+test_the_editor_tints_the_caret_line :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	show_view(&app, .Editor)
+	set_bml_source(&app, "one\n\nthree")
+	pump(&app)
+	apply_editor_look(&app)
+	text := find(&app, "#bml-text")
+	if text == nil {
+		testing.fail_now(t, "there is no source pane")
+	}
+	tinted :: proc(t: ^testing.T, app: ^App, text: sa.Element) -> [3]bool {
+		pump(app)
+		lit: [3]bool
+		for row in 0 ..< 3 {
+			line, _ := sa.child(text, sa.Child_Index(row))
+			if line == nil {continue}
+			bg, _ := sa.style(line, "background-color", context.temp_allocator)
+			lit[row] = bg != "" && !strings.contains(bg, "transparent")
+		}
+		return lit
+	}
+	select :: proc(app: ^App, row: int) {
+		r, _ := sa.eval(app.window, fmt.tprintf(`bmlSelect(document.$("#bml-text"), %d, 0, %d, 0)`, row, row))
+		sa.value_clear(&r)
+	}
+	select(&app, 1) // the empty line: the one a bar caret is hardest to see on
+	testing.expect_value(t, tinted(t, &app, text), [3]bool{false, true, false})
+	select(&app, 2)
+	testing.expect_value(t, tinted(t, &app, text), [3]bool{false, false, true})
+
+	choose_editor_caret_line(&app, false)
+	testing.expect_value(t, tinted(t, &app, text), [3]bool{false, false, false})
+	choose_editor_caret_line(&app, true)
+	testing.expect_value(t, tinted(t, &app, text), [3]bool{false, false, true})
+}
+
+// The editor's rows are kept per THEME for colours and once for the rest; its numbers check their own units.
+@(test)
+test_the_editor_look_rows :: proc(t: ^testing.T) {
+	rows := EDITOR_TUNES
+	size, line, bid: Notes_Tune
+	for tune in rows {
+		switch tune.token {
+		case "size":
+			size = tune
+		case "line":
+			line = tune
+		case "bid":
+			bid = tune
+		}
+	}
+	testing.expect_value(t, editor_pref_key(size, "dark"), "editor.size")
+	testing.expect_value(t, editor_pref_key(bid, "light"), "editor.light.bid")
+	for pair in ([][2]string{{"14px", "14"}, {" 14 ", "14"}, {"7", ""}, {"41px", ""}, {"14%", ""}}) {
+		typed, want := pair[0], pair[1]
+		value, _ := tune_value(size, typed, context.temp_allocator)
+		testing.expectf(t, value == want, "size %q gave %q, not %q", typed, value, want)
+	}
+	for pair in ([][2]string{{"150%", "150"}, {"99", ""}, {"300", "300"}}) {
+		typed, want := pair[0], pair[1]
+		value, _ := tune_value(line, typed, context.temp_allocator)
+		testing.expectf(t, value == want, "line %q gave %q, not %q", typed, value, want)
+	}
+}
+
+// EDITOR PROFILES: saved and loaded as the notes look's are, holding both themes' colours, and their own set - a
+// notes profile of the same name is another thing.
+@(test)
+test_an_editor_profile_saves_and_loads :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+
+	prefs.set(&app.prefs, "editor.size", "18")
+	prefs.set(&app.prefs, "editor.dark.bid", "#00ff00")
+	prefs.set(&app.prefs, "editor.light.bid", "#008800")
+	prefs.set(&app.prefs, EDITOR_CARET_LINE_PREF, "off")
+	big := editor_look_snapshot(&app.prefs)
+	testing.expect(t, strings.contains(big, "editor.light.bid=#008800"), "a profile holds the other theme's colours too")
+	set := editor_profiles()
+	testing.expectf(t, strings.has_prefix(save_profile(&app, set, "Big"), "saved"), "save")
+	testing.expect_value(t, len(notes_profile_names(&app.prefs, EDITOR_PROFILE_PREF_PREFIX)), 1)
+	testing.expect_value(t, len(notes_profile_names(&app.prefs)), 0)
+
+	prefs.set(&app.prefs, "editor.size", "")
+	prefs.set(&app.prefs, "editor.dark.bid", "")
+	prefs.set(&app.prefs, "editor.dark.suit", "#ff00ff")
+	prefs.set(&app.prefs, EDITOR_CARET_LINE_PREF, "on")
+	testing.expectf(t, strings.has_prefix(load_profile(&app, set, "Big"), "the look now is in no profile"), "the first load is refused")
+	testing.expect_value(t, load_profile(&app, set, "Big"), `loaded profile "Big"`)
+	testing.expect_value(t, editor_look_snapshot(&app.prefs), big)
+	suit, _ := prefs.get(&app.prefs, "editor.dark.suit")
+	testing.expect_value(t, suit, "")
+	testing.expect(t, !editor_caret_line(&app.prefs), "the caret line is the profile's")
+
+	lit, _ := sa.eval(app.window, `document.$$("#prefs-editor-profiles button.profile.on").length`)
+	count, _ := sa.value_to_int(&lit)
+	sa.value_clear(&lit)
+	testing.expect_value(t, count, 1)
+
+	// THE BUILT-IN "theme" profile: nothing set, in both themes, the caret line back on; lit while nothing is set.
+	testing.expect_value(t, load_builtin_profile(&app, set), `loaded profile "theme"`)
+	light, _ := prefs.get(&app.prefs, "editor.light.bid")
+	testing.expect_value(t, light, "")
+	testing.expect(t, editor_caret_line(&app.prefs), "the built-in profile has the caret line on")
+	testing.expect_value(t, editor_look_snapshot(&app.prefs), "editor.caret-line=on")
+	builtin_lit, _ := sa.eval(app.window, `(function(){ var b = document.$("#prefs-editor-profiles button.profile.on"); return b ? b.getAttribute("data-editor-profile-builtin") || "" : ""; })()`)
+	builtin_on, _ := sa.value_to_string(&builtin_lit, context.temp_allocator)
+	sa.value_clear(&builtin_lit)
+	testing.expect_value(t, builtin_on, "1")
+	testing.expectf(t, strings.contains(save_profile(&app, set, "Theme"), "built-in"), "a saved profile cannot take the built-in name")
+	testing.expect_value(t, load_profile(&app, set, "Big"), `loaded profile "Big"`)
+
+	testing.expectf(t, strings.has_prefix(delete_profile(&app, set, "Big"), "deleted"), "delete")
+	testing.expect_value(t, len(notes_profile_names(&app.prefs, EDITOR_PROFILE_TRASH_PREFIX)), 1)
+}
+

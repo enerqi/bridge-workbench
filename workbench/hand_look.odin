@@ -19,7 +19,7 @@ package main
 
 	WHERE IT APPLIES:
 	  * the hand pane, every page shown there, old ones included;
-	  * pages WRITTEN by a run, when Settings says "generated pages: this look": `norn.page_look_css`, set as a
+	  * pages WRITTEN by a run, when Settings says "saved pages: same as pane": `norn.page_look_css`, set as a
 	    job starts (`set_page_look_for_run`), when no worker can be reading it;
 	  * NOT a share link: a link carries deals, and the reader's player draws its own page.
 
@@ -237,7 +237,7 @@ choose_generated_look :: proc(app: ^App, on: bool) {
 	set_text_at(
 		app,
 		"#prefs-hand-note",
-		"pages written from now on carry this look" if on else "pages written from now on keep the original look",
+		"pages written from now on look like the pane" if on else "pages written from now on keep the original look",
 	)
 	draw_hand_look_prefs(app)
 }

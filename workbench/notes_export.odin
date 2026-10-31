@@ -81,27 +81,80 @@ A notes page that stands alone: the library's html with the stylesheet and the l
 request the page should not need (it falls back to the stylesheet's other fonts). Pure, so it is tested
 without a window; `notes_css` and `notes_look_css` supply the two sheets.
 */
-standalone_notes_page :: proc(html, css, look: string, allocator := context.allocator) -> string {
+standalone_notes_page :: proc(html, css, look: string, docs := "", allocator := context.allocator) -> string {
+	own := own_stylesheets(docs, html, context.temp_allocator) // read before the links that name them go
 	stripped := strip_link_tags(html, context.temp_allocator)
 	head := strings.index(stripped, "<head>")
 	if head < 0 || css == "" {
 		return strings.clone(stripped, allocator)
 	}
 	cut := head + len("<head>")
-	return strings.concatenate({stripped[:cut], "<style>", css, "</style>", look, stripped[cut:]}, allocator)
+	return strings.concatenate({stripped[:cut], "<style>", css, "</style>", look, own, stripped[cut:]}, allocator)
 }
 
-// The notes folder's `bml.css`, or "" when it has none. Scratch memory.
+/*
+The document's OWN stylesheets (`#+CSS: mine.css`), read from the notes folder and inlined as `<style>`
+elements, in the order the page links them: every `<link rel="stylesheet" type="text/css" href="...">` the
+renderer wrote except `bml.css` itself. A page that inlines its sheets drops its links (`strip_link_tags`), so
+without this the author's rules would reach the built pages and nothing else. A remote or absolute href is not
+read - the window does not fetch - and a file that is not there is skipped: the page still renders, as a browser
+renders a page whose stylesheet 404s. Width `@media` blocks are left in; the preview takes them out itself.
+*/
+own_stylesheets :: proc(docs, html: string, allocator := context.allocator) -> string {
+	if docs == "" {
+		return ""
+	}
+	LINK :: `<link rel="stylesheet" type="text/css" href="`
+	b := strings.builder_make(allocator)
+	rest := html
+	for {
+		at := strings.index(rest, LINK)
+		if at < 0 {
+			break
+		}
+		rest = rest[at + len(LINK):]
+		end := strings.index_byte(rest, '"')
+		if end < 0 {
+			break
+		}
+		href := rest[:end]
+		if href == "bml.css" || href == "" || strings.contains(href, ":") || href[0] == '/' || href[0] == '\\' {
+			continue
+		}
+		path, jerr := filepath.join({docs, href}, context.temp_allocator)
+		if jerr != nil {
+			continue
+		}
+		data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+		if err != nil {
+			continue
+		}
+		strings.write_string(&b, "<style>")
+		strings.write_string(&b, string(data))
+		strings.write_string(&b, "</style>")
+	}
+	return strings.to_string(b)
+}
+
+/*
+THE NOTES' STYLESHEET, BUNDLED: a copy of the BML tools' `bml.css`, in the program, so the notes look right
+on a machine that has no tools checkout - which is every machine but a developer's. Without it the preview was
+unstyled, the build wrote no `bml.css` for its pages to link, and the Settings look had no tokens to change.
+Refreshed with `just vendor-bml-css`; a test fails when it falls behind the tools' own.
+*/
+BUNDLED_BML_CSS :: #load("../ui/bml.css", string)
+
+// The notes folder's `bml.css`, else the bundled one; "" with no notes folder at all. Scratch memory.
 notes_css :: proc(app: ^App) -> string {
 	if app.docs == "" {
 		return ""
 	}
 	path, jerr := filepath.join({app.docs, "bml.css"}, context.temp_allocator)
 	if jerr != nil {
-		return ""
+		return BUNDLED_BML_CSS
 	}
 	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
-	return string(data) if err == nil else ""
+	return string(data) if err == nil else BUNDLED_BML_CSS
 }
 
 @(private = "file")
@@ -167,7 +220,7 @@ export_notes :: proc(
 		doc := bml.parse(text, {resolve_include = export_include, include_user = &source})
 		html := bml.render_html(doc, context.temp_allocator)
 		bml.destroy(doc)
-		page := standalone_notes_page(html, css, look, context.temp_allocator)
+		page := standalone_notes_page(html, css, look, docs, context.temp_allocator)
 		name := fmt.tprintf("%s.html", strings.trim_suffix(page_name, ".bml"))
 		append(&files, Zip_Entry{name = name, data = transmute([]u8)page})
 	}
@@ -328,6 +381,94 @@ export_notes_to_zip :: proc(app: ^App, all := false) {
 	}
 	show_in_explorer(path)
 	bml_status(app, fmt.tprintf("%s · zipped to %s", export_summary(export, app.bml_open), path))
+}
+
+/*
+`build`: what the notes repository's `just bml` does, from the workbench. Every `.bml` in the notes folder
+(chapters too, each a page of its own) is rendered from the file ON DISK and written as `<name>.html` beside
+it - linking `bml.css`, not standalone, since these are the pages `just publish` copies. Windows newlines
+(`\r\n`) as the command-line `bml2html` writes, so a page built here is byte for byte the one `just bml`
+builds and `publish`, which compares contents, does not copy the whole corpus again.
+
+Then `bml.css` beside them, as the recipe refreshes it: the BML tools' sheet (`tools_css`, "" when there is
+no tools checkout) with the notes folder's `bml-look.css` appended when there is one, written only when that
+differs from what is there. Without a tools sheet the folder's `bml.css` is left as it is. Without a window,
+so the tests drive it directly; `css_refreshed` says whether the sheet was written.
+*/
+build_notes_in_place :: proc(docs, tools_css: string) -> (built: int, css_refreshed: bool, why: string) {
+	if docs == "" {
+		return 0, false, "no notes folder"
+	}
+	source := Export_Source{docs = docs}
+	for name in list_bml_files(docs, context.temp_allocator) {
+		text, read := export_include(name, &source, context.temp_allocator)
+		if !read {
+			return built, false, fmt.tprintf("could not read %s", name)
+		}
+		doc := bml.parse(text, {resolve_include = export_include, include_user = &source})
+		html := bml.render_html(doc, context.temp_allocator)
+		bml.destroy(doc)
+		when ODIN_OS == .Windows {
+			html, _ = strings.replace_all(html, "\n", "\r\n", context.temp_allocator)
+		}
+		path, _ := filepath.join({docs, fmt.tprintf("%s.html", strings.trim_suffix(name, ".bml"))}, context.temp_allocator)
+		if werr := os.write_entire_file(path, transmute([]u8)html); werr != nil {
+			return built, false, fmt.tprintf("could not write %s: %v", path, werr)
+		}
+		built += 1
+	}
+
+	if tools_css == "" {
+		return built, false, ""
+	}
+	want := tools_css
+	look_path, _ := filepath.join({docs, "bml-look.css"}, context.temp_allocator)
+	if look, lerr := os.read_entire_file_from_path(look_path, context.temp_allocator); lerr == nil {
+		want = strings.concatenate({tools_css, "\n", string(look)}, context.temp_allocator)
+	}
+	css_path, _ := filepath.join({docs, "bml.css"}, context.temp_allocator)
+	have, _ := os.read_entire_file_from_path(css_path, context.temp_allocator)
+	if string(have) == want {
+		return built, false, ""
+	}
+	if werr := os.write_entire_file(css_path, transmute([]u8)want); werr != nil {
+		return built, false, fmt.tprintf("could not write %s: %v", css_path, werr)
+	}
+	return built, true, ""
+}
+
+// The BML tools' `bml.css` - `BML_TOOLS_DIRECTORY`, else `~/dev/bml`, as the notes' justfile finds it - or the
+// bundled copy when there is none (an installed workbench: no tools checkout). Scratch memory.
+bml_tools_css :: proc() -> string {
+	dir := os.get_env("BML_TOOLS_DIRECTORY", context.temp_allocator)
+	if dir == "" {
+		home := os.get_env("USERPROFILE", context.temp_allocator)
+		if home == "" {
+			return BUNDLED_BML_CSS
+		}
+		dir, _ = filepath.join({home, "dev", "bml"}, context.temp_allocator)
+	}
+	path, _ := filepath.join({dir, "bml.css"}, context.temp_allocator)
+	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+	return string(data) if err == nil else BUNDLED_BML_CSS
+}
+
+// The `build` button: every page beside its notes, and the status line says how many and what was left out.
+build_notes :: proc(app: ^App) {
+	built, refreshed, why := build_notes_in_place(app.docs, bml_tools_css())
+	if why != "" {
+		bml_status(app, why)
+		return
+	}
+	b := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&b, "built %d page%s beside the notes in %s", built, "" if built == 1 else "s", app.docs)
+	if refreshed {
+		strings.write_string(&b, " · refreshed bml.css")
+	}
+	if app.bml_open != "" && bml_modified(app) {
+		fmt.sbprintf(&b, " · %s has unsaved changes, so its page is the saved text: save and build again", app.bml_open)
+	}
+	bml_status(app, strings.to_string(b))
 }
 
 // Open Explorer on the folder holding `path`, with the file selected.

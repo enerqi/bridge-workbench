@@ -110,7 +110,19 @@ completion_terms :: proc(docs, mode: string) -> []string {
 				}
 			}
 			slice.sort(words[:]) // a stable order, whatever order the files came in
-			append(&all, ..words[:])
+			// A word the notes also write in LOWER case is an ordinary word, whatever case it had at the start of
+			// a sentence: offered in lower case, and the completion gives it the case being typed. Only a word
+			// never written in lower case (Kokish) is taken for a name and keeps its capitals.
+			lowered := make(map[string]struct{}, len(words), context.temp_allocator)
+			for word in words {
+				if word == strings.to_lower(word, context.temp_allocator) {
+					lowered[word] = {}
+				}
+			}
+			for word in words {
+				lower := strings.to_lower(word, context.temp_allocator)
+				append(&all, lower if lower in lowered else word)
+			}
 		}
 	}
 	seen := make(map[string]struct{}, len(all), context.temp_allocator)

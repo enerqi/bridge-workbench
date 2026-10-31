@@ -102,6 +102,16 @@ set :: proc(p: ^Prefs, key: string, value: string) {
 	p.values[strings.clone(key, p.allocator)] = strings.clone(value, p.allocator)
 }
 
+// Forget one choice: the key and its value go, so the next `save` does not write it.
+remove :: proc(p: ^Prefs, key: string) {
+	if key not_in p.values {
+		return
+	}
+	old_key, old_value := delete_key(&p.values, key)
+	delete(old_key, p.allocator)
+	delete(old_value, p.allocator)
+}
+
 /*
 Write it back, creating the directory if it is not there.
 

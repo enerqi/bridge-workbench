@@ -441,6 +441,20 @@ player: player-dds
 player-dds:
 	uv run --no-project -p 3.14 --script player/dds/build.py "{{ join(dds_home, "external", "dds", "src") }}" {{ join(player_dir, "dds.wasm") }}
 
+# The workbench bundles the notes' stylesheet for machines without the BML tools (BML_TOOLS_DIRECTORY, else
+# ~/dev/bml); a test fails when the copy falls behind the tools' own.
+# ---
+# copy the BML tools' bml.css into ui/, where the workbench bundles it (then rebuild the workbench)
+[group('notes')]
+[script]
+vendor-bml-css:
+	import os, shutil
+	from pathlib import Path
+	tools = Path(os.environ.get("BML_TOOLS_DIRECTORY") or Path.home() / "dev" / "bml")
+	target = Path("ui") / "bml.css"
+	shutil.copyfile(tools / "bml.css", target)
+	print(f"{target}: {target.stat().st_size:,} bytes - now rebuild the workbench (just workbench)")
+
 # rebuild the player and copy it into ui/, where the workbench's `share link` button bundles it (then rebuild the workbench)
 [group('share')]
 [script]

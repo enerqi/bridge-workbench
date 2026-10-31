@@ -1,0 +1,621 @@
+    /* THE LOOK, as tokens: every colour and the font are named here once, so a theme is a second
+       `:root { ... }` after this sheet that redefines some of them (the bridge workbench's Settings writes
+       one). The values below are the original look. */
+    :root {
+        --nav-link-color: Sienna;
+        --bml-font: 'Open Sans', 'Segoe UI', sans-serif;
+        --bml-page-bg: antiquewhite;
+        --bml-ink: black;
+        --bml-bid-col: rgb(165, 252, 247, 0.4);
+        --bml-bid-col-alt: rgb(135, 206, 250, 0.4);
+        --bml-link: rgb(0, 102, 204);
+        --bml-club: MediumSeaGreen;
+        --bml-diamond: Orange;
+        --bml-heart: Red;
+        --bml-spade: var(--bml-ink);
+        --bml-font-size: 100%;
+        --bml-heading-font: var(--bml-font);
+        /* THE BID CELLS' SHAPE: what paints the cell (a colour, or a gradient that fades it out), its corners,
+           and an inset shadow (a bar down its left edge drawn INSIDE the cell, so the column does not move).
+           The original: the tint, square, no bar. */
+        --bml-bid-paint: var(--bml-bid-col);
+        --bml-bid-paint-alt: var(--bml-bid-col-alt);
+        --bml-bid-radius: 0;
+        --bml-bid-shadow: none;
+        --bml-bid-shadow-alt: none;
+        /* Solid versions of the two tints, for a bar down a cell's edge (a 40% tint as a thin bar is a ghost). */
+        --bml-bid-bar: rgb(95, 200, 195);
+        --bml-bid-bar-alt: rgb(95, 165, 225);
+        /* The callouts: each type's edge and label colour, and the tint behind it. A tint is its own token
+           because a stylesheet cannot make a translucent copy of a colour it is given (the workbench's preview
+           engine has no color-mix), so whoever sets a colour sets its tint as well. */
+        --bml-callout: rgb(128, 128, 128);
+        --bml-callout-tint: rgba(128, 128, 128, 0.08);
+        --bml-note: rgb(50, 115, 200);
+        --bml-note-tint: rgba(50, 115, 200, 0.09);
+        --bml-info: rgb(50, 115, 200);
+        --bml-info-tint: rgba(50, 115, 200, 0.09);
+        --bml-tip: rgb(35, 145, 85);
+        --bml-tip-tint: rgba(35, 145, 85, 0.09);
+        --bml-warning: rgb(215, 130, 15);
+        --bml-warning-tint: rgba(215, 130, 15, 0.11);
+        /* The seat / vulnerability tag in a description, and a vulnerable seat on a diagram's compass. */
+        --bml-cond: rgba(100, 130, 200, 0.18);
+        --bml-vul: rgb(200, 40, 40);
+        --bml-vul-ink: white;
+        /* Pipe tables and auctions: translucent greys, so they read on any page. */
+        --bml-table-line: rgba(128, 128, 128, 0.45);
+        --bml-table-head: rgba(128, 128, 128, 0.16);
+        --bml-table-stripe: rgba(128, 128, 128, 0.07);
+    }
+
+    body {
+        font-family: var(--bml-font);
+        font-size: var(--bml-font-size);
+        background: var(--bml-page-bg);
+        color: var(--bml-ink);
+    }
+
+    .content {
+        margin: auto;
+        max-width: 900px;
+    }
+
+    /* A bid's cell: 80px across in all, as the 80px a nested table is indented by - 6px padding, 70px wide,
+       and a 4px GAP before the description, so the tint does not run into the text after it (it read as
+       cramped). The gap is margin, not cell, so no shape paints it. */
+    div.start {
+        display: inline-block;
+        vertical-align: top;
+        width: 70px;
+        background: var(--bml-bid-paint);
+        border-radius: var(--bml-bid-radius);
+        box-shadow: var(--bml-bid-shadow);
+        padding-left: 6px;
+        margin-right: 4px;
+    }
+
+    div.startOddIndent {
+        display: inline-block;
+        vertical-align: top;
+        width: 70px;
+        background: var(--bml-bid-paint-alt);
+        border-radius: var(--bml-bid-radius);
+        box-shadow: var(--bml-bid-shadow-alt);
+        padding-left: 6px;
+        margin-right: 4px;
+    }
+
+    div.bidtable {
+        width: 900px;
+    }
+
+    div.bidtable ul {
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* A description's second and later lines: the empty bid div only keeps the text in its column. A browser
+       collapses its lone space to nothing, so it shows no colour; the workbench preview gives it a line's
+       height, which drew a stack of empty bid cells. Uncoloured here, so both look the same. */
+    div.descRow > div.start, div.descRow > div.startOddIndent {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    h1, h2, h3, h4 {
+        font-family: var(--bml-heading-font);
+    }
+
+    /* A seat or vulnerability condition in a description - (NV), 1st/2nd, passed hand - as a small tag, so where
+       a meaning changes stands out from the meaning. Translucent, so it reads in any look. */
+    span.bml-cond {
+        font-size: 0.85em;
+        padding: 0 0.35em;
+        border-radius: 0.6em;
+        background: var(--bml-cond);
+        white-space: nowrap;
+    }
+
+    div.bidtable li ul {
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+        margin-left: 80px;
+    }
+
+    .ccolor {
+        color: var(--bml-club)
+    }
+
+    .dcolor {
+        color: var(--bml-diamond)
+    }
+
+    .hcolor {
+        color: var(--bml-heart)
+    }
+
+    .scolor {
+        color: var(--bml-spade)
+    }
+
+    a:link,
+    a:visited {
+        text-decoration: none;
+        color: var(--bml-link);
+    }
+
+    .top-link {
+        z-index: 99;
+        position: fixed;
+        bottom: 5%;
+        left: 95%;
+    }
+
+    /* The four blocks html used to drop (deal diagrams, pipe tables, description lists, auctions). Lines in
+       `currentColor`, so they follow the page's ink in every look. */
+    div.bml-diagram {
+        margin: 0.8em 0;
+    }
+
+    /* `#+CAPTION:` - a title over the diagram, auction or table under it, so it sits close to that block
+       and pulls its top margin in. */
+    div.bml-caption {
+        font-weight: 600;
+        margin: 0.9em 0 0 0;
+    }
+
+    div.bml-caption + div.bml-diagram, div.bml-caption + table, div.bml-caption + div.bidtable {
+        margin-top: 0.3em;
+    }
+
+    /* `#BOX` ... `#ENDBOX`: the diagram / auction on the left, the text beside it. Table layout rather than
+       flex, which the workbench's preview engine draws as a browser does. On a narrow screen the text goes
+       under instead. */
+    div.bml-box {
+        display: table;
+        margin: 0.8em 0;
+    }
+
+    div.bml-box-side, div.bml-box-text {
+        display: table-cell;
+        vertical-align: top;
+    }
+
+    div.bml-box-side {
+        padding-right: 1.8em;
+        white-space: nowrap;
+    }
+
+    div.bml-box-side > :first-child, div.bml-box-text > :first-child {
+        margin-top: 0;
+    }
+
+    @media all and (max-width: 699px) {
+        div.bml-box, div.bml-box-side, div.bml-box-text {
+            display: block;
+        }
+    }
+
+    /* `#BOX note|info|tip|warning Title`: the box in a CALLOUT frame - a coloured left edge, a light tint of the same
+       colour, and a head with the type's label and the title. `#BOX Title` alone: the same frame in grey. Each
+       type's colours are `:root` tokens named per type, not one variable set on the frame: the workbench's
+       preview engine does not resolve a variable defined on an element (the label came out black, measured). */
+    div.bml-callout {
+        margin: 0.9em 0;
+        padding: 0.5em 0.9em;
+        border-left: 4px solid var(--bml-callout);
+        border-radius: 0 4px 4px 0;
+        background: var(--bml-callout-tint);
+    }
+
+    div.bml-callout-head {
+        font-weight: 600;
+        margin-bottom: 0.35em;
+    }
+
+    div.bml-callout.bml-note {
+        border-left-color: var(--bml-note);
+        background: var(--bml-note-tint);
+    }
+
+    div.bml-note span.bml-callout-label {
+        color: var(--bml-note);
+    }
+
+    div.bml-callout.bml-info {
+        border-left-color: var(--bml-info);
+        background: var(--bml-info-tint);
+    }
+
+    div.bml-info span.bml-callout-label {
+        color: var(--bml-info);
+    }
+
+    div.bml-callout.bml-tip {
+        border-left-color: var(--bml-tip);
+        background: var(--bml-tip-tint);
+    }
+
+    div.bml-tip span.bml-callout-label {
+        color: var(--bml-tip);
+    }
+
+    div.bml-callout.bml-warning {
+        border-left-color: var(--bml-warning);
+        background: var(--bml-warning-tint);
+    }
+
+    div.bml-warning span.bml-callout-label {
+        color: var(--bml-warning);
+    }
+
+    div.bml-callout > div.bml-box {
+        margin: 0;
+    }
+
+    div.bml-callout div.bml-box-side > :last-child, div.bml-callout div.bml-box-text > :last-child {
+        margin-bottom: 0;
+    }
+
+    div.bml-callout div.bml-box-text > :first-child {
+        margin-top: 0;
+    }
+
+    div.bml-deal-head {
+        font-size: 0.9em;
+        margin-bottom: 0.3em;
+    }
+
+    table.bml-deal {
+        border-collapse: collapse;
+    }
+
+    table.bml-deal td {
+        vertical-align: top;
+        padding: 0.15em 0.9em;
+        white-space: nowrap;
+    }
+
+    table.bml-deal td.compass {
+        width: 3.5em;
+        height: 3.5em;
+        padding: 0;
+        border: 1px solid currentColor;
+        vertical-align: middle;
+    }
+
+    /* The compass inside it, as a hand record draws one: N E S W round the edge, the board number in the middle,
+       the dealer's letter bold and underlined, a vulnerable seat in red. */
+    table.bml-deal table.bml-compass {
+        border-collapse: collapse;
+        width: 100%;
+        height: 100%;
+        font-size: 0.75em;
+        line-height: 1.2;
+    }
+
+    table.bml-deal table.bml-compass td {
+        padding: 0.1em 0.2em;
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    table.bml-compass td.seat.vul {
+        background: var(--bml-vul);
+        color: var(--bml-vul-ink);
+    }
+
+    table.bml-compass td.seat.dealer {
+        font-weight: 700;
+        text-decoration: underline;
+    }
+
+    table.bml-compass td.board {
+        font-weight: 600;
+        opacity: 0.7;
+    }
+
+    table.bml-table, table.bml-auction {
+        border-collapse: collapse;
+        margin: 0.6em 0;
+    }
+
+    /* Translucent greys rather than colours, so the table reads on any page background (light or dark theme). */
+    table.bml-table {
+        border: 1px solid currentColor;
+    }
+
+    table.bml-table th, table.bml-table td {
+        padding: 0.25em 0.8em;
+        text-align: left;
+        vertical-align: top;
+        border: 1px solid var(--bml-table-line);
+    }
+
+    table.bml-table th {
+        font-weight: 600;
+        background: var(--bml-table-head);
+        border-bottom: 1px solid currentColor;
+    }
+
+    table.bml-table tr:nth-child(even) td {
+        background: var(--bml-table-stripe);
+    }
+
+    table.bml-table tr.rule td {
+        border-top: 1px solid currentColor;
+    }
+
+    table.bml-auction td, table.bml-auction th {
+        padding: 0.1em 0.9em 0.1em 0;
+        min-width: 3em;
+        text-align: left;
+        white-space: nowrap; /* "All pass" on one line; set here because a page with no doctype (quirks mode) does not pass white-space into tables */
+    }
+
+    /* The `W N E S` header row. */
+    table.bml-auction th {
+        font-weight: 600;
+        border-bottom: 1px solid var(--bml-table-line);
+    }
+
+    /* A call's mark (`2C*`, `2C^1`, `P!`) and the notes under the auction that the marks point at. */
+    sup.bml-note, sup.bml-alert {
+        font-size: 0.7em;
+        line-height: 0;
+        padding-left: 0.1em;
+    }
+
+    sup.bml-alert {
+        font-weight: 700;
+    }
+
+    div.bml-auction-notes {
+        font-size: 0.9em;
+        margin: -0.3em 0 0.6em 0;
+    }
+
+    dl.bml-desc dt {
+        font-weight: bold;
+    }
+
+    dl.bml-desc dd {
+        margin: 0 0 0.4em 1.5em;
+    }
+
+     @media all and (max-width: 699px) {
+        .content {
+            margin: 0.5%;
+            font-size: small;
+            max-width: 600px;
+        }
+
+        div.bidtable {
+            width: 550px;
+        }
+
+        /*smaller font, compress the bid columns*/
+        div.start {
+            width: 45px;
+            padding-left: 3px;
+        }
+        div.startOddIndent {
+            width: 45px;
+            padding-left: 3px;
+        }
+
+        .nav-links {
+            display: none;
+        }
+    }
+
+    @media all and (max-width: 799px) {
+        .content {
+            margin: 0.5%;
+            font-size: small;
+            max-width: 700px;
+        }
+
+        div.bidtable {
+            width: 650px;
+        }
+
+        /*smaller font, compress the bid columns*/
+        div.start {
+            width: 45px;
+            padding-left: 3px;
+        }
+        div.startOddIndent {
+            width: 45px;
+            padding-left: 3px;
+        }
+
+        .nav-links {
+            display: none;
+        }
+    }
+
+    @media all and (max-width: 899px) {
+        .content {
+            margin: 1%;
+            font-size: normal;
+            max-width: 800px;
+        }
+
+        div.bidtable {
+            width: 750px;
+        }
+
+        .nav-links {
+            display: none;
+        }
+    }
+
+    @media all and (min-width: 900px) and (max-width: 1045px) {
+        /*up to 1045*/
+        .content {
+            margin-right: 1%;
+            font-size: small;
+            max-width: 800px;
+        }
+        div.bidtable {
+            width: 700px;
+        }
+
+        /*pair with smaller font*/
+        div.start {
+            width: 45px;
+            padding-left: 3px;
+        }
+        div.startOddIndent {
+            width: 45px;
+            padding-left: 3px;
+        }
+
+        .nav-links {
+            z-index: 99;
+            position: fixed;
+            top: 1%;
+            left: 0%;
+            width: 10%;
+            font-size: small;
+            color: var(--nav-link-color);
+            overflow: auto;
+            height: 97%;
+        }
+
+        .nav-links a {
+            color: inherit;
+        }
+
+        .nav-links ul {
+            margin-top: 4px;
+            margin-bottom: 2px;
+            /*padding makes the link chunky, not the <a> */
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    }
+
+    @media all and (min-width: 1046px) and (max-width: 1179px) {
+        .content {
+            margin-right: 2%;
+        }
+        div.bidtable {
+            width: 700px;
+        }
+
+        /*pair with smaller font*/
+        div.start {
+            width: 45px;
+            padding-left: 3px;
+        }
+        div.startOddIndent {
+            width: 45px;
+            padding-left: 3px;
+        }
+
+        .nav-links {
+            z-index: 99;
+            position: fixed;
+            top: 1%;
+            left: 1%;
+            width: 10%;
+            font-size: small;
+            color: var(--nav-link-color);
+            overflow: auto;
+            height: 97%;
+        }
+
+        .nav-links a {
+            color: inherit;
+        }
+
+        .nav-links ul {
+            margin-top: 4px;
+            margin-bottom: 2px;
+            /*padding makes the link chunky, not the <a> */
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    }
+
+    @media all and (min-width: 1180px) {
+        .nav-links {
+            z-index: 99;
+            position: fixed;
+            top: 1%;
+            left: 1%;
+            width: 11.0%;
+            font-size: small;
+            color: var(--nav-link-color);
+            overflow: auto;
+            height: 97%;
+        }
+
+        .nav-links a {
+            color: inherit;
+        }
+
+        .nav-links ul {
+            margin-top: 4px;
+            margin-bottom: 2px;
+            /*padding makes the link chunky, not the <a> */
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    }
+
+    @media all and (min-width: 1300px) {
+        .nav-links {
+            z-index: 99;
+            position: fixed;
+            top: 1%;
+            left: 2%;
+            width: 12.5%;
+            font-size: small;
+            color: var(--nav-link-color);
+            overflow: auto;
+            height: 97%;
+        }
+
+        .nav-links a {
+            color: inherit;
+        }
+
+        .nav-links ul {
+            margin-top: 4px;
+            margin-bottom: 2px;
+            /*padding makes the link chunky, not the <a> */
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    }
+
+    @media all and (min-width: 1450px) {
+        .nav-links {
+            z-index: 99;
+            position: fixed;
+            top: 1%;
+            left: 2%;
+            width: 15%;
+            font-size: small;
+            color: var(--nav-link-color);
+            overflow: auto;
+            height: 97%;
+        }
+
+        .nav-links a {
+            color: inherit;
+        }
+
+        .nav-links ul {
+            margin-top: 4px;
+            margin-bottom: 2px;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    }

@@ -15,9 +15,10 @@ else.
 
 Per file: the auction count and a SHA-256 over every auction, written as
 
-    <call>\\x1f<call>...\\x1e<description>\\x1d
+    <call>\\x1f<call>...\\x1e<description>[\\x1c<context>]\\x1d
 
-which needs no escaping rules to agree on (none of the separators occur in .bml text). `--dump DIR`
+(the context only where the quiz sets one: the headings that tell an ambiguous auction's meanings
+apart), which needs no escaping rules to agree on (none of the separators occur in .bml text). `--dump DIR`
 also writes each file's auctions as JSON, for diffing against `just quiz-corpus-dump`.
 """
 
@@ -40,21 +41,26 @@ sys.path.insert(0, str(APPS / "apps" / "quiz"))
 import quiz  # noqa: E402
 
 
-def auctions(bml_file: str) -> list[tuple[list[str], str]]:
+def auctions(bml_file: str) -> list[tuple[list[str], str, str]]:
     # The exporter's own steps (`apps/datastar-quiz/corpus.py: bid_sequences`).
     tables = quiz.load_bid_tables(bml_file)
     quiz.prettify_bid_table_nodes(tables)
-    return [(list(seq.sequence), seq.description) for seq in quiz.collect_bid_table_auctions(tables)]
+    return [(list(seq.sequence), seq.description, seq.context) for seq in quiz.collect_bid_table_auctions(tables)]
 
 
-def digest(entries: list[tuple[list[str], str]]) -> str:
+def digest(entries: list[tuple[list[str], str, str]]) -> str:
     h = hashlib.sha256()
-    for sequence, description in entries:
-        h.update(("\x1f".join(sequence) + "\x1e" + description + "\x1d").encode("utf-8"))
+    for sequence, description, context in entries:
+        tail = "\x1c" + context if context else ""
+        h.update(("\x1f".join(sequence) + "\x1e" + description + tail + "\x1d").encode("utf-8"))
     return h.hexdigest()
 
 
-def one_file(bml_file: str) -> list[tuple[list[str], str]]:
+def as_json(entries: list[tuple[list[str], str, str]]) -> list[dict]:
+    return [{"sequence": s, "description": d} | ({"context": c} if c else {}) for s, d, c in entries]
+
+
+def one_file(bml_file: str) -> list[tuple[list[str], str, str]]:
     """One file's auctions, from a FRESH interpreter.
 
     The python bml module keeps its state in module globals (`#COPY` clipboards, `#VUL`/`#SEAT`,
@@ -65,14 +71,14 @@ def one_file(bml_file: str) -> list[tuple[list[str], str]]:
     result = subprocess.run(
         [sys.executable, __file__, "--one", bml_file], capture_output=True, text=True, encoding="utf-8", check=True
     )
-    return [(entry["sequence"], entry["description"]) for entry in json.loads(result.stdout)]
+    return [(entry["sequence"], entry["description"], entry.get("context", "")) for entry in json.loads(result.stdout)]
 
 
 def main(argv: list[str]) -> int:
     if "--one" in argv:
         entries = auctions(argv[argv.index("--one") + 1])
         sys.stdout.reconfigure(encoding="utf-8")
-        print(json.dumps([{"sequence": s, "description": d} for s, d in entries], ensure_ascii=False))
+        print(json.dumps(as_json(entries), ensure_ascii=False))
         return 0
     dump = Path(argv[argv.index("--dump") + 1]) if "--dump" in argv else None
     goldens = {}
@@ -83,7 +89,7 @@ def main(argv: list[str]) -> int:
         if dump:
             dump.mkdir(parents=True, exist_ok=True)
             (dump / f"{path.stem}.json").write_text(
-                json.dumps([{"sequence": s, "description": d} for s, d in entries], indent=1, ensure_ascii=False),
+                json.dumps(as_json(entries), indent=1, ensure_ascii=False),
                 encoding="utf-8",
             )
     OUT.parent.mkdir(parents=True, exist_ok=True)

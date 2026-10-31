@@ -136,6 +136,10 @@ digest :: proc(auctions: []Auction) -> string {
 		}
 		strings.write_byte(&b, 0x1e)
 		strings.write_string(&b, auction.description)
+		if auction.section != "" {
+			strings.write_byte(&b, 0x1c)
+			strings.write_string(&b, auction.section)
+		}
 		strings.write_byte(&b, 0x1d)
 	}
 	sum := hash.hash_string(.SHA256, strings.to_string(b), context.temp_allocator)
@@ -168,10 +172,10 @@ explain :: proc(name: string, auctions: []Auction) {
 		if index >= len(python) || index >= len(auctions) || !same(python[index], auctions[index]) {
 			fmt.eprintfln("  first difference at auction %d:", index)
 			if index < len(python) {
-				fmt.eprintfln("    python: %v  %q", python[index].sequence, python[index].description)
+				fmt.eprintfln("    python: %v  %q  %q", python[index].sequence, python[index].description, python[index].section)
 			}
 			if index < len(auctions) {
-				fmt.eprintfln("    odin:   %v  %q", auctions[index].sequence, auctions[index].description)
+				fmt.eprintfln("    odin:   %v  %q  %q", auctions[index].sequence, auctions[index].description, auctions[index].section)
 			}
 			return
 		}
@@ -180,7 +184,7 @@ explain :: proc(name: string, auctions: []Auction) {
 
 @(private = "file")
 same :: proc(a, b: Auction) -> bool {
-	if a.description != b.description || len(a.sequence) != len(b.sequence) {
+	if a.description != b.description || a.section != b.section || len(a.sequence) != len(b.sequence) {
 		return false
 	}
 	for call, index in a.sequence {

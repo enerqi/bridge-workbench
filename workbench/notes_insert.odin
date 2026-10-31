@@ -4,7 +4,7 @@ package main
 	notes_insert.odin — the heading palette's two WRITING modes: it was a way to go somewhere, and the same
 	list is what a cross-reference needs, so it also writes.
 
-	LINK (CTRL+L, or typing `](#`): pick a heading, and the link to it is written at the caret - `[name](#name)`
+	LINK (CTRL+K, or typing `](#`): pick a heading, and the link to it is written at the caret - `[name](#name)`
 	from the key, the rest of `](#name)` when it was typed. 920 links in the corpus, every one an anchor that
 	has to match its heading's text exactly, and a typo is a dead link nobody sees until it is clicked (the
 	`links` check finds them afterwards; this stops them being typed). A heading in ANOTHER document - another
@@ -12,7 +12,7 @@ package main
 	`alternatives.html#...`, since `#name` only lands inside one page.
 
 	INSERT (CTRL+I): the same palette listing BML's constructs instead of headings - the directives nobody
-	remembers (`#CUT` / `#PASTE` with replacements, `#VUL`, `#SEAT`, `#HIDE`), competitive headers, lists, font
+	remembers (`#CUT` / `#PASTE` with replacements, `#HIDE`), competitive headers, lists, font
 	styles. Each is a template written at the caret, with the caret left where you type next (`$0`).
 
 	Both write through `bmlInsertAt` in the page script: ONE `plaintext.update`, so one ctrl+z.
@@ -29,6 +29,7 @@ Goto_Mode :: enum {
 	Jump,
 	Link,
 	Insert,
+	File, // CTRL+O: open a .bml file by name, from any of the notes folders (`file_rows`)
 }
 
 // One construct of the insert palette. `template` marks where the caret goes with `$0` (the end if absent).
@@ -45,21 +46,25 @@ BML_SNIPPETS :: [?]Bml_Snippet {
 	{"cut a reusable block", "#CUT name ... #ENDCUT: rows kept for #PASTE, not shown here", "#CUT $0name\n\n#ENDCUT"},
 	{"copy a reusable block", "#COPY name ... #ENDCOPY: shown here and kept for #PASTE", "#COPY $0name\n\n#ENDCOPY"},
 	{"paste a block", "#PASTE name, replacing text: \\R=D \\M=H", "#PASTE $0name \\R=D \\M=H"},
-	{"vulnerability", "#VUL we/them, each Y, N or 0: for the tables after it", "#VUL $0Y0"},
-	{"seat", "#SEAT 1, 2, 3, 4, 12 or 34: for the tables after it", "#SEAT $034"},
 	{"hide a table", "#HIDE: the table is parsed but not shown on the page", "#HIDE"},
 	{"include a file", "#INCLUDE chapter.bml: its text, here", "#INCLUDE $0"},
 	{"title", "#+TITLE: the page's title", "#+TITLE: $0"},
 	// The four blocks rendered since 2026-10-26 (bml2html / bridge-markup). Each is a block of its own: a blank
 	// line above and below, or it joins the text around it.
 	{"deal diagram", "a header (board, dealer, vul, contract, lead), then hands: spades hearts diamonds clubs, - for a void", "#1, Dealer N, None vul$0\nN: AKxx Qxx Kxx Axx\nS: Qxx AKxx Axx Kxx"},
-	{"auction", "rows of four calls; P D R AP are pass, double, redouble, all pass", "1H P 1S P\n$0"},
-	{"table", "| cells |, with a |---+---| line under the header row", "| $0 | |\n|---+---|\n| | |"},
+	{"auction", "calls only, any number a line: P X XX AP, ? the call asked, - a seat before the dealer", "W N E S\n- 1H P 1S\n$0"},
+	{"auction with notes", "2C* or 2C^1 points at a note under the auction (* ... or ^1 ...); P! is alerted", "W N E S\n- 1H 2C* 2NT^1\n$0\n* natural\n^1 Lebensohl"},
+	{"caption", "#+CAPTION: a title just above a diagram, auction or table - not a heading, so no new section", "#+CAPTION: $0"},
+	{"box", "#BOX ... #ENDBOX: the diagram, auction or table it starts with on the left, the text after them beside it", "#BOX\n$0\n\nWhat the hand shows, beside it.\n#ENDBOX"},
+	{"note box", "#BOX note Title: a framed, coloured callout - note, info, tip or warning", "#BOX note $0\n\n#ENDBOX"},
+	{"warning box", "#BOX warning Title: an orange callout for what is easy to forget", "#BOX warning $0\n\n#ENDBOX"},
+	{"table", "| cells |, a |---+---| line under the header row; tab lines it up and goes to the next cell", "| $0 | |\n|---+---|\n| | |"},
 	{"description list", "- term :: what it means", "- $0 :: "},
 	{"bullet list", "- one item a line", "- $0"},
 	{"numbered list", "1. one item a line", "1. $0\n2. "},
 	{"italic", "/text/", "/$0/"},
 	{"bold", "*text* (not at the start of a line: that is a heading)", "*$0*"},
+	{"underline", "_text_, inside a word too: A_*K*_JTx", "_$0_"},
 	{"monospace", "=text=", "=$0="},
 	{"comment", "// a line the page leaves out", "// $0"},
 }
@@ -128,15 +133,17 @@ caret_position :: proc(app: ^App) -> (row, col: int) {
 }
 
 // Write `text` at [row, col] of the source, `drop` characters before it removed first, and leave the caret
-// at its `$0` (or its end). Lines after the first take the indent of the line written into, so a block lands
-// at the level it was asked for. One undo step. False when the page script could not do it.
+// at its `$0` (or its end). Lines after the first take the indent the first one gets - the spaces BEFORE THE
+// CARET - so a block lands at the level it was asked for. Not the line's whole indent: enter keeps a bid
+// table's indent on the blank lines after it, and a table inserted at column 0 of one came out with its first
+// row at 0 and the rest at 4 (reported 2026-10-27). One undo step. False when the page script could not do it.
 insert_into_source :: proc(app: ^App, row, col, drop: int, template: string) -> bool {
 	source, _ := bml_source(app, context.temp_allocator)
 	lines := strings.split(source, "\n", context.temp_allocator)
 	indent := 0
 	if row < len(lines) {
 		line := lines[row]
-		for indent < len(line) && line[indent] == ' ' {
+		for indent < len(line) && indent < col - drop && line[indent] == ' ' {
 			indent += 1
 		}
 	}
@@ -168,7 +175,7 @@ write_from_palette :: proc(app: ^App, target: outline.Heading) {
 	target.text = strings.clone(target.text, context.temp_allocator)
 	close_goto(app)
 	switch mode {
-	case .Jump:
+	case .Jump, .File: // not writing modes: `jump_to_goto` takes them before this
 	case .Link:
 		text, drop := link_text(app.docs, app.bml_open, target, typed)
 		if insert_into_source(app, row, col, drop, text) {

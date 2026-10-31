@@ -22,10 +22,17 @@ import "core:strings"
 import bml "markup:."
 import "markup:bids"
 
-// One question's worth: the auction, and the row's description as written (bml markup and all).
+/*
+One question's worth: the auction, and the row's description as written (bml markup and all).
+
+`section` is set only for an AMBIGUOUS auction - one whose rows mean different things in different
+parts of the notes, like `(1C)--1N` after a strong club and after a natural one: the headings that tell
+its meanings apart (`mark_sections`). The JSON key is the python's `context`, a keyword here.
+*/
 Auction :: struct {
 	sequence:    []string,
 	description: string,
+	section:     string `json:"context,omitempty"`,
 }
 
 // One quiz system, as the exporter writes it.
@@ -58,12 +65,99 @@ rewrites `bidrepr` in place; here the prettified form is computed on the side.
 */
 extract :: proc(doc: ^bml.Document, allocator := context.allocator) -> []Auction {
 	out := make([dynamic]Auction, allocator)
+	headings := make([dynamic][]Header, context.temp_allocator) // per auction, the headings above its table
 	pretty := make(map[^bml.Node]string, allocator = context.temp_allocator)
 	for table in bid_tables(doc, context.temp_allocator) {
 		context_bids := bids_from_headers(table.headers, context.temp_allocator)
 		collect(table.root, context_bids, &pretty, &out, allocator)
+		for len(headings) < len(out) {
+			append(&headings, table.headers)
+		}
 	}
+	mark_sections(out[:], headings[:], allocator)
 	return out[:]
+}
+
+// What joins the headings of a `section`.
+SECTION_SEPARATOR :: " › "
+
+/*
+`quiz.mark_ambiguous_contexts`: give every meaning of an ambiguous auction the headings that tell it
+apart.
+
+An auction is ambiguous when its rows carry two or more different (trimmed, non-empty) descriptions.
+Its rows' heading paths are compared, and each row gets its own path from the first heading where the
+paths differ - "Opponents open Strong 1C", not the "Competitive Auctions" above it that they share. A
+path that ends where the others go on gets its last heading; when every path is the same, no row gets
+anything, as the headings cannot separate them.
+*/
+@(private)
+mark_sections :: proc(auctions: []Auction, headings: [][]Header, allocator := context.allocator) {
+	groups := make(map[string][dynamic]int, allocator = context.temp_allocator)
+	for auction, index in auctions {
+		if strings.trim_space(auction.description) == "" {
+			continue
+		}
+		key := strings.join(auction.sequence, "\x1f", context.temp_allocator)
+		rows := groups[key] or_else make([dynamic]int, context.temp_allocator)
+		append(&rows, index)
+		groups[key] = rows
+	}
+
+	for _, rows in groups {
+		first := strings.trim_space(auctions[rows[0]].description)
+		ambiguous := false
+		for row in rows[1:] {
+			if strings.trim_space(auctions[row].description) != first {
+				ambiguous = true
+				break
+			}
+		}
+		if !ambiguous {
+			continue
+		}
+
+		reference := headings[rows[0]]
+		all_same := true
+		shortest := len(reference)
+		for row in rows[1:] {
+			all_same &&= same_headings(headings[row], reference)
+			shortest = min(shortest, len(headings[row]))
+		}
+		if all_same {
+			continue
+		}
+		split := 0
+		split_loop: for ; split < shortest; split += 1 {
+			for row in rows[1:] {
+				if headings[row][split].text != reference[split].text {
+					break split_loop
+				}
+			}
+		}
+		for row in rows {
+			path := headings[row]
+			tail := path[split:] if split < len(path) else path[max(len(path) - 1, 0):]
+			texts := make([]string, len(tail), context.temp_allocator)
+			for header, index in tail {
+				texts[index] = header.text
+			}
+			auctions[row].section = strings.join(texts, SECTION_SEPARATOR, allocator)
+		}
+	}
+}
+
+@(private)
+same_headings :: proc(a, b: []Header) -> bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for header, index in a {
+		if header.text != b[index].text {
+			return false
+		}
+	}
+	return true
 }
 
 /*

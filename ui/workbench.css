@@ -65,16 +65,31 @@
 	   Six hues off the same wheel as the rest of this file, chosen so a bid row reads at a glance: the
 	   CALL is the thing being looked up, so it is the brightest thing on the line. */
 	--syn-key: #cba6f7; /* #INCLUDE, #+TITLE:, the directives */
-	--syn-head: #f9e2af; /* * ** *** section headers */
+	--syn-head: #f9e2af; /* * section headers, a colour a level */
+	--syn-h2: #f5c2e7; /* ** */
+	--syn-h3: #b4befe; /* *** */
+	--syn-h4: #74c7ec; /* **** and deeper */
 	--syn-bid: #a6e3a1; /* our call, left of the = */
+	--syn-bid-odd: #89dceb; /* our call at an odd depth of its table, as the preview's second cell tint */
 	--syn-opp: #fab387; /* an opposition call, in brackets */
 	--syn-suit: #f38ba8; /* !c !d !h !s */
 	--suit-c: #a6e3a1; /* the suit glyphs in a rendered heading (the palette); spades take the ink */
 	--suit-d: #fab387;
 	--suit-h: #f38ba8;
 	--syn-link: #94e2d5; /* [label](#Anchor) */
+	--syn-comment: #7f849c; /* // at column 0 */
+	--syn-class: #f2cdcd; /* a {.class} hook */
+	--syn-seat: #f2cdcd; /* N: on a hand line, W N E S over an auction */
+	--syn-hand: #f5e0dc; /* the holdings AKxx Qxx Kxx Axx */
+	--syn-alert: #f38ba8; /* a call's mark: 2C* 2C^1 P! */
+	--syn-name: #89b4fa; /* a convention name from the lexicon: Stayman, RKCB */
+	--syn-num: #eba0ac; /* 11--15, 5-4, 12+ */
+	--syn-cond: rgba(137, 180, 250, 0.2); /* behind (NV), 1st/2nd, passed hand */
+	--syn-list: #cba6f7; /* - and 1. */
+	--syn-code: #a6adc8; /* =mono= */
 	--syn-error: #f38ba8; /* the parse said this is wrong */
 	--syn-warn: #f9e2af; /* the parse said this may be wrong */
+	--syn-caret-line: rgba(137, 180, 250, 0.09); /* behind the line the caret is on */
 
 	/* fields */
 	--field: #313244;
@@ -124,15 +139,30 @@ html[theme="light"] {
 
 	--syn-key: #8839ef;
 	--syn-head: #df8e1d;
+	--syn-h2: #ea76cb;
+	--syn-h3: #7287fd;
+	--syn-h4: #209fb5;
 	--syn-bid: #40a02b;
+	--syn-bid-odd: #04a5e5;
 	--syn-opp: #fe640b;
 	--syn-suit: #d20f39;
 	--suit-c: #40a02b;
 	--suit-d: #fe640b;
 	--suit-h: #d20f39;
 	--syn-link: #179299;
+	--syn-comment: #8c8fa1;
+	--syn-class: #dd7878;
+	--syn-seat: #dd7878;
+	--syn-hand: #dc8a78;
+	--syn-alert: #d20f39;
+	--syn-name: #1e66f5;
+	--syn-num: #e64553;
+	--syn-cond: rgba(30, 102, 245, 0.12);
+	--syn-list: #8839ef;
+	--syn-code: #6c6f85;
 	--syn-error: #d20f39;
 	--syn-warn: #df8e1d;
+	--syn-caret-line: rgba(30, 102, 245, 0.07);
 
 	--field: #ffffff;
 	--field-hover: #f5f6f9;
@@ -832,6 +862,17 @@ button.icon-text svg.ic {
 	margin-right: 0.4em;
 }
 
+/* The source pane's palette buttons (go to, link, insert, guide) sit on one line with the file's name at 720px
+   (`test_the_editor_bar_survives_a_narrow_window`); with their icons they ran 20px over, so they are a little
+   tighter than the other icon buttons. */
+div.palettebar button.icon-text {
+	padding: 0.3em 0.45em;
+}
+
+div.palettebar button.icon-text svg.ic {
+	margin-right: 0.3em;
+}
+
 /* THE APP'S MARK, before its name in the header: two fanned cards. Its own colours (it is the one picture
    that is not a control), sized to the title's line. */
 header svg.mark {
@@ -1311,18 +1352,17 @@ aside .head.keys b {
 	color: var(--ink-dim);
 }
 
-/* The notes source's QUIZ GROUP, in the source pane's head after save: the state text takes what is left
-   and gives way first, as the bar's status line does. */
-.quizbar {
+/* The heading palette's three modes (go to, link, insert), in the source pane's head after save, set off
+   from it as their own group. */
+.palettebar {
 	flow: horizontal;
-	width: *;
 	vertical-align: middle;
 	padding-left: 0.6em;
 	border-left: 1px solid var(--line);
 }
 
-.quizbar > button {
-	margin-right: 0.5em;
+.palettebar > button {
+	margin-right: 0.35em;
 }
 
 /* The open file's name, as the source pane's title. Gives way before the buttons do (a long name is
@@ -1346,15 +1386,21 @@ aside .head.keys b {
 	color: var(--accent);
 }
 
-.quizbar .quizstate {
-	width: *;
-	overflow-x: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+/* THE QUIZ'S STATE LINE, under its buttons in the sidebar's "this document" group (2026-10-27; it sat
+   beside them in the source pane's head and was cut to an ellipsis there). The column is ~250px, so the
+   line WRAPS: the whole of "out of date: ... generate again" is worth reading. */
+.quizstate-line {
+	padding: 0 0.8em 0.4em 0.7em;
+}
+
+.quizstate-line > .quizstate {
+	display: block;
+	margin: 0;
+	white-space: normal;
 }
 
 /* A page older than the saved notes: still worth opening, but missing the latest changes. */
-.quizbar .quizstate.stale {
+.quizstate.stale {
 	color: var(--syn-warn); /* the theme's own "may be wrong" colour, redefined for light */
 }
 
@@ -1903,6 +1949,17 @@ aside.files {
 	background: var(--surface);
 }
 
+/* The palette's mode in front of its field (go to / link / insert / open): what enter will do. */
+#bml-goto-mode {
+	margin-right: 0.6em;
+	padding: 0.2em 0.5em;
+	border-radius: var(--radius);
+	background: var(--accent);
+	color: var(--accent-ink);
+	font-weight: 600;
+	vertical-align: middle;
+}
+
 #bml-goto-input {
 	width: *;
 	margin-bottom: 0.35em;
@@ -1992,7 +2049,38 @@ aside.files {
 	   made a stale EMPTY selection visible - a thin accent bar sitting nowhere near the caret, left over from
 	   a range the widget had finished with. The engine's own selection paint does not have that artefact, and
 	   a caret is the thing that had to be visible. */
-	text-selection-caret-color: var(--accent);
+	text-selection-caret-color: var(--ed-caret);
+	/* THE EDITOR'S OWN COLOURS (Settings, Notes editor: editor_look.odin), each the theme's token until Settings
+	   sets it. Declared here rather than as `var(--ed-x, var(--syn-x))` fallbacks in the rules: a nested fallback
+	   left the caret the engine's black (measured). The page script sets these again as inline variables. */
+	--ed-caret: var(--accent);
+	--ed-caret-line: var(--syn-caret-line);
+	--ed-head: var(--syn-head);
+	--ed-h2: var(--syn-h2);
+	--ed-h3: var(--syn-h3);
+	--ed-h4: var(--syn-h4);
+	--ed-bid: var(--syn-bid);
+	--ed-bid-odd: var(--syn-bid-odd);
+	--ed-opp: var(--syn-opp);
+	--ed-alert: var(--syn-alert);
+	--ed-suit: var(--syn-suit);
+	--ed-link: var(--syn-link);
+	--ed-name: var(--syn-name);
+	--ed-num: var(--syn-num);
+	--ed-cond: var(--syn-cond);
+	--ed-comment: var(--syn-comment);
+	--ed-key: var(--syn-key);
+	--ed-class: var(--syn-class);
+	--ed-list: var(--syn-list);
+	--ed-code: var(--syn-code);
+	--ed-seat: var(--syn-seat);
+	--ed-hand: var(--syn-hand);
+}
+
+/* THE CARET LINE: the line holding the caret, tinted so the caret is easy to find (the engine has no caret width).
+   The page script's `bmlCaretLine` keeps the class on the one line; Settings can turn it off or recolour it. */
+#bml-text > text.wb-caret-line {
+	background: var(--ed-caret-line);
 }
 
 /* The other text widgets sit on the same dark field, so they get the same caret. */
@@ -2023,32 +2111,116 @@ frame#bml-page {
    colour of ordinary text and there is no warning anywhere. The SDK's own samples spell it
    `plaintext > text::mark(error)`, which is the tell. */
 #bml-text > text::mark(bml-key) {
-	color: var(--syn-key);
+	color: var(--ed-key);
 }
 
-#bml-text > text::mark(bml-head) {
-	color: var(--syn-head);
+/* Headings: bold, and a colour a level, so the outline of a chapter shows down the left edge. */
+#bml-text > text::mark(bml-h1) {
+	color: var(--ed-head);
+	font-weight: bold;
+}
+
+#bml-text > text::mark(bml-h2) {
+	color: var(--ed-h2);
+	font-weight: bold;
+}
+
+#bml-text > text::mark(bml-h3) {
+	color: var(--ed-h3);
+	font-weight: bold;
+}
+
+#bml-text > text::mark(bml-h4) {
+	color: var(--ed-h4);
 	font-weight: bold;
 }
 
 #bml-text > text::mark(bml-bid) {
-	color: var(--syn-bid);
+	color: var(--ed-bid);
+}
+
+#bml-text > text::mark(bml-bid-odd) {
+	color: var(--ed-bid-odd);
 }
 
 #bml-text > text::mark(bml-opp) {
-	color: var(--syn-opp);
-}
-
-#bml-text > text::mark(bml-suit) {
-	color: var(--syn-suit);
-}
-
-#bml-text > text::mark(bml-link) {
-	color: var(--syn-link);
+	color: var(--ed-opp);
 }
 
 #bml-text > text::mark(bml-op) {
 	color: var(--ink-dim);
+}
+
+#bml-text > text::mark(bml-comment) {
+	color: var(--ed-comment);
+	font-style: italic;
+}
+
+#bml-text > text::mark(bml-class) {
+	color: var(--ed-class);
+	font-style: italic;
+}
+
+#bml-text > text::mark(bml-seat) {
+	color: var(--ed-seat);
+	font-weight: bold;
+}
+
+#bml-text > text::mark(bml-hand) {
+	color: var(--ed-hand);
+}
+
+#bml-text > text::mark(bml-list) {
+	color: var(--ed-list);
+}
+
+#bml-text > text::mark(bml-num) {
+	color: var(--ed-num);
+}
+
+#bml-text > text::mark(bml-name) {
+	color: var(--ed-name);
+}
+
+/* A condition is a tint BEHIND the text, as the preview's tag is, so the words keep their own colours. */
+#bml-text > text::mark(bml-cond) {
+	background: var(--ed-cond);
+}
+
+/* The text styles are styles, not colours: what is in them keeps its colour (a suit in bold stays a suit). */
+#bml-text > text::mark(bml-strong) {
+	font-weight: bold;
+}
+
+#bml-text > text::mark(bml-em) {
+	font-style: italic;
+}
+
+#bml-text > text::mark(bml-u) {
+	text-decoration: underline;
+}
+
+#bml-text > text::mark(bml-code) {
+	color: var(--ed-code);
+}
+
+/* A pseudo-bid (`next`, `jump`, `cue`) is a call, so it keeps the call's colour and is told apart by slant. */
+#bml-text > text::mark(bml-pseudo) {
+	font-style: italic;
+}
+
+#bml-text > text::mark(bml-alert) {
+	color: var(--ed-alert);
+	font-weight: bold;
+}
+
+/* Last, so a link or a suit inside anything else wins: a suit in a call, a heading or a link is still red. */
+#bml-text > text::mark(bml-link) {
+	color: var(--ed-link);
+}
+
+#bml-text > text::mark(bml-suit) {
+	color: var(--ed-suit);
 }
 
 /* The parse's diagnostics. A wavy underline rather than a colour, because a problem is not a token kind:
@@ -2371,4 +2543,116 @@ aside input#outdir.quiet:focus {
 	color: var(--ink);
 	background: var(--sunken);
 	border-color: var(--accent);
+}
+
+/* Notes fine tuning (notes_look.odin): one line per group, its fields side by side and wrapping. Each field's
+   label sits ABOVE its input, every item top-aligned: a label beside a taller colour input rode on a different
+   baseline and read as wonky (reported). The group's own label is pushed down to the inputs' line. */
+div.tune-group > .field-label {
+	vertical-align: top;
+	padding-top: 1.35em;
+}
+
+div.tune-items {
+	flow: horizontal-wrap;
+	width: *;
+}
+
+span.tune-item {
+	display: inline-block;
+	vertical-align: top;
+	margin: 0 1.4em 0.5em 0;
+}
+
+span.tune-item > label {
+	display: block;
+	font-size: 0.85em;
+	color: var(--ink-soft);
+	margin-bottom: 0.15em;
+	white-space: nowrap;
+}
+
+span.tune-field {
+	display: block;
+	flow: horizontal;
+	white-space: nowrap;
+}
+
+span.tune-field > * {
+	vertical-align: middle;
+}
+
+/* The colour input's own swatch is hidden and its picker BUTTON painted with the colour instead, by the page
+   script (`wbTuneSwatch`): one square that shows it and opens the picker. Script, because a rule here does not
+   reach inside the input (measured). */
+span.tune-field input.tune-pick {
+	width: 7.5em;
+}
+
+span.tune-field input.tune {
+	width: 5em;
+}
+
+span.tune-field input.tune-font {
+	width: 15em;
+}
+
+span.tune-field button.tune-reset {
+	margin-left: 0.2em;
+}
+
+/* Notes look profiles (notes_look.odin): a button per saved look, lit when it is the one in use, its × beside it. */
+span.profile-item {
+	display: inline-block;
+	white-space: nowrap;
+	margin-right: 0.8em;
+}
+
+button.profile.on {
+	background: var(--accent);
+	color: var(--accent-ink);
+}
+
+button.profile-restore {
+	margin-right: 0.5em;
+}
+
+input.profile-name {
+	width: 12em;
+}
+
+/* An unset row has nothing to reset: the button is hidden but keeps its room (notes_look.odin). */
+span.tune-field button.tune-reset.unset {
+	visibility: hidden;
+}
+
+/* The find bar (ctrl+f / ctrl+h): one or two lines above the panes, like the heading palette. */
+.findbar {
+	flow: vertical;
+	padding: 0.35em 0.7em;
+	border-bottom: 1px solid var(--line);
+	background: var(--surface);
+}
+
+.findbar .line + .line {
+	margin-top: 0.3em;
+}
+
+.findbar input.wide {
+	width: *;
+	margin-right: 0.4em;
+}
+
+.findbar button.find-opt.on {
+	background: var(--accent);
+	color: var(--accent-ink);
+}
+
+/* The find bar's marks in the source: every match, and the current one stronger. */
+#bml-text > text::mark(bml-find) {
+	background: rgba(255, 196, 0, 0.35);
+}
+
+#bml-text > text::mark(bml-find-at) {
+	background: rgba(255, 140, 0, 0.75);
 }
