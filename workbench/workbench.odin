@@ -6554,11 +6554,16 @@ load_user_scenarios :: proc(app: ^App) {
 
 // Startup's first two reads, IN THIS ORDER and in one place so a test can hold them to it: the prefs file,
 // then the scenario folders it names. The other way round was a shipped bug — see the comment in `main`.
-// Takes ownership of `prefs_path`.
-load_prefs_and_scenarios :: proc(app: ^App, prefs_path: string) {
+// Takes ownership of `prefs_path`. `samples_home` is where a first run puts the sample notes and the example
+// scenarios (`samples.odin`), between the two reads so the examples are in the first list; "" puts none.
+load_prefs_and_scenarios :: proc(app: ^App, prefs_path: string, samples_home := "") {
 	app.prefs_path = prefs_path
 	app.prefs = prefs.load(app.prefs_path, app.allocator)
 	apply_share_player(app)
+	if samples_home != "" {
+		found, _ := bml_docs_dir(context.temp_allocator)
+		install_samples(app, samples_home, found, os.get_env("BRIDGE_SCENARIOS", context.temp_allocator))
+	}
 	load_user_scenarios(app)
 }
 
@@ -8335,6 +8340,10 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		reset_tune(app, editor_tune_set(), token)
 		return true
 	}
+	if restore, _ := sa.attribute(be.target, "data-samples-restore", context.temp_allocator); restore != "" {
+		set_text_at(app, "#prefs-samples-note", restore_samples(app, samples_home()))
+		return true
+	}
 	if word, _ := sa.attribute(be.target, "data-editor-caret-line", context.temp_allocator); word != "" {
 		choose_editor_caret_line(app, word == "on")
 		return true
@@ -8963,7 +8972,7 @@ main :: proc() {
 	// see `prefs/prefs.odin`) holds the scenario folders as well as the layout, and this used to be read a
 	// hundred lines further down — so `load_user_scenarios` saw no folders at startup, the deals list had
 	// none of the user's scenarios, and only a rescan found them. Reported as "starts off with no folder".
-	load_prefs_and_scenarios(app, prefs.default_path(app.allocator))
+	load_prefs_and_scenarios(app, prefs.default_path(app.allocator), samples_home())
 	app.transcript = strings.builder_make()
 	sa.set_host_handler(window, app)
 

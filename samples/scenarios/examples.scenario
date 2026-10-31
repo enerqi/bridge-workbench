@@ -1,0 +1,34 @@
+# Example scenarios, put here by Bridge Workbench the first time it ran. They are yours: edit them,
+# rename the file, delete it. The workbench never writes over this file - Settings > Samples > restore
+# only puts back one that is missing.
+#
+# A scenario is a name, a description, and one line per seat.
+# The seat lines AND together. Within a line: and, or, not, and parentheses.
+#
+#   quantities   hcp  controls  spades  hearts  diamonds  clubs  longest
+#   comparisons  <  <=  =  !=  >=  >        or a range:  hcp in 15..17
+#   other atoms  balanced   holds(spades, ace)
+#   names        ready-made helpers, some written for one bidding system - press words to list them
+#
+# north-south: and east-west: lines read BOTH hands of a side together.
+# A double-dummy: line keeps only deals the solver says a side really makes (slower).
+
+scenario example-1nt-major "1NT 15-17; responder has a four-card major and 8+ points"
+  tags: examples
+  north: hcp in 15..17 and balanced
+  south: hcp >= 8 and (spades = 4 or hearts = 4)
+
+scenario example-weak-two "a weak two in hearts opposite an opening hand"
+  tags: examples
+  north: hearts = 6 and hcp in 5..10 and spades <= 3 and (holds(hearts, ace) or holds(hearts, king))
+  south: hcp >= 12
+
+scenario example-overcall "East opens a minor, South has a five-card major to overcall"
+  tags: examples
+  east: hcp in 12..19 and spades <= 4 and hearts <= 4 and (clubs >= 3 or diamonds >= 4)
+  south: hcp in 8..16 and (spades >= 5 or hearts >= 5)
+
+scenario example-slam-zone "North-South hold 32+ between them and a major fit, and a slam makes"
+  tags: examples
+  north-south: hcp >= 32 and (spades >= 8 or hearts >= 8)
+  double-dummy: north-south make slam

@@ -3,6 +3,16 @@
 One `## <version>` section per release; the release workflow publishes that section as the release notes
 and refuses a tag without one. Versions are semver, `0.1.0-alpha.1`; the tag is `v0.1.0-alpha.1`.
 
+## 0.1.0-alpha.5
+
+- **Sample notes and example scenarios.** The first time the workbench runs with no notes folder, it puts a
+  whole sample system (the English U16 squad notes) in `Documents\Bridge notes` and opens it, so the notes
+  view, its preview and the quiz have something to show. With no scenario folder, four example scenarios go in
+  `Documents\Bridge scenarios` and appear in the deals list. Both are yours to edit: the workbench never writes
+  over them, and forgetting a folder does not bring it back.
+- **Settings > Samples > restore** puts back any sample file that is missing (keeping ones you have edited)
+  and lists both folders again.
+
 ## 0.1.0-alpha.4
 
 Mostly the notes editor, which is now a real editor for BML rather than a text box beside a preview.

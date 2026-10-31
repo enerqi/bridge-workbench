@@ -455,6 +455,23 @@ vendor-bml-css:
 	shutil.copyfile(tools / "bml.css", target)
 	print(f"{target}: {target.stat().st_size:,} bytes - now rebuild the workbench (just workbench)")
 
+# The sample notes a first run puts in Documents\Bridge notes are a COPY of the notes checkout's
+# squad-system.bml (BRIDGE_SYSTEM_HOME), #loaded from samples/ (workbench/samples.odin).
+# ---
+# copy squad-system.bml from the notes checkout into samples/notes/ (then rebuild the workbench)
+[group('notes')]
+[script]
+vendor-samples:
+	import os, shutil, sys
+	from pathlib import Path
+	home = os.environ.get("BRIDGE_SYSTEM_HOME") or ""
+	source = Path(home) / "squad-system.bml"
+	if not home or not source.is_file():
+		sys.exit("no notes checkout (BRIDGE_SYSTEM_HOME) with a squad-system.bml")
+	target = Path("samples") / "notes" / "squad-system.bml"
+	shutil.copyfile(source, target)
+	print(f"{target}: {target.stat().st_size:,} bytes - now rebuild the workbench (just workbench)")
+
 # rebuild the player and copy it into ui/, where the workbench's `share link` button bundles it (then rebuild the workbench)
 [group('share')]
 [script]

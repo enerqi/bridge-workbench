@@ -292,6 +292,15 @@
                   data-hint="The bridge terms, and every word of five letters or more already used in this folder's notes - your own vocabulary without listing it, with more suggestions to step past.">+ folder words</button>
         </div>
       </div>
+      <!-- THE SAMPLES (workbench/samples.odin): the sample notes and example scenarios a first run puts in
+           Documents. Restore puts back a missing one and never writes over a file that is there. -->
+      <div class="about-head">Samples</div>
+      <div class="line">
+        <span class="barlabel field-label">samples</span>
+        <button class="small" data-samples-restore="1" title="Put back the sample notes and example scenarios"
+                data-hint="Puts the sample notes (Documents\Bridge notes) and the example scenarios (Documents\Bridge scenarios) back where they are missing, and lists both folders again. A file that is already there is kept as it is, edits and all.">restore</button>
+        <span class="barlabel" id="prefs-samples-note"></span>
+      </div>
       <!-- THE HAND PAGE'S LOOK (workbench/hand_look.odin): the felt and the cards, with the suits above. Put into
            the page in the pane as it arrives - every page, old ones too - and into pages a run writes when the
            last row says so. -->

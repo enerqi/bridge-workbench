@@ -12999,3 +12999,90 @@ test_an_editor_profile_saves_and_loads :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(notes_profile_names(&app.prefs, EDITOR_PROFILE_TRASH_PREFIX)), 1)
 }
 
+
+/*
+THE FIRST RUN of an installed copy: no notes folder found, nothing remembered, so the sample notes and the
+example scenarios go into Documents (here a scratch folder) and their folders are registered. Then the rules
+that keep them the user's: restore puts back a missing file and keeps an edited one, a second start does not
+install again, and a found notes folder means no sample notes.
+*/
+@(test)
+test_a_first_run_puts_the_samples_in_documents :: proc(t: ^testing.T) {
+	temp, temp_err := os.temp_directory(context.temp_allocator)
+	if temp_err != nil {return}
+	home, _ := filepath.join({temp, "workbench-samples-home"}, context.temp_allocator)
+	os.remove_all(home)
+	_ = os.make_directory(home)
+	defer os.remove_all(home)
+	notes_dir, _ := filepath.join({home, SAMPLE_NOTES_DIR}, context.temp_allocator)
+	scenarios_dir, _ := filepath.join({home, SAMPLE_SCENARIOS_DIR}, context.temp_allocator)
+	notes_file, _ := filepath.join({notes_dir, "squad-system.bml"}, context.temp_allocator)
+	scenario_file, _ := filepath.join({scenarios_dir, "examples.scenario"}, context.temp_allocator)
+
+	app: App
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+	said := install_samples(&app, home, "", "")
+	testing.expectf(t, strings.contains(said, "sample notes") && strings.contains(said, "example scenarios"), "said %q", said)
+	notes, notes_err := os.read_entire_file(notes_file, context.temp_allocator)
+	testing.expect(t, notes_err == nil && string(notes) == sample_notes[0].text, "the sample notes are written")
+	testing.expect(t, os.exists(scenario_file), "the example scenarios are written")
+	dirs, _ := prefs.get(&app.prefs, NOTES_DIRS_PREF)
+	testing.expect(t, same_dir(dirs, notes_dir), "the notes folder is listed")
+	open, _ := prefs.get(&app.prefs, NOTES_DIR_PREF)
+	testing.expect(t, same_dir(open, notes_dir), "and opened")
+	scenario_dirs, _ := prefs.get(&app.prefs, SCENARIO_DIRS_PREF)
+	testing.expect(t, same_dir(scenario_dirs, scenarios_dir), "the scenario folder is a source")
+
+	// Restore: an edited file is kept, a missing one comes back.
+	edited := "#+TITLE: Mine now\n"
+	_ = os.write_entire_file(notes_file, transmute([]u8)edited)
+	_ = os.remove(scenario_file)
+	restore_samples(&app, home)
+	notes, _ = os.read_entire_file(notes_file, context.temp_allocator)
+	testing.expect_value(t, string(notes), edited)
+	testing.expect(t, os.exists(scenario_file), "restore puts the missing file back")
+
+	// The next start: the folders forgotten, but the samples were offered once - nothing comes back.
+	prefs.set(&app.prefs, NOTES_DIRS_PREF, "")
+	prefs.set(&app.prefs, NOTES_DIR_PREF, "")
+	prefs.set(&app.prefs, SCENARIO_DIRS_PREF, "")
+	testing.expect_value(t, install_samples(&app, home, "", ""), "")
+	dirs, _ = prefs.get(&app.prefs, NOTES_DIRS_PREF)
+	testing.expect_value(t, dirs, "")
+
+	// A copy that FOUND its notes (a dev checkout) gets no sample notes; nothing configured still gets examples.
+	fresh: App
+	fresh.prefs = prefs.load("")
+	defer prefs.destroy(&fresh.prefs)
+	said = install_samples(&fresh, home, "C:/somewhere/notes", "")
+	testing.expectf(t, !strings.contains(said, "sample notes") && strings.contains(said, "example scenarios"), "said %q", said)
+	dirs, _ = prefs.get(&fresh.prefs, NOTES_DIRS_PREF)
+	testing.expect_value(t, dirs, "")
+
+	// No Documents: nothing at all.
+	none: App
+	none.prefs = prefs.load("")
+	defer prefs.destroy(&none.prefs)
+	testing.expect_value(t, install_samples(&none, "", "", ""), "")
+}
+
+// The example scenarios parse clean, and no name is shadowed by a compiled scenario (a compiled one wins a clash).
+@(test)
+test_the_example_scenarios_parse_clean :: proc(t: ^testing.T) {
+	scenario_dsl.set_vocabulary(bidding.vocabulary)
+	programs, diagnostics := scenario_dsl.parse(sample_scenarios[0].text, "examples.scenario", context.temp_allocator)
+	defer for &program in programs {
+		scenario_dsl.destroy_program(&program)
+	}
+	for diagnostic in diagnostics {
+		testing.expectf(t, false, "%s", scenario_dsl.diagnostic_text(diagnostic, context.temp_allocator))
+	}
+	testing.expect_value(t, len(programs), 4)
+	for program in programs {
+		for compiled in bidding.registry {
+			testing.expectf(t, compiled.name != program.name, "%s is a compiled scenario's name", program.name)
+		}
+	}
+	testing.expect(t, strings.has_prefix(sample_notes[0].text, "#+TITLE:"), "the sample notes are a notes file")
+}
