@@ -219,6 +219,7 @@ apply_editor_look :: proc(app: ^App) {
 editor_look_changed :: proc(app: ^App) {
 	apply_editor_look(app)
 	draw_editor_look_prefs(app)
+	look_changed(app, .Editor)
 }
 
 // The caret line button: remember it and show it.

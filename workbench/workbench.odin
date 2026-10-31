@@ -228,6 +228,9 @@ App :: struct {
 	previewed:          bool,
 	// Settings changed how the notes look while the preview was hidden: re-render it when it is next shown.
 	notes_look_stale:   bool,
+	// Settings' look preview (`look_preview.odin`): the tab it shows, and whether its read-only editor has the sample.
+	look_tab:           Look_Tab,
+	look_text_loaded:   bool,
 	// A profile action waiting for its second click (`profile_guard`, notes_look.odin): `save:<name>`,
 	// `delete:<name>` or `load:<name>`, in a buffer of its own so nothing has to be freed.
 	profile_armed:      [96]u8,
@@ -2240,6 +2243,10 @@ set_pane_mode :: proc(app: ^App, mode: Pane_Mode) {
 // sample has no count to give, so the spinner is what says it is alive.
 set_analyse_busy :: proc(app: ^App, busy: bool) {
 	set_text_at(app, "#analyse-busy-text", "analysing…")
+	// The spin is a class, on only while shown: a hidden infinite animation still burns the UI thread (see the CSS).
+	if element := find(app, "#analyse-busy"); element != nil {
+		sa.set_attribute(element, "class", "busy running" if busy else "busy")
+	}
 	set_shown(app, "#analyse-busy", busy)
 	set_shown(app, "#show-analysed", !busy)
 	set_shown(app, "#analyse-status", !busy) // the spinner says it while running
@@ -8340,6 +8347,12 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		reset_tune(app, editor_tune_set(), token)
 		return true
 	}
+	if word, _ := sa.attribute(be.target, "data-look-tab", context.temp_allocator); word != "" {
+		if tab, known := look_tab_of(word); known {
+			show_look_tab(app, tab)
+		}
+		return true
+	}
 	if restore, _ := sa.attribute(be.target, "data-samples-restore", context.temp_allocator); restore != "" {
 		set_text_at(app, "#prefs-samples-note", restore_samples(app, samples_home()))
 		return true
@@ -9180,6 +9193,19 @@ main :: proc() {
 		// Said once, at startup, rather than discovered when a batch fails: the field shows a directory the
 		// user did not ask for, and silently substituting one is worse than naming it.
 		transcribe_local(app, out_note)
+	}
+
+	// `WORKBENCH_START_VIEW=settings` opens Settings at start (`=settings-editor`, `=settings-hand`: on that tab of its
+	// look preview). A development switch, for measuring a view - its CPU at rest, say - with no hand on the mouse.
+	switch os.get_env("WORKBENCH_START_VIEW", context.temp_allocator) {
+	case "settings":
+		show_prefs(app, true)
+	case "settings-editor":
+		app.look_tab = .Editor
+		show_prefs(app, true)
+	case "settings-hand":
+		app.look_tab = .Hand
+		show_prefs(app, true)
 	}
 
 	// `--mem-report [page.html]`: measure and exit, rather than hand the window over. Placed here, after

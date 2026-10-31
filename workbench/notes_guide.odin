@@ -69,6 +69,9 @@ GUIDE_UNDRAWN :: [?]Guide_Example {
 // 2026-10-28), and a wrapped line still reads as the text to type. Each example is a TABLE ROW, source cell and
 // rendered cell: as a horizontal flow of two divs the row took the rendered side's height in this engine and
 // cut the source's wrapped lines off (reported the same day); a table row grows to its tallest cell.
+// BOTH CELLS ARE SIZED, each with a max-width (reported 2026-10-31: explanation columns "very thin"). With only the
+// source's `width: 42%`, this engine sized the row from the content and the source cell took 950 of 1088px, the
+// rendered side wrapping a word a line; `test_the_guide_columns_keep_their_shares` measures it.
 GUIDE_CSS :: `<style>
 .wb-guide-intro { margin: 0.4em 0 1em 0; }
 .wb-guide { margin: 0 0 1.4em 0; }
@@ -77,7 +80,8 @@ GUIDE_CSS :: `<style>
 .wb-guide-about { color: #6b6b6b; }
 table.wb-guide-row { width: 100%; border-collapse: collapse; }
 table.wb-guide-row td { vertical-align: top; padding: 0; }
-td.wb-guide-src { width: 42%; padding-right: 1em; }
+td.wb-guide-src { width: 42%; max-width: 42%; padding-right: 1em; }
+td.wb-guide-out { width: 58%; max-width: 58%; }
 pre.wb-guide-src { margin: 0; padding: 0.4em 0.6em; background: rgba(128,128,128,0.12); font-size: 0.9em; white-space: pre-wrap; }
 td.wb-guide-out > :first-child { margin-top: 0; }
 </style>`

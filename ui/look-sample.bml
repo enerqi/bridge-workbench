@@ -1,0 +1,70 @@
+#+TITLE: Sample notes
+// The notes Settings shows its looks on (workbench/look_preview.odin): one of everything a look colours.
+// Edit freely - nothing reads it but the Settings preview, and a test that it parses clean.
+
+* Openings
+
+A sample of the notes' look: *bold*, /italic/, _underline_ and =4NT= in the text, a [link to the
+competitive section](#Competition), and the suits !c !d !h !s.
+
+** One notrump
+
+1N = 15--17 balanced
+    2C = Stayman
+        2D = no four-card major
+        2H = 4+ !hs, may hold four !ss
+            2N = invitational, four !ss
+            3N = to play
+    2D = transfer to !hs
+    2H = transfer to !ss
+
+*** Weak twos
+
+2H = 5+ (NV) / 6+ (VUL) card weak two, 1st/2nd
+    2N = ask, natural invite by a passed hand
+
+**** The fine print
+
+- Stayman :: 2C asks for a major
+- Jacoby :: 2D and 2H transfer
+
+* Competition
+
+(1H)--X
+    1S = 4+ !ss, 0--8
+    2H = cue bid, game force
+
+| Points | Action |
+|---+---|
+| 0--7 | pass |
+| 8--10 | invite |
+| 11+ | game |
+
+#+CAPTION: Board 7 - the hold-up
+W N E S
+- 1N P 3N
+AP
+
+#7, Dealer N, NS, 3NS, sQ
+N: AKxx Qxx Kxx Axx
+S: xxx AKx AQx KQxx
+
+#BOX note
+A note box.
+#ENDBOX
+
+#BOX info
+An info box.
+#ENDBOX
+
+#BOX tip
+A tip box.
+#ENDBOX
+
+#BOX warning
+A warning box.
+#ENDBOX
+
+#BOX Titled
+A box with a title of its own.
+#ENDBOX

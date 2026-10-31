@@ -1540,6 +1540,33 @@ button.chip .icon {
 	background: var(--bg);
 }
 
+/* SETTINGS IS A SPLIT (2026-10-31): the card on the left, scrolling inside its pane, and the look preview beside it
+   (workbench/look_preview.odin) - the notes page, the editor or the hand page, filling what is left. No padding on
+   the panel: the split is the view, as the other views' splits are. */
+#prefs-panel {
+	padding: 0;
+}
+#prefs-side {
+	width: 46em;
+	overflow-y: auto;
+	padding: 1em;
+}
+#prefs-side > .about-card {
+	width: *;
+}
+#prefs-look {
+	width: *;
+	min-width: 16em;
+}
+frame#look-notes,
+frame#look-hand {
+	size: *;
+	border: 0;
+}
+#prefs-look-tabs {
+	margin-right: 0.8em;
+}
+
 .about-head {
 	margin: 0.9em 0 0.3em;
 	color: var(--accent);
@@ -2030,7 +2057,8 @@ aside.files {
 }
 
 
-#bml-text {
+#bml-text,
+#look-text {
 	width: *;
 	height: *;
 	padding: 0.4em 0.5em;
@@ -2079,7 +2107,8 @@ aside.files {
 
 /* THE CARET LINE: the line holding the caret, tinted so the caret is easy to find (the engine has no caret width).
    The page script's `bmlCaretLine` keeps the class on the one line; Settings can turn it off or recolour it. */
-#bml-text > text.wb-caret-line {
+#bml-text > text.wb-caret-line,
+#look-text > text.wb-caret-line {
 	background: var(--ed-caret-line);
 }
 
@@ -2110,116 +2139,141 @@ frame#bml-page {
    `<plaintext>`. `#bml-text::mark(...)` parses, matches nothing, and paints nothing: every token stays the
    colour of ordinary text and there is no warning anywhere. The SDK's own samples spell it
    `plaintext > text::mark(error)`, which is the tell. */
-#bml-text > text::mark(bml-key) {
+#bml-text > text::mark(bml-key),
+#look-text > text::mark(bml-key) {
 	color: var(--ed-key);
 }
 
 /* Headings: bold, and a colour a level, so the outline of a chapter shows down the left edge. */
-#bml-text > text::mark(bml-h1) {
+#bml-text > text::mark(bml-h1),
+#look-text > text::mark(bml-h1) {
 	color: var(--ed-head);
 	font-weight: bold;
 }
 
-#bml-text > text::mark(bml-h2) {
+#bml-text > text::mark(bml-h2),
+#look-text > text::mark(bml-h2) {
 	color: var(--ed-h2);
 	font-weight: bold;
 }
 
-#bml-text > text::mark(bml-h3) {
+#bml-text > text::mark(bml-h3),
+#look-text > text::mark(bml-h3) {
 	color: var(--ed-h3);
 	font-weight: bold;
 }
 
-#bml-text > text::mark(bml-h4) {
+#bml-text > text::mark(bml-h4),
+#look-text > text::mark(bml-h4) {
 	color: var(--ed-h4);
 	font-weight: bold;
 }
 
-#bml-text > text::mark(bml-bid) {
+#bml-text > text::mark(bml-bid),
+#look-text > text::mark(bml-bid) {
 	color: var(--ed-bid);
 }
 
-#bml-text > text::mark(bml-bid-odd) {
+#bml-text > text::mark(bml-bid-odd),
+#look-text > text::mark(bml-bid-odd) {
 	color: var(--ed-bid-odd);
 }
 
-#bml-text > text::mark(bml-opp) {
+#bml-text > text::mark(bml-opp),
+#look-text > text::mark(bml-opp) {
 	color: var(--ed-opp);
 }
 
-#bml-text > text::mark(bml-op) {
+#bml-text > text::mark(bml-op),
+#look-text > text::mark(bml-op) {
 	color: var(--ink-dim);
 }
 
-#bml-text > text::mark(bml-comment) {
+#bml-text > text::mark(bml-comment),
+#look-text > text::mark(bml-comment) {
 	color: var(--ed-comment);
 	font-style: italic;
 }
 
-#bml-text > text::mark(bml-class) {
+#bml-text > text::mark(bml-class),
+#look-text > text::mark(bml-class) {
 	color: var(--ed-class);
 	font-style: italic;
 }
 
-#bml-text > text::mark(bml-seat) {
+#bml-text > text::mark(bml-seat),
+#look-text > text::mark(bml-seat) {
 	color: var(--ed-seat);
 	font-weight: bold;
 }
 
-#bml-text > text::mark(bml-hand) {
+#bml-text > text::mark(bml-hand),
+#look-text > text::mark(bml-hand) {
 	color: var(--ed-hand);
 }
 
-#bml-text > text::mark(bml-list) {
+#bml-text > text::mark(bml-list),
+#look-text > text::mark(bml-list) {
 	color: var(--ed-list);
 }
 
-#bml-text > text::mark(bml-num) {
+#bml-text > text::mark(bml-num),
+#look-text > text::mark(bml-num) {
 	color: var(--ed-num);
 }
 
-#bml-text > text::mark(bml-name) {
+#bml-text > text::mark(bml-name),
+#look-text > text::mark(bml-name) {
 	color: var(--ed-name);
 }
 
 /* A condition is a tint BEHIND the text, as the preview's tag is, so the words keep their own colours. */
-#bml-text > text::mark(bml-cond) {
+#bml-text > text::mark(bml-cond),
+#look-text > text::mark(bml-cond) {
 	background: var(--ed-cond);
 }
 
 /* The text styles are styles, not colours: what is in them keeps its colour (a suit in bold stays a suit). */
-#bml-text > text::mark(bml-strong) {
+#bml-text > text::mark(bml-strong),
+#look-text > text::mark(bml-strong) {
 	font-weight: bold;
 }
 
-#bml-text > text::mark(bml-em) {
+#bml-text > text::mark(bml-em),
+#look-text > text::mark(bml-em) {
 	font-style: italic;
 }
 
-#bml-text > text::mark(bml-u) {
+#bml-text > text::mark(bml-u),
+#look-text > text::mark(bml-u) {
 	text-decoration: underline;
 }
 
-#bml-text > text::mark(bml-code) {
+#bml-text > text::mark(bml-code),
+#look-text > text::mark(bml-code) {
 	color: var(--ed-code);
 }
 
 /* A pseudo-bid (`next`, `jump`, `cue`) is a call, so it keeps the call's colour and is told apart by slant. */
-#bml-text > text::mark(bml-pseudo) {
+#bml-text > text::mark(bml-pseudo),
+#look-text > text::mark(bml-pseudo) {
 	font-style: italic;
 }
 
-#bml-text > text::mark(bml-alert) {
+#bml-text > text::mark(bml-alert),
+#look-text > text::mark(bml-alert) {
 	color: var(--ed-alert);
 	font-weight: bold;
 }
 
 /* Last, so a link or a suit inside anything else wins: a suit in a call, a heading or a link is still red. */
-#bml-text > text::mark(bml-link) {
+#bml-text > text::mark(bml-link),
+#look-text > text::mark(bml-link) {
 	color: var(--ed-link);
 }
 
-#bml-text > text::mark(bml-suit) {
+#bml-text > text::mark(bml-suit),
+#look-text > text::mark(bml-suit) {
 	color: var(--ed-suit);
 }
 
@@ -2442,6 +2496,12 @@ frame#bml-page {
 	border: 2px solid var(--accent);
 	border-top-color: transparent;
 	border-radius: 50%;
+}
+
+/* THE SPIN ONLY WHILE AN ANALYSIS RUNS: the host sets `running` with the spinner (`set_analyse_busy`). An infinite
+   animation on a `display: none` element is NOT idle in this engine - measured 2026-10-31: the hidden spinner kept
+   the UI thread at ~45% of a core for as long as the window was open (0.08s of CPU per 10s idle without it). */
+.busy.running .spinner {
 	animation: busy-spin 0.8s linear infinite;
 }
 

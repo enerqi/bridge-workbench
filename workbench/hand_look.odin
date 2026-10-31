@@ -218,6 +218,7 @@ choose_hand_look :: proc(app: ^App, key, word: string) {
 	save_pref(app, key, word)
 	apply_hand_look(app)
 	draw_hand_look_prefs(app)
+	look_changed(app, .Hand)
 }
 
 // The shared suits button: both looks follow. The notes re-render on their next showing.
@@ -230,6 +231,7 @@ choose_suits :: proc(app: ^App, word: string) {
 	apply_hand_look(app)
 	draw_notes_look_prefs(app)
 	draw_hand_look_prefs(app)
+	look_changed(app, nil)
 }
 
 choose_generated_look :: proc(app: ^App, on: bool) {

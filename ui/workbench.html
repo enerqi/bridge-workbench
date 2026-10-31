@@ -109,7 +109,12 @@
      overlay collapses in this engine), and it is left by going back. The theme is one value with three
      positions, so it is the `.seg` control the hand-page placement uses, and the lit segment is the
      remembered choice (`draw_prefs`). The host owns the colours: see `theme.odin`. -->
+  <!-- A SPLIT since 2026-10-31: the settings on the left, and beside them how the looks they choose come out - the
+       notes page, the notes editor, the hand page, one at a time under its tab (workbench/look_preview.odin). The
+       tab follows what was changed last. -->
   <div class="about" id="prefs-panel">
+   <div class="split" id="prefs-split">
+    <div class="pane" id="prefs-side">
     <div class="about-card">
       <div class="legend">Settings</div>
       <div class="about-head">Theme</div>
@@ -381,6 +386,27 @@
         <button id="prefs-close" title="Close (esc, ctrl+w)">close</button>
       </div>
     </div>
+    </div>
+    <div class="divider"></div>
+    <div class="pane" id="prefs-look">
+      <div class="pane-head">
+        <span class="barlabel">looks</span>
+        <div class="seg" id="prefs-look-tabs">
+          <button class="segbtn" data-look-tab="notes" title="The notes page in its look"
+                  data-hint="Sample notes in the notes look chosen here: one of everything the look colours.">notes page</button>
+          <button class="segbtn" data-look-tab="editor" title="The notes editor in its look"
+                  data-hint="The sample notes' source in the notes editor's look: its font, colours and caret line.">editor</button>
+          <button class="segbtn" data-look-tab="hand" title="The hand page in its look"
+                  data-hint="The page in the hand pane in the hand page look, or a sample deal when there is none.">hand page</button>
+        </div>
+        <span class="barlabel" id="prefs-look-note"></span>
+      </div>
+      <frame id="look-notes"></frame>
+      <plaintext id="look-text" readonly style="display: none" title="The sample notes' source"
+                 data-hint="The sample notes' source, read-only, in the notes editor's look."></plaintext>
+      <frame id="look-hand" style="display: none"></frame>
+    </div>
+   </div>
   </div>
 
 <!-- THE QR CODE of the hand pane's page (SHARING_PLAN.md, Tier C): the `share link` link, for a phone to scan.
@@ -2049,15 +2075,26 @@
      theme's token is resolved at paint time, so it follows a theme change by itself. */
   var WB_CARET_LINE = true;
   function wbEditorLook(look) {
-    var editor = document.$("#bml-text");
-    if (!editor) return false;
-    editor.style.fontFamily = look.font || "";
-    editor.style.fontSize = look.size || "";
-    editor.style.lineHeight = look.line || "";
-    for (var name in look.vars) editor.style.variable(name, look.vars[name]);
+    var editors = ["#bml-text", "#look-text"].map(function (sel) { return document.$(sel); }).filter(Boolean);
+    if (!editors.length) return false;
     WB_CARET_LINE = !!look.caretLine;
-    bmlCaretLine(editor);
+    // And the read-only copy in Settings' look preview (workbench/look_preview.odin), which shows the look being chosen.
+    editors.forEach(function (editor) {
+      editor.style.fontFamily = look.font || "";
+      editor.style.fontSize = look.size || "";
+      editor.style.lineHeight = look.line || "";
+      for (var name in look.vars) editor.style.variable(name, look.vars[name]);
+      bmlCaretLine(editor);
+    });
     return true;
+  }
+
+  // Settings' look preview: the sample's source coloured as the notes are, its caret line found.
+  function wbLookTextColorize() {
+    var marks = bmlColorizePass(true, "#look-text");
+    var editor = document.$("#look-text");
+    if (editor) bmlCaretLine(editor);
+    return marks;
   }
 
   /* THE CARET LINE: the line holding the caret carries `wb-caret-line`, tinted by the sheet. The engine has no caret
@@ -3252,6 +3289,18 @@
       });
     }
   });
+  // The look preview's read-only copy (Settings) tints its caret line too, so the tint can be seen being chosen.
+  (function () {
+    var editor = document.$("#look-text");
+    if (!editor) return;
+    var caretLineLater = function () {
+      setTimeout(function () { bmlCaretLine(editor); }, 0);
+      return false;
+    };
+    ["keydown", "keyup", "mousedown", "mouseup", "focus"].forEach(function (type) {
+      editor.addEventListener(type, caretLineLater, { capture: true });
+    });
+  })();
 
   document.on("mouseup", "#bml-text, #scn-text", function () {
     var editor = this;

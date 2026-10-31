@@ -6400,7 +6400,7 @@ test_the_open_palette_leaves_both_editor_panes_a_box :: proc(t: ^testing.T) {
 	press_key(&app, .R, ctrl = true)
 	pump(&app)
 
-	for selector in ([]string{"#bml-goto", "#bml-goto-input", "#bml-goto-list", "#bml-text", ".split"}) {
+	for selector in ([]string{"#bml-goto", "#bml-goto-input", "#bml-goto-list", "#bml-text", "#bml-split"}) {
 		element := find(&app, selector)
 		testing.expectf(t, element != nil, "no %s", selector)
 		if element == nil {
@@ -13086,3 +13086,144 @@ test_the_example_scenarios_parse_clean :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, strings.has_prefix(sample_notes[0].text, "#+TITLE:"), "the sample notes are a notes file")
 }
+
+// THE GUIDE'S TWO COLUMNS KEEP THEIR SHARES on every example (reported 2026-10-31: the rendered side a word wide,
+// the source side most of the page). Measured in the engine, since the cells' widths are what it does with the CSS.
+@(test)
+test_the_guide_columns_keep_their_shares :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	page := preview_document(&app, guide_page(context.temp_allocator), -1, context.temp_allocator)
+	testing.expect_value(t, sa.load_html(g_view.window, page, "file://workbench/bml-preview.html"), nil)
+	pump_view()
+	value, _ := sa.eval(
+		g_view.window,
+		`(function(){ var out=[]; for (var r of document.querySelectorAll("table.wb-guide-row")) { var c=r.querySelectorAll("td"); out.push(Math.round(100*c[0].state.box("width","border")/r.state.box("width","border"))); } return out.join(" "); })()`,
+	)
+	defer sa.value_clear(&value)
+	text, _ := sa.value_to_string(&value, context.temp_allocator)
+	shares := strings.fields(text, context.temp_allocator)
+	examples := GUIDE_EXAMPLES
+	testing.expect_value(t, len(shares), len(examples))
+	for share, i in shares {
+		n, _ := strconv.parse_int(share)
+		testing.expectf(t, n >= 38 && n <= 46, "%s: the source column is %d%% of the row, want about 42%%", examples[i].label, n)
+	}
+}
+
+// THE LOOK PREVIEW'S SAMPLES: the notes parse with no problem at all (indentation checked too), and the sample deal
+// makes a card page.
+@(test)
+test_the_look_samples_are_sound :: proc(t: ^testing.T) {
+	doc := bml.parse(LOOK_SAMPLE_BML, {check_indentation = true})
+	defer bml.destroy(doc)
+	for diagnostic in doc.diagnostics {
+		testing.expectf(t, false, "the sample notes: %s", bml.diagnostic_text(diagnostic, context.temp_allocator))
+	}
+	page := look_sample_page(context.temp_allocator)
+	testing.expectf(t, strings.count(page, `data-hv=`) == 1, "the sample deal must make a one-board card page (%d boards, %d bytes)", strings.count(page, `data-hv=`), len(page))
+}
+
+// THE LOOK PREVIEW IN SETTINGS shows each look as it is chosen, on the tab of the look that changed: the notes page
+// re-rendered, the hand page reloaded, the editor's copy restyled. Outside Settings a change moves nothing.
+@(test)
+test_the_look_preview_follows_the_looks :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	app.prefs = prefs.load("")
+	defer prefs.destroy(&app.prefs)
+
+	frame_root :: proc(app: ^App, selector: string) -> sa.Element {
+		element := find(app, selector)
+		if element == nil {return nil}
+		asset, aerr := sa.element_asset(element, "frame")
+		if aerr != nil {return nil}
+		document, derr := sa.asset_get(asset, "document")
+		defer sa.value_clear(&document)
+		if derr != nil {return nil}
+		root, rerr := sa.element_from_value(&document)
+		if rerr != nil {return nil}
+		return root
+	}
+	style_in :: proc(root: sa.Element, selector, property: string) -> string {
+		if root == nil {return ""}
+		element := sa.select_first(root, selector) or_else nil
+		if element == nil {return ""}
+		value, _ := sa.style(element, property, context.temp_allocator)
+		return strings.to_lower(value, context.temp_allocator)
+	}
+
+	// THE HAND PAGE is the one in the hand pane: a small one, because a real card page crashes the engine on a
+	// test-runner thread (see `FRAME_DOC`) - the built-in sample deal's page is checked as text, above.
+	PAGE :: `<html><head><style>body { size: *; } .compass { background: #3f7d5c; } .suit.c { color: MediumSeaGreen; } .seat { background: #fff; }</style></head><body><div class="compass"><div class="seat"><span class="suit c">AKQ</span></div></div></body></html>`
+	dir := scratch_scenario_dir(t, "wb-look-preview")
+	if dir == "" {return}
+	path, _ := filepath.join({dir, "deals.html"}, context.temp_allocator)
+	_ = os.write_entire_file(path, transmute([]u8)string(PAGE))
+	testing.expect(t, show_page_file(&app, path), "the hand pane must take the page")
+	pump(&app)
+
+	show_prefs(&app, true)
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Prefs)
+	testing.expect_value(t, app.look_tab, Look_Tab.Notes)
+	testing.expect(t, !effective_display_is_hidden(&app, "#look-notes"), "the notes tab shows its frame")
+	testing.expect(t, effective_display_is_hidden(&app, "#look-hand"), "and only that")
+	testing.expect(t, style_in(frame_root(&app, "#look-notes"), ".hcolor", "color") != "", "the sample notes are in the frame")
+
+	choose_notes_look(&app, NOTES_PAGE_PREF, "dark")
+	pump(&app)
+	// The look is in the page the frame holds. (Its colours are tokens, which the element's `style` does not
+	// resolve; that the tokens colour the page is `test_a_chosen_notes_look_reaches_the_preview`'s, the same
+	// `preview_document`.)
+	{
+		root := frame_root(&app, "#look-notes")
+		html := ""
+		if root != nil {html, _ = sa.html(root, true, context.temp_allocator)}
+		testing.expect(t, strings.contains(html, "--bml-page-bg: #1e1f26"), "the notes page is rendered again in the dark look")
+	}
+
+	choose_hand_look(&app, HAND_FELT_PREF, "blue")
+	pump(&app)
+	testing.expect_value(t, app.look_tab, Look_Tab.Hand)
+	testing.expect(t, !effective_display_is_hidden(&app, "#look-hand"), "the hand tab shows its frame")
+	felt := style_in(frame_root(&app, "#look-hand"), ".compass", "background-color")
+	testing.expectf(t, strings.contains(felt, "2f5f8a"), "the hand page's felt is blue: %q", felt)
+	note, _ := sa.text(find(&app, "#prefs-look-note"), context.temp_allocator)
+	testing.expectf(t, strings.contains(note, "deals.html"), "the note names the hand pane's page: %q", note)
+
+	// The suits are both looks': with the hand page up, it stays up.
+	choose_suits(&app, "two-colour")
+	pump(&app)
+	testing.expect_value(t, app.look_tab, Look_Tab.Hand)
+
+	choose_editor_caret_line(&app, false)
+	pump(&app)
+	testing.expect_value(t, app.look_tab, Look_Tab.Editor)
+	text := find(&app, "#look-text")
+	testing.expect(t, text != nil && !effective_display_is_hidden(&app, "#look-text"), "the editor tab shows the sample source")
+	lines, _ := sa.child_count(text)
+	testing.expectf(t, lines > 20, "the sample source is in the editor (%d lines)", lines)
+	marks, _ := sa.eval(app.window, "wbLookTextColorize()")
+	defer sa.value_clear(&marks)
+	count, _ := sa.value_to_int(&marks)
+	testing.expectf(t, count > 20, "the sample source is coloured (%d marks)", count)
+	for tune in EDITOR_TUNES {
+		if tune.token == "size" {
+			prefs.set(&app.prefs, editor_tune_pref(&app, tune), "20px")
+		}
+	}
+	editor_look_changed(&app)
+	pump(&app)
+	size, _ := sa.style(text, "font-size", context.temp_allocator)
+	testing.expect_value(t, size, "15pt") // 20px, as the notes editor reads it
+
+	// Outside Settings the tab is left alone.
+	show_view(&app, .Panes)
+	choose_notes_look(&app, NOTES_PAGE_PREF, "white")
+	testing.expect_value(t, app.look_tab, Look_Tab.Editor)
+}
+
+

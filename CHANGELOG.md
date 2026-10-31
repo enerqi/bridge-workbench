@@ -3,6 +3,21 @@
 One `## <version>` section per release; the release workflow publishes that section as the release notes
 and refuses a tag without one. Versions are semver, `0.1.0-alpha.1`; the tag is `v0.1.0-alpha.1`.
 
+## 0.1.0-alpha.6
+
+- **No more CPU use at rest.** The workbench kept a processor core about half busy for as long as it was open, in
+  every view, even with nothing happening. The cause was the analyse button's spinner, which went on animating
+  while hidden. It now spins only while an analysis runs, and an idle window uses next to no CPU.
+- **Settings shows the looks it chooses.** Settings is now two panes. The settings are on the left. On the right is
+  how they come out, under three tabs:
+  - **notes page** - sample notes in the notes look;
+  - **editor** - their source in the notes editor's look;
+  - **hand page** - the page in the hand pane in the hand page look, or a sample deal when none is open.
+
+  The tab follows what you change, and the divider between the panes can be dragged.
+- **The BML guide's columns** keep their widths: the source on the left, what the page makes of it on the right.
+  Before, the rendered side could shrink to a word a line.
+
 ## 0.1.0-alpha.5
 
 - **Sample notes and example scenarios.** The first time the workbench runs with no notes folder, it puts a

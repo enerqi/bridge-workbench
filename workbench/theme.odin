@@ -148,6 +148,7 @@ show_prefs :: proc(app: ^App, shown: bool) {
 		app.before_prefs = place_underneath(app)
 		show_view(app, .Prefs)
 		draw_prefs(app)
+		show_look_tab(app, app.look_tab)
 		return
 	}
 	show_view(app, app.before_prefs)

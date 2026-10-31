@@ -808,6 +808,7 @@ notes_look_changed :: proc(app: ^App) {
 		set_text_at(app, "#prefs-notes-note", set_built_pages_look(app, true))
 	}
 	draw_notes_look_prefs(app)
+	look_changed(app, .Notes)
 }
 
 /*
