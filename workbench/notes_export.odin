@@ -145,6 +145,11 @@ Refreshed with `just vendor-bml-css`; a test fails when it falls behind the tool
 BUNDLED_BML_CSS :: #load("../ui/bml.css", string)
 
 // The notes folder's `bml.css`, else the bundled one; "" with no notes folder at all. Scratch memory.
+//
+// WITHOUT the built pages' look: a build (`just bml`, or the build button) appends `bml-look.css` to the
+// `bml.css` it copies, and the preview puts the CURRENT look after the sheet. Left in, the old block's tokens
+// won wherever the current look leaves a token to the sheet - a square bid cell kept the built pages'
+// rounded fade (2026-11-03). The block starts with the look file's header, so it is cut there.
 notes_css :: proc(app: ^App) -> string {
 	if app.docs == "" {
 		return ""
@@ -154,7 +159,20 @@ notes_css :: proc(app: ^App) -> string {
 		return BUNDLED_BML_CSS
 	}
 	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
-	return string(data) if err == nil else BUNDLED_BML_CSS
+	if err != nil {
+		return BUNDLED_BML_CSS
+	}
+	return without_built_look(string(data))
+}
+
+// The sheet before an appended `bml-look.css` (whose first line is `NOTES_LOOK_FILE_HEADER`'s), or all of it.
+without_built_look :: proc(css: string) -> string {
+	header: string = NOTES_LOOK_FILE_HEADER
+	first_line := header[:strings.index_byte(header, '\n')]
+	if at := strings.index(css, first_line); at >= 0 {
+		return strings.trim_right_space(css[:at])
+	}
+	return css
 }
 
 @(private = "file")

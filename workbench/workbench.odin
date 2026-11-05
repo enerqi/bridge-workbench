@@ -90,6 +90,7 @@ LINKED_FILE :: uintptr(12) // a link in the notes preview names another notes fi
 UPDATE :: uintptr(13) // the About panel's release check answered; the sentence is in `App.update_text`
 ANALYSE_PART :: uintptr(14) // lparam = thousandths of the board under way, while its make-chance layouts are solved
 GUIDE_INSERT :: uintptr(15) // an example's `insert` in the BML guide was clicked; write it at the caret (`guide_insert`)
+PAGE_QUEUED :: uintptr(16) // the hand page's load finished with another asked for meanwhile; load it (`show_page_file`)
 
 Job_Kind :: enum {
 	Generate,
@@ -321,6 +322,13 @@ App :: struct {
 	preview_clicked:    string,
 	preview_click_rank: int,
 	page_handler:       sa.Event_Handler, // the hand page frame`s, for the follow timer
+	// A hand page load still arriving (see `show_page_file`), and the file asked for while it was.
+	page_loading:       bool,
+	page_load_started:  time.Tick,
+	page_queued:        string, // a path, or a whole page for `.Html`
+	page_queued_title:  string,
+	page_queued_kind:   Page_Request,
+	page_queued_keys:   bool,
 	prefs:              prefs.Prefs,
 	prefs_path:         string,
 
@@ -775,6 +783,9 @@ on_posted :: proc(handler: ^sa.Host_Handler, posted: sa.Posted) {
 
 	case GUIDE_INSERT:
 		guide_insert(app)
+
+	case PAGE_QUEUED:
+		load_queued_page(app)
 
 	case LIVE:
 		// The only message that does not come from a worker thread. It comes from the frame`s TIMER handler,
@@ -2957,6 +2968,9 @@ with_page_css :: proc(page: string) -> string {
 
 show_page_html :: proc(app: ^App, html: string, title: string, take_keyboard := true) -> bool {
 	asset := page_frame_asset(app) or_return
+	if queue_page_request(app, .Html, html, title, take_keyboard) {
+		return true
+	}
 	styled := with_hand_look(app, with_page_css(html), context.temp_allocator)
 	html_value := sa.value_from(styled)
 	defer sa.value_clear(&html_value)
@@ -2971,6 +2985,7 @@ show_page_html :: proc(app: ^App, html: string, title: string, take_keyboard := 
 	if err != nil || sa.value_is_error(&result) {
 		return false
 	}
+	page_load_begun(app, title)
 	remember_shown_path(app, "") // built here, not read from disk: no chip owns it
 	apply_page_zoom(app) // a new document is a new root, unzoomed or at the window's zoom — not the page's
 	set_text_at(app, "#page-title", title)
@@ -2983,8 +2998,13 @@ show_page_html :: proc(app: ^App, html: string, title: string, take_keyboard := 
 
 // The same, for a page a generate run wrote. `loadFile` rather than reading the file here: the engine
 // resolves the path, and a page too big to want in memory twice is exactly what a batch produces.
+//
+// ONE LOAD AT A TIME, whatever goes into the pane (`queue_page_request`).
 show_page_file :: proc(app: ^App, path: string, take_keyboard := true) -> bool {
 	asset := page_frame_asset(app) or_return
+	if queue_page_request(app, .File, path, "", take_keyboard) {
+		return true
+	}
 	// A chosen hand page LOOK goes into the markup (`hand_look.odin` says why it cannot be added after), so
 	// then the file is read here after all - only then: the original look is no rules, and stays `loadFile`.
 	if !load_file_with_look(app, asset, path) {
@@ -2997,12 +3017,105 @@ show_page_file :: proc(app: ^App, path: string, take_keyboard := true) -> bool {
 			return false
 		}
 	}
+	page_load_begun(app, path)
 	remember_shown_path(app, path)
 	apply_page_zoom(app)
 	set_text_at(app, "#page-title", path)
 	page_ready(app, true)
 	show_page_pane(app, true, take_keyboard)
 	return true
+}
+
+/*
+ONE LOAD INTO THE HAND PANE AT A TIME. `loadFile` returns before its document exists, and a second load started
+while the first was still arriving put BOTH pages into one document (reported 2026-11-03: ctrl+o pressed several
+times on a page in w:/deals - two toolbars and titles, the first copy's carousel empty, `1/0`, because the
+second copy's script took its boards; with a text format beside the cards, the same presses crashed the
+window). So EVERY load into the pane - a card page from disk, a text format, a page built in memory - waits
+while one is under way, the newest request replacing an older waiting one, and goes in when the frame says the
+document is complete (`on_frame_event` -> `PAGE_QUEUED`, posted: a load replaces the frame's document). Only
+when the frame's handler is attached, which is what reports completion; a load that never reports is not waited
+on for more than `PAGE_LOAD_PATIENCE`.
+*/
+Page_Request :: enum {
+	File, // `show_page_file`
+	Text, // `show_text_file`
+	Html, // `show_page_html`
+}
+
+PAGE_LOAD_PATIENCE :: 5 * time.Second
+PAGE_QUEUE_TIMER :: sa.Timer_Id(14)
+
+page_load_under_way :: proc(app: ^App) -> bool {
+	return app.page_loading && time.tick_since(app.page_load_started) < PAGE_LOAD_PATIENCE
+}
+
+// Keep the request for later if a load is under way; true when it was kept.
+queue_page_request :: proc(app: ^App, kind: Page_Request, what: string, title: string, take_keyboard: bool) -> bool {
+	if !page_load_under_way(app) {
+		return false
+	}
+	forget_queued_page(app)
+	app.page_queued = strings.clone(what)
+	app.page_queued_title = strings.clone(title)
+	app.page_queued_kind = kind
+	app.page_queued_keys = take_keyboard
+	when ODIN_DEBUG {
+		fmt.eprintfln("[page] %v waits (load under way %v): %s", kind, time.tick_since(app.page_load_started), title if kind == .Html else what)
+	}
+	// If completion is never reported, the wait still ends.
+	if frame := find(app, "#page"); frame != nil {
+		_ = sa.set_timer(frame, PAGE_LOAD_PATIENCE, PAGE_QUEUE_TIMER)
+	}
+	return true
+}
+
+page_load_begun :: proc(app: ^App, what: string) {
+	when ODIN_DEBUG {fmt.eprintfln("[page] load begun: %s", what)}
+	if app.page_handler.on_event != nil {
+		app.page_loading = true
+		app.page_load_started = time.tick_now()
+	}
+}
+
+// The frame finished a document. Posts on when a request is waiting.
+page_load_done :: proc(app: ^App) {
+	when ODIN_DEBUG {
+		if app.page_loading {fmt.eprintfln("[page] load done after %v", time.tick_since(app.page_load_started))}
+	}
+	app.page_loading = false
+	if frame := find(app, "#page"); frame != nil {
+		_ = sa.set_timer(frame, 0, PAGE_QUEUE_TIMER) // 0 stops it
+	}
+	if app.page_queued != "" {
+		sa.post_callback(app.window, PAGE_QUEUED)
+	}
+}
+
+load_queued_page :: proc(app: ^App) {
+	if app.page_queued == "" || page_load_under_way(app) {
+		return
+	}
+	what := strings.clone(app.page_queued, context.temp_allocator)
+	title := strings.clone(app.page_queued_title, context.temp_allocator)
+	kind, keys := app.page_queued_kind, app.page_queued_keys
+	forget_queued_page(app)
+	when ODIN_DEBUG {fmt.eprintfln("[page] loading the %v that waited", kind)}
+	switch kind {
+	case .File:
+		_ = show_page_file(app, what, keys)
+	case .Text:
+		_ = show_text_file(app, what)
+	case .Html:
+		_ = show_page_html(app, what, title, keys)
+	}
+}
+
+forget_queued_page :: proc(app: ^App) {
+	delete(app.page_queued)
+	delete(app.page_queued_title)
+	app.page_queued = ""
+	app.page_queued_title = ""
 }
 
 // Give the framed document the keyboard, so the page's own shortcuts work the moment it appears: left/right
@@ -3861,9 +3974,20 @@ is folded says what state the preview is in, and pressing it is the way out of t
 show_scope_buttons :: proc(app: ^App) {
 	// The label is the ACTION, not the state: `fold` while the document is unfolded, `unfold` while it is
 	// folded. A lit button says "something is on" and leaves the way out to be guessed; a verb does not.
-	set_text_at(app, "#bml-fold", app.bml_scope == .Folded ? "unfold" : "fold")
-	mark_toggle(app, "#bml-fold", app.bml_scope == .Folded)
+	// The word is a span of its own and the icon swaps with it (Material's `unfold_less` to fold, `unfold_more`
+	// to unfold): setting the BUTTON's text replaced its children and the icon went with them (reported
+	// 2026-11-02, "no icon on the fold button").
+	folded := app.bml_scope == .Folded
+	set_text_at(app, "#bml-fold .fold-word", "unfold" if folded else "fold")
+	if path := find(app, "#bml-fold path"); path != nil {
+		_ = sa.set_attribute(path, "d", UNFOLD_MORE_PATH if folded else UNFOLD_LESS_PATH)
+	}
+	mark_toggle(app, "#bml-fold", folded)
 }
+
+// Material Icons (Apache-2.0), as the editors' other file actions: chevrons together (fold), apart (unfold).
+UNFOLD_LESS_PATH :: "M7.41 18.59L8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"
+UNFOLD_MORE_PATH :: "M12 5.83L15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"
 
 /*
 Close the preview: hide the pane, and give the engine the document back.
@@ -4158,6 +4282,10 @@ strip_link_tags :: proc(html: string, allocator := context.allocator) -> string 
 // same: it only ever shows up in the engine's diagnostics, and one that says where the document came from
 // is worth the line.
 show_preview_html :: proc(app: ^App, html: string) -> bool {
+	// Whatever goes in, the guide is no longer what the frame holds (`show_guide` says so again after its own
+	// load). Closing the pane loads an empty page, and a stale flag left the guide blank on the way back
+	// (reported 2026-11-02: ctrl+t round to split after the guide, a white pane).
+	app.bml_guide_loaded = false
 	element := find(app, "#bml-page")
 	if element == nil {
 		return false
@@ -5051,6 +5179,11 @@ on_frame_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		sa.post_callback(app.window, FOLLOW)
 		return false
 	}
+	if te, ok := sa.timer_event(event); ok && te.id == PAGE_QUEUE_TIMER {
+		// The load a waiting file was held for never reported completion: stop waiting. Posted, being a load.
+		page_load_done(app)
+		return false
+	}
 	if te, ok := sa.timer_event(event); ok && te.id == LIVE_CHECK_TIMER {
 		// The scenario editor's debounce. Posted like the preview's below: the check rewrites this element's
 		// marks and the report, which is not done from inside the element's own dispatch. `false` stops the
@@ -5081,6 +5214,8 @@ on_frame_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		// so the zoom `show_page_file` applies lands on the OLD one. Setting a style is not a document
 		// replacement, so doing it inside the frame's own dispatch is safe (unlike a render). Not claimed.
 		apply_page_zoom(app)
+		// And a file asked for while this one arrived can go in now - posted, being a document replacement.
+		page_load_done(app)
 		return false
 	}
 	if be, ok := sa.behavior_event(event); ok && be.code == .DOCUMENT_COMPLETE {
@@ -5261,7 +5396,10 @@ preview_document_root :: proc(app: ^App) -> (root: sa.Element, ok: bool) {
 on_preview_click :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 	app := (^App)(handler.user_data)
 	if be, is_behavior := sa.behavior_event(event); is_behavior {
-		return be.code == .HYPERLINK_CLICK && follow_preview_link(app, be.target)
+		// ONE PHASE: the event comes down and back up (measured: Sinking, then Bubbling, for one click), and
+		// answering both inserted every guide example twice (reported 2026-11-02). Bubbling, as the window's
+		// handler does; returning true there is still what stops the frame navigating to the href.
+		return be.code == .HYPERLINK_CLICK && be.phase == .Bubbling && follow_preview_link(app, be.target)
 	}
 	me, ok := sa.mouse_event(event)
 	if !ok || me.code != .MOUSE_CLICK || me.phase != .Bubbling {
@@ -5305,7 +5443,13 @@ follow_preview_link :: proc(app: ^App, link: sa.Element) -> bool {
 		index, parsed := strconv.parse_int(href[len("wbinsert:"):])
 		if parsed {
 			app.guide_insert = index
-			sa.post_callback(app.window, GUIDE_INSERT)
+			// A post segfaults in the windowless tests (see `on_frame_event`), so there the insert runs at once:
+			// it writes the editor, not the frame, and the test can then count what one click wrote.
+			when ODIN_TEST {
+				guide_insert(app)
+			} else {
+				sa.post_callback(app.window, GUIDE_INSERT)
+			}
 		}
 		return true
 	}
@@ -5865,6 +6009,9 @@ dump_page :: proc(app: ^App) {
 // brings its own scrolling and selection. Wrapped rather than loaded raw because `loadFile` on a `.txt`
 // would have the engine guess at markup in a file full of `<` and `&`.
 show_text_file :: proc(app: ^App, path: string) -> bool {
+	if queue_page_request(app, .Text, path, "", true) {
+		return true
+	}
 	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
 	if err != nil {
 		return false
@@ -6195,8 +6342,42 @@ apply_page_zoom :: proc(app: ^App) {
 DEFAULT_ZOOM :: 1.21 // two steps in: 1.1 x 1.1, the same place two presses of ctrl+plus land
 DEFAULT_PAGE_ZOOM :: 1.10
 
+/*
+THOSE DEFAULTS ARE FOR A SCREEN WITH ROOM, and the screen's own scaling comes first. A 4K screen at 250% display
+scaling is ~1536x816 CSS px of work area, at 300% ~1280x680: Windows has already made everything big, and 121% on
+top left the report squashed and the hand page needing 75% to show its cards (reported 2026-11-02). So a first
+start reads the work area in CSS px (the screen's pixels / its scale) and steps the defaults down when it is
+short. Only a FIRST start: a remembered zoom is someone's choice and wins.
+*/
+default_zooms :: proc(screen_height_css: int) -> (window, page: f64) {
+	switch {
+	case screen_height_css <= 0 || screen_height_css >= 1000:
+		return DEFAULT_ZOOM, DEFAULT_PAGE_ZOOM // unknown, or a full-HD screen at 100%
+	case screen_height_css >= 800:
+		return 1.0, 0.9 // 4K at 250%, full HD at 125%, 1440p at 150%
+	}
+	return 0.9, 0.8 // 4K at 300%, a small laptop at 150%
+}
+
+// The primary screen's work area (without the taskbar) in CSS px. 0 where it cannot be read.
+screen_height_css :: proc() -> int {
+	when ODIN_OS == .Windows {
+		area: win.RECT
+		if !win.SystemParametersInfoW(win.SPI_GETWORKAREA, 0, &area, 0) {
+			return 0
+		}
+		dpi := int(win.GetDpiForSystem()) // 96 for a process the system scales itself: the area is then in CSS px already
+		if dpi <= 0 {
+			dpi = 96
+		}
+		return int(area.bottom - area.top) * 96 / dpi
+	} else {
+		return 0
+	}
+}
+
 restore_page_zoom :: proc(app: ^App) {
-	factor := DEFAULT_PAGE_ZOOM
+	_, factor := default_zooms(screen_height_css())
 	if remembered, found := prefs.get(&app.prefs, PAGE_ZOOM_PREF); found {
 		if parsed, ok := strconv.parse_f64(remembered); ok && parsed > 0 {
 			factor = parsed
@@ -6208,7 +6389,7 @@ restore_page_zoom :: proc(app: ^App) {
 
 // Put back what was remembered, once the document is up (the scale lives on its root element).
 restore_zoom :: proc(app: ^App) {
-	factor := DEFAULT_ZOOM
+	factor, _ := default_zooms(screen_height_css())
 	remembered, found := prefs.get(&app.prefs, ZOOM_PREF)
 	if found {
 		if parsed, ok := strconv.parse_f64(remembered); ok && parsed > 0 {
@@ -6317,7 +6498,22 @@ mark_toggle :: proc(app: ^App, selector: string, on: bool) {
 	if element == nil {
 		return
 	}
-	sa.set_attribute(element, "class", "ghost sel" if on else "ghost")
+	// THE `sel` TOKEN ONLY, the button's other classes kept. It wrote the whole attribute (`ghost sel` / `ghost`),
+	// which dropped `icon-text` from every toggle with an icon - guide, links, fold drew their icons unsized and
+	// stood taller than the buttons beside them (reported 2026-11-02).
+	class, _ := sa.attribute(element, "class", context.temp_allocator)
+	b := strings.builder_make(context.temp_allocator)
+	for token in strings.fields(class, context.temp_allocator) {
+		if token != "sel" {
+			if strings.builder_len(b) > 0 {strings.write_byte(&b, ' ')}
+			strings.write_string(&b, token)
+		}
+	}
+	if on {
+		if strings.builder_len(b) > 0 {strings.write_byte(&b, ' ')}
+		strings.write_string(&b, "sel")
+	}
+	sa.set_attribute(element, "class", strings.to_string(b))
 }
 
 set_enabled :: proc(app: ^App, selector: string, enabled: bool) {
@@ -6852,12 +7048,15 @@ set_tag_picker :: proc(app: ^App, open: bool) {
 // CTRL+/ — the list of every key, from ANY view. `About`'s shape: remember where you were, show it, go
 // back. It does NOT consult `overlays_have_room` — that rule is about the deals view's `.work`, and this
 // is no longer in it.
-toggle_keys_panel :: proc(app: ^App) {
+//
+// `from_here` is for the Settings and About buttons that open it: going back lands on that panel, where the
+// button was pressed, rather than on the place underneath it (which is what the key does from anywhere).
+toggle_keys_panel :: proc(app: ^App, from_here := false) {
 	if current_view(app) == .Keys {
 		show_view(app, app.before_keys)
 		return
 	}
-	app.before_keys = place_underneath(app)
+	app.before_keys = current_view(app) if from_here else place_underneath(app)
 	show_view(app, .Keys)
 	if panel := find(app, "#keyspanel"); panel != nil {
 		_ = sa.set_focus(panel)
@@ -7531,6 +7730,12 @@ step_output_format :: proc(app: ^App, step: int) {
 		}
 	}
 	next := 0 if at < 0 else ((at + step) %% len(present))
+	if next == at {
+		// ONE format, and it is on screen: nothing to step to, and reloading it is only work (and, pressed
+		// quickly, loads overlapping - see `show_page_file`).
+		set_note(app, fmt.tprintf("only one format generated for %s", name))
+		return
+	}
 	extensions := FORMAT_EXTENSIONS
 	open_output_format(app, extensions[present[next]])
 }
@@ -8527,6 +8732,10 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		show_prefs(app, false)
 		return true
 
+	case "prefs-keys", "about-keys":
+		toggle_keys_panel(app, from_here = true)
+		return true
+
 	case "page-share":
 		share_shown_page(app)
 		return true
@@ -8648,7 +8857,10 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		make_quiz(app)
 		return true
 
-	// The palette's three modes from the source pane's head (CTRL+R / CTRL+K / CTRL+I from the keyboard).
+	// The palette's modes from the source pane's head (CTRL+O / CTRL+R / CTRL+K / CTRL+I from the keyboard).
+	case "bml-file-open":
+		toggle_goto(app, .File)
+		return true
 	case "bml-goto-open":
 		toggle_goto(app)
 		return true

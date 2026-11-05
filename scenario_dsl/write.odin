@@ -57,6 +57,17 @@ write_program_into :: proc(b: ^strings.Builder, program: ^Program) {
 		strings.write_byte(b, '\n')
 	}
 
+	if dealer, has := program.dealer.?; has {
+		strings.write_string(b, "  dealer: ")
+		strings.write_string(b, seat_word(dealer))
+		strings.write_byte(b, '\n')
+	}
+	if v, has := program.vulnerability.?; has {
+		strings.write_string(b, "  vulnerability: ")
+		strings.write_string(b, board_vulnerability_word(v))
+		strings.write_byte(b, '\n')
+	}
+
 	if dd, has := program.double_dummy.?; has {
 		strings.write_string(b, "  double-dummy: ")
 		strings.write_string(b, "north-south" if dd.side == .North_South else "east-west")
@@ -115,6 +126,16 @@ write_node :: proc(b: ^strings.Builder, program: ^Program, index: int, level: Le
 
 	case Balanced_Node:
 		strings.write_string(b, "balanced")
+
+	case Vulnerability_Node:
+		switch node.word {
+		case .Vulnerable:
+			strings.write_string(b, "vulnerable")
+		case .Favourable:
+			strings.write_string(b, "favourable")
+		case .Unfavourable:
+			strings.write_string(b, "unfavourable")
+		}
 
 	case Not_Node:
 		strings.write_string(b, "not ")
@@ -186,8 +207,25 @@ quantity_word :: proc(quantity: Quantity) -> string {
 		return "clubs"
 	case .Longest:
 		return "longest"
+	case .Seat:
+		return "seat"
 	}
 	return "hcp"
+}
+
+@(private)
+board_vulnerability_word :: proc(v: norn.Vulnerability) -> string {
+	switch v {
+	case .None:
+		return "none"
+	case .North_South:
+		return "north-south"
+	case .East_West:
+		return "east-west"
+	case .Both:
+		return "both"
+	}
+	return "none"
 }
 
 @(private)

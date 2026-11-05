@@ -16,6 +16,7 @@ package scenario_dsl
 import "base:runtime"
 import "core:strconv"
 import "core:strings"
+import "norn:norn"
 
 @(private)
 Parser :: struct {
@@ -32,6 +33,8 @@ Parser :: struct {
 	col:         int,
 	// The line being parsed is a PARTNERSHIP line, where the one-hand atoms are refused.
 	pair:        bool,
+	// A table word (`seat`, `vulnerable`, ...) was read in this scenario.
+	reads_table: bool,
 }
 
 /*
@@ -144,7 +147,10 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 	rules := make([dynamic]Seat_Rule, 0, 4, p.allocator)
 	tags := make([dynamic]string, 0, 4, p.allocator)
 	double_dummy: Maybe(Double_Dummy)
+	dealer: Maybe(norn.Seat)
+	vulnerability: Maybe(norn.Vulnerability)
 	p.nodes = nodes
+	p.reads_table = false
 
 	for p.line_index < len(p.lines) {
 		raw := strip_comment(p.lines[p.line_index])
@@ -159,7 +165,7 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 
 		colon := strings.index_byte(line, ':')
 		if colon < 0 {
-			report(p, p.line_index, 1, "expected `key: value` — a seat, a partnership, `double-dummy:` or `tags:`")
+			report(p, p.line_index, 1, "expected `key: value` — a seat, a partnership, `dealer:`, `vulnerability:`, `double-dummy:` or `tags:`")
 			p.line_index += 1
 			continue
 		}
@@ -168,6 +174,28 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 		value_col := strings.index(raw, value) + 1 if value != "" else colon + 2
 
 		switch {
+		case key == "dealer":
+			// FIXES who deals; `seat` on a line TESTS it. Both are the table (`Program.dealer`).
+			if _, already := dealer.?; already {
+				report(p, p.line_index, 1, "a scenario has one `dealer:` line")
+			} else if seat, seat_ok := seat_of(folded(value)); seat_ok {
+				dealer = seat
+			} else {
+				report(p, p.line_index, value_col, "expected `dealer: <north|east|south|west>`")
+			}
+		case key == "vulnerability" || key == "vul":
+			if _, already := vulnerability.?; already {
+				report(p, p.line_index, 1, "a scenario has one `vulnerability:` line")
+			} else if v, v_ok := board_vulnerability_of(folded(value)); v_ok {
+				vulnerability = v
+			} else {
+				report(
+					p,
+					p.line_index,
+					value_col,
+					"expected `vulnerability: <none|north-south|east-west|both>` - or test it on a seat line: `vulnerable`, `favourable`, `unfavourable`",
+				)
+			}
 		case key == "double-dummy":
 			if _, already := double_dummy.?; already {
 				report(p, p.line_index, 1, "a scenario has one `double-dummy:` line")
@@ -199,7 +227,7 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 					p,
 					p.line_index,
 					1,
-					"unknown key — expected a seat (north/east/south/west), a partnership (north-south/east-west), `double-dummy` or `tags`",
+					"unknown key — expected a seat (north/east/south/west), a partnership (north-south/east-west), `dealer`, `vulnerability`, `double-dummy` or `tags`",
 				)
 				p.line_index += 1
 				continue
@@ -259,6 +287,9 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			rules = rules[:],
 			nodes = p.nodes[:],
 			double_dummy = double_dummy,
+			dealer = dealer,
+			vulnerability = vulnerability,
+			reads_table = p.reads_table || dealer != nil || vulnerability != nil,
 			source = strings.clone(p.file, p.allocator),
 			allocator = p.allocator,
 		},
@@ -413,7 +444,8 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	// ONE-HAND WORDS ON A PARTNERSHIP LINE are refused here rather than evaluated: a side's 26 cards are
 	// never "balanced", and a named helper asked about them would answer with something that reads like a
 	// verdict and means nothing. A seat line is where they belong, and the message says so.
-	if p.pair && (lowered == "balanced" || is_vocabulary_word(word)) {
+	// `seat` is one hand's place in the auction; a side has two.
+	if p.pair && (lowered == "balanced" || lowered == "seat" || is_vocabulary_word(word)) {
 		report(
 			p,
 			p.line_index,
@@ -429,7 +461,14 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	if lowered == "holds" {
 		return parse_holds(p, start_col)
 	}
+	if v, is_vulnerability := vulnerability_word_of(lowered); is_vulnerability {
+		p.reads_table = true
+		return add_node(p, Vulnerability_Node{word = v}), true
+	}
 	if quantity, is_quantity := quantity_of(lowered); is_quantity {
+		if quantity == .Seat {
+			p.reads_table = true
+		}
 		return parse_comparison(p, quantity, start_col)
 	}
 

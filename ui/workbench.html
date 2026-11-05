@@ -82,9 +82,12 @@
         scenarios or your own), analyse a deal you already have, edit your system notes with a live preview
         and make quiz pages from them, and share deals as a link or a QR code.
       </div>
+      <div class="about-line about-update">
+        <button id="about-keys" class="small" title="Every keyboard shortcut in this window (ctrl+/)">keyboard shortcuts<span class="kbd">ctrl+/</span></button>
+        <span>zoom, moving between views, the hand page, the scenario list.</span>
+      </div>
       <div class="about-line">
-        Every keyboard shortcut - zoom, moving between views, the hand page, the scenario list - is listed
-        by <b>CTRL+/</b>. Hover over any control for what it does; the bar at the bottom says more.
+        Hover over any control for what it does; the bar at the bottom says more.
       </div>
 
       <div class="about-head">Third-party components</div>
@@ -132,6 +135,17 @@
       <div class="about-line">
         The hand pages and the notes keep their own light looks in either theme: they are pages, shown as a
         reader will see them. Their looks are chosen below.
+      </div>
+      <!-- THE KEYS: not a setting (they are fixed), but Settings is where people look for them. Opens the keys
+           list (ctrl+/); going back from it returns here. -->
+      <div class="about-head">Keyboard shortcuts</div>
+      <div class="line">
+        <span class="barlabel field-label">keys</span>
+        <button class="small" id="prefs-keys" title="Every keyboard shortcut in this window (ctrl+/)"
+                data-hint="The list of every keyboard shortcut: moving between views, zoom, the hand page, the scenario list, the editors. Ctrl+/ opens it from anywhere; esc comes back here.">show all shortcuts<span class="kbd">ctrl+/</span></button>
+      </div>
+      <div class="about-line">
+        Moving between views, zoom, the hand page, the scenario list and the editors. The keys are fixed.
       </div>
       <!-- THE SUITS, ONE CHOICE for the notes and the hand page (workbench/hand_look.odin): a player wants the
            same colours in both. -->
@@ -227,6 +241,7 @@
         <span class="barlabel" id="prefs-profile-note"></span>
       </div>
       <div class="line">
+        <span class="barlabel field-label"></span>
         <button class="small" id="prefs-tune-toggle" data-notes-tune-toggle="1" title="Show or fold the fine tuning"
                 data-hint="Colour by colour, over the look above: the page, the suits, the boxes, the tags and tables.">fine tuning &#x25B8;</button>
         <span class="barlabel" id="prefs-notes-tune-count"></span>
@@ -238,6 +253,7 @@
         </div>
         <div id="prefs-notes-tune"></div>
         <div class="line">
+          <span class="barlabel field-label"></span>
           <button class="small" data-notes-tune-reset="*" title="Every one back to the look above"
                   data-hint="Clears all the fine tuning: the notes look exactly as the page, suits and font chosen above.">reset all</button>
           <span class="barlabel" id="prefs-notes-tune-note"></span>
@@ -262,6 +278,7 @@
       </div>
       <div id="prefs-editor-tune"></div>
       <div class="line">
+        <span class="barlabel field-label"></span>
         <button class="small" data-editor-tune-reset="*" title="Every one back to the theme's"
                 data-hint="Clears the editor's font, size, line height and this theme's colours: the editor looks as the theme draws it.">reset all</button>
         <span class="barlabel" id="prefs-editor-tune-count"></span>
@@ -300,6 +317,10 @@
       <!-- THE SAMPLES (workbench/samples.odin): the sample notes and example scenarios a first run puts in
            Documents. Restore puts back a missing one and never writes over a file that is there. -->
       <div class="about-head">Samples</div>
+      <div class="about-line">
+        Sample notes in Documents\Bridge notes and example scenarios in Documents\Bridge scenarios. Restore puts
+        back any that are missing and lists both folders again; a file you have edited is kept as it is.
+      </div>
       <div class="line">
         <span class="barlabel field-label">samples</span>
         <button class="small" data-samples-restore="1" title="Put back the sample notes and example scenarios"
@@ -721,6 +742,9 @@
                the top"); the quiz moved to the sidebar to make the room at 720px. The caret they write at is
                the source's, which keeps it while the button has the focus (`toggle_goto` reads it). -->
           <div class="palettebar">
+            <!-- OPEN, the palette's file mode (ctrl+o), first: it was the one mode with no button (reported 2026-11-04). -->
+            <button id="bml-file-open" class="ghost icon-text" title="Open a notes file by name, from any notes folder (ctrl+o)"
+              data-hint="Open the file list: type part of a file's name, up/down to choose, enter to open it. Every notes folder is searched; ctrl+shift+o adds a folder."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>open</button>
             <button id="bml-goto-open" class="ghost icon-text" title="Go to a heading in any file in the folder (ctrl+r)"
               data-hint="Open the heading list: type part of a heading's name, up/down to choose, enter to jump there. Every file in the folder is searched."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M3 9h14V7H3v2zm0 4h14v-2H3v2zm0 4h14v-2H3v2zm16 0h2v-2h-2v2zm0-10v2h2V7h-2zm0 6h2v-2h-2v2z"/></svg>go to</button>
             <button id="bml-link-open" class="ghost icon-text" title="Link to a heading, written at the caret (ctrl+k, or type ](#)"
@@ -749,7 +773,7 @@
         <div class="pane-head">
           <span class="barlabel">preview</span>
           <button id="bml-fold" class="ghost icon-text" title="Fold the document to its headings, with the caret's section open"
-              data-hint="Fold the preview: every heading stays, the section the caret is in is open, and the other bodies become an ellipsis - so the outline is still there to navigate by. Big documents cost hundreds of MB rendered in full, so they start folded."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 18.59L8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg>fold</button>
+              data-hint="Fold the preview: every heading stays, the section the caret is in is open, and the other bodies become an ellipsis - so the outline is still there to navigate by. Big documents cost hundreds of MB rendered in full, so they start folded."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 18.59L8.83 20 12 16.83 15.17 20l1.41-1.41L12 14l-4.59 4.59zm9.18-13.18L15.17 4 12 7.17 8.83 4 7.41 5.41 12 10l4.59-4.59z"/></svg><span class="fold-word">fold</span></button>
           <button id="bml-links" class="ghost icon-text" title="Also check that every [label](#Anchor) resolves"
               data-hint="Also report cross-references that land on no heading. Off by default: a file that is one chapter of a larger document links to headings in its sibling files on purpose, so this is only meaningful on the document that includes them all, or once you know the anchor should be here."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>links</button>
         </div>
@@ -1813,7 +1837,10 @@
     "hcp": 1, "controls": 1, "longest": 1, "balanced": 1, "holds": 1,
     "spades": 1, "hearts": 1, "diamonds": 1, "clubs": 1,
     "two": 1, "three": 1, "four": 1, "five": 1, "six": 1, "seven": 1, "eight": 1, "nine": 1,
-    "ten": 1, "jack": 1, "queen": 1, "king": 1, "ace": 1
+    "ten": 1, "jack": 1, "queen": 1, "king": 1, "ace": 1,
+    // The table: `seat` and the vulnerability words on a line, and the values of `dealer:` / `vulnerability:`.
+    "seat": 1, "vulnerable": 1, "favourable": 1, "favorable": 1, "unfavourable": 1, "unfavorable": 1,
+    "north": 1, "east": 1, "south": 1, "west": 1, "none": 1, "both": 1
   };
 
   function scnColorizeLine(el) {

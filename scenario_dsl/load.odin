@@ -22,7 +22,6 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "norn:cli"
-import "norn:norn"
 
 // What a scenario file is called. One extension, so a directory can hold notes and data beside them.
 SCENARIO_EXTENSION :: ".scenario"
@@ -124,7 +123,7 @@ load_directories :: proc(directories: []string, allocator := context.allocator) 
 					cli.Scenario {
 						name = held.name,
 						description = held.description,
-						predicate = norn.Interpreted_Predicate{evaluate, held},
+						predicate = condition(held),
 					},
 				)
 			}

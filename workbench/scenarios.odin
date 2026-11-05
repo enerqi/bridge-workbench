@@ -834,6 +834,11 @@ NEW_SCENARIO_TEMPLATE :: `# A scenario is a name, a description, and one line pe
 # north-south: and east-west: lines read BOTH hands of a side together:
 #   north-south: hcp >= 32 and (spades >= 8 or hearts >= 8)
 #
+# The table: seat is a hand's place in the auction (1 = the dealer), and vulnerable,
+# favourable and unfavourable are the vulnerability as that hand's side sees it:
+#   north: seat = 3 and not unfavourable
+# or fix it for every deal:   dealer: south      vulnerability: east-west   (none, both, ...)
+#
 # A double-dummy: line keeps only deals the solver says a side really makes, and puts each
 # kept deal's par on its page (slower - every deal the seat lines accept is solved):
 #   double-dummy: north-south make slam        (or game, or grand; north-south or east-west)
@@ -1215,7 +1220,7 @@ check_report :: proc(
 // Measure one scenario over `CHECK_TRIALS` deals and say what came back, in the terms the question is
 // actually asked in: a percentage is unreadable at these rates, so the useful form is "one deal in N".
 write_frequency :: proc(b: ^strings.Builder, program: ^scenario_dsl.Program) {
-	condition := norn.Condition(norn.Interpreted_Predicate{scenario_dsl.evaluate, program})
+	condition := scenario_dsl.condition(program) // with its table, when it reads one
 	hits := norn.count_accepted_seeded(CHECK_TRIALS, condition, CHECK_SEED)
 	switch {
 	case hits == 0:
@@ -1268,6 +1273,8 @@ scenario_words :: proc(app: ^App) {
       tags: <name>, <name>          groups it appears in, in the picker
       <seat>: <condition>           north / east / south / west
       <side>: <condition>           north-south / east-west
+      dealer: <seat>                who deals every board (else drawn per deal)
+      vulnerability: <who>          none / north-south / east-west / both
 
 The lines AND together. Within a condition:
 
@@ -1278,7 +1285,17 @@ The lines AND together. Within a condition:
     in <low>..<high>               a range         hcp in 15..17
     balanced                       norn's own definition
     holds(<suit>, <rank>)          holds(spades, ace)
+    seat                           the hand's place in the auction, 1 = dealer
+    vulnerable                     this hand's side is vulnerable
+    favourable  unfavourable       the vulnerability as this side sees it
     # anything after a hash        a comment
+
+THE TABLE. A scenario that uses seat or a vulnerability word, or fixes the
+dealer or vulnerability, has each deal checked at the table it is then shown
+at: whatever is not fixed is drawn at random, and a deal at the wrong table
+is thrown away. The run's "North deals" setting does not apply to it.
+
+    north: seat = 3 and not unfavourable and longest = 6 and hcp in 3..10
 
 On a <side> line every number is the two hands COMBINED: hcp and controls
 are the side's total, a suit is the side's length (spades >= 8 is a fit),

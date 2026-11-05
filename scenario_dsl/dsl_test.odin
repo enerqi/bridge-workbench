@@ -116,7 +116,7 @@ test_the_operators_mean_what_they_say :: proc(t: ^testing.T) {
 		program := programs[0]
 		summary := norn.Deal_Summary{}
 		summary[.North] = hand_with(c.hcp, c.spades)
-		got := evaluate(summary, &program)
+		got := evaluate(summary, {}, &program)
 		testing.expectf(
 			t,
 			got == c.expected,
@@ -328,7 +328,7 @@ test_a_parsed_condition_agrees_with_the_compiled_one :: proc(t: ^testing.T) {
 	compiled_accepts := 0
 	for _ in 0 ..< 20_000 {
 		summary := norn.summarize_deal(norn.deal_hands())
-		from_text := evaluate(summary, &program)
+		from_text := evaluate(summary, {}, &program)
 		from_code := compiled(summary)
 		testing.expectf(
 			t,
@@ -443,6 +443,8 @@ test_a_program_survives_being_written_out_and_read_back :: proc(t: ^testing.T) {
 		"not is_big or hearts != 4",
 		"holds(spades, ace) and holds(clubs, king)",
 		"longest >= 6 and controls in 2..4 and not balanced",
+		"seat = 3 and (favourable or not vulnerable)",
+		"seat in 1..2 and unfavourable",
 	}
 	for expression in expressions {
 		source := strings.concatenate(
@@ -571,7 +573,7 @@ test_a_partnership_line_reads_both_hands_as_one :: proc(t: ^testing.T) {
 			continue
 		}
 		program := programs[0]
-		got := evaluate(summary, &program)
+		got := evaluate(summary, {}, &program)
 		testing.expectf(t, got == c.expected, "%q gave %v", c.line, got)
 	}
 }
@@ -675,7 +677,7 @@ test_a_partnership_condition_agrees_with_the_compiled_one :: proc(t: ^testing.T)
 		disagreements := 0
 		for _ in 0 ..< 20_000 {
 			summary := norn.summarize_deal(norn.deal_hands())
-			from_text := evaluate(summary, &program)
+			from_text := evaluate(summary, {}, &program)
 			if from_text != c.compiled(summary) {
 				disagreements += 1
 			}
@@ -780,5 +782,154 @@ test_a_double_dummy_line_is_recorded_and_printed :: proc(t: ^testing.T) {
 		for &program in programs {
 			destroy_program(&program)
 		}
+	}
+}
+
+// ---- the table: seat and vulnerability -------------------------------------------------------------
+
+// `seat` counts from the dealer, clockwise; the vulnerability words are the hand's own side's view.
+@(test)
+test_seat_and_vulnerability_read_the_table :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	cases := []struct {
+		expression: string,
+		dealer:     norn.Seat,
+		vul:        norn.Vulnerability,
+		expected:   bool,
+	} {
+		{"seat = 1", .North, .None, true}, // North dealt
+		{"seat = 3", .South, .None, true}, // South, West, North
+		{"seat = 2", .West, .None, true},
+		{"seat = 4", .East, .None, true},
+		{"seat = 3", .East, .None, false},
+		{"seat in 3..4", .East, .None, true},
+		{"vulnerable", .North, .North_South, true},
+		{"vulnerable", .North, .East_West, false},
+		{"favourable", .North, .East_West, true},
+		{"favorable", .North, .Both, false}, // both spellings
+		{"unfavourable", .North, .North_South, true},
+		{"unfavourable", .North, .Both, false},
+		{"not vulnerable and not favourable", .North, .None, true}, // love all
+	}
+	for c in cases {
+		source := strings.concatenate({"scenario x \"y\"\n  north: ", c.expression, "\n"}, context.temp_allocator)
+		programs, diagnostics := parse(source, "test.scenario", context.temp_allocator)
+		if len(diagnostics) != 0 || len(programs) != 1 {
+			testing.expectf(t, false, "%q did not parse", c.expression)
+			continue
+		}
+		program := programs[0]
+		testing.expectf(t, program.reads_table, "%q reads the table", c.expression)
+		got := evaluate({}, norn.Table{vulnerability = c.vul, dealer = c.dealer}, &program)
+		testing.expectf(t, got == c.expected, "%q, %v dealing at %v: %v", c.expression, c.dealer, c.vul, got)
+	}
+
+	// A partnership line reads its side's vulnerability, but has no one seat.
+	side, ok := parse_one(t, "scenario x\n  east-west: favourable\n")
+	if ok {
+		testing.expect(t, evaluate({}, norn.Table{vulnerability = .North_South, dealer = .North}, &side), "E-W at favourable")
+		testing.expect(t, !evaluate({}, norn.Table{vulnerability = .East_West, dealer = .North}, &side), "E-W at unfavourable")
+	}
+	_, diagnostics := parse("scenario x\n  north-south: seat = 1\n", "f.scenario", context.temp_allocator)
+	testing.expect(t, len(diagnostics) > 0 && strings.contains(diagnostics[0].message, "one hand"), "`seat` on a partnership line is refused")
+
+	// A scenario without a table word does not ask for a table, so its runs keep their random stream.
+	plain, plain_ok := parse_one(t, "scenario x\n  north: hcp >= 10\n")
+	if plain_ok {
+		testing.expect(t, !plain.reads_table, "no table word, no table")
+		_, asks := norn.condition_table(condition(&plain))
+		testing.expect(t, !asks, "and the condition does not ask for one")
+	}
+}
+
+// `dealer:` and `vulnerability:` FIX the table: recorded, printed back, handed to the draw - and a bad or a
+// second one is a diagnostic.
+@(test)
+test_dealer_and_vulnerability_lines_fix_the_table :: proc(t: ^testing.T) {
+	source := "scenario w2 \"weak two, third seat\"\n  dealer: south\n  vulnerability: east-west\n  north: longest = 6 and hcp in 3..10\n"
+	program, ok := parse_one(t, source)
+	if !ok {return}
+	defer destroy_program(&program)
+	testing.expect_value(t, program.dealer.? or_else .North, norn.Seat.South)
+	testing.expect_value(t, program.vulnerability.? or_else .None, norn.Vulnerability.East_West)
+	testing.expect(t, program.reads_table, "a fixed table is a table")
+	testing.expect_value(t, write_program(&program, context.temp_allocator), source)
+
+	draw, asks := norn.condition_table(condition(&program))
+	testing.expect(t, asks, "the condition asks for a table")
+	testing.expect_value(t, draw.dealer.? or_else .North, norn.Seat.South)
+	testing.expect_value(t, draw.vulnerability.? or_else .None, norn.Vulnerability.East_West)
+
+	install_test_vocabulary()
+	for bad in ([]string {
+			"  dealer: northeast\n",
+			"  dealer: south\n  dealer: north\n",
+			"  vulnerability: ns\n",
+			"  vul: both\n  vulnerability: none\n",
+		}) {
+		text := strings.concatenate({"scenario x\n  north: hcp >= 10\n", bad}, context.temp_allocator)
+		programs, diagnostics := parse(text, "f.scenario", context.temp_allocator)
+		testing.expectf(t, len(diagnostics) == 1, "%q gave %d diagnostics", bad, len(diagnostics))
+		for &p in programs {
+			destroy_program(&p)
+		}
+	}
+}
+
+// ★ THE PARITY ORACLE FOR THE TABLE: a third-seat, not-unfavourable weak two as text against the same thing
+// in Odin, over a seeded stream of deals EACH AT A DRAWN TABLE, every verdict compared.
+@(private = "file")
+compiled_third_seat_weak_two :: proc(b: norn.Deal_Summary, table: norn.Table) -> bool {
+	dealer := table.dealer.? or_else .North
+	third := (int(norn.Seat.North) - int(dealer) + 4) %% 4 == 2
+	ours := norn.vulnerable(table.vulnerability, .North)
+	theirs := norn.vulnerable(table.vulnerability, .East)
+	longest := 0
+	for suit in norn.Suit {
+		longest = max(longest, norn.suit_length(b[.North], suit))
+	}
+	return third && !(ours && !theirs) && longest == 6 && norn.hcp(b[.North]) >= 3 && norn.hcp(b[.North]) <= 10
+}
+
+@(test)
+test_a_table_condition_agrees_with_the_compiled_one :: proc(t: ^testing.T) {
+	program, ok := parse_one(t, "scenario w2\n  north: seat = 3 and not unfavourable\n  north: longest = 6 and hcp in 3..10\n")
+	if !ok {return}
+	defer destroy_program(&program)
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 20261104)
+	accepted, disagreements := 0, 0
+	for _ in 0 ..< 40_000 {
+		summary := norn.summarize_deal(norn.deal_hands())
+		table := norn.draw_condition_table({})
+		from_text := evaluate(summary, table, &program)
+		if from_text != compiled_third_seat_weak_two(summary, table) {
+			disagreements += 1
+		}
+		if from_text {accepted += 1}
+	}
+	testing.expectf(t, disagreements == 0, "%d deals where text and code disagreed", disagreements)
+	testing.expectf(t, accepted > 0, "never accepted anything - the oracle proves nothing")
+}
+
+// And through generation: every kept deal is at a table the condition accepts, and a fixed dealer deals them
+// all. Counted with norn's own generator, so the table the deal is SHOWN at is the one that was checked.
+@(test)
+test_a_table_scenario_generates_at_its_table :: proc(t: ^testing.T) {
+	program, ok := parse_one(t, "scenario w2\n  dealer: south\n  north: seat = 3 and favourable and longest = 6\n")
+	if !ok {return}
+	defer destroy_program(&program)
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 7)
+	deals: [dynamic]norn.Deal
+	tables: [dynamic]norn.Table
+	defer delete(deals)
+	defer delete(tables)
+	accepted, _ := norn.collect_accepted(&deals, &tables, 10, .Html_Cards, condition(&program), 2_000_000)
+	testing.expect_value(t, accepted, 10)
+	for table, i in tables {
+		testing.expect_value(t, table.dealer.? or_else .North, norn.Seat.South)
+		testing.expect_value(t, table.vulnerability, norn.Vulnerability.East_West) // N-S at favourable
+		testing.expect(t, evaluate(norn.summarize_deal(deals[i]), table, &program), "a kept deal fails its own condition")
 	}
 }

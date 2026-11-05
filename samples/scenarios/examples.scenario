@@ -11,6 +11,8 @@
 #   names        ready-made helpers, some written for one bidding system - press words to list them
 #
 # north-south: and east-west: lines read BOTH hands of a side together.
+# seat (1 = the dealer) and vulnerable / favourable / unfavourable read the table each deal is
+# dealt at; dealer: and vulnerability: lines fix it instead.
 # A double-dummy: line keeps only deals the solver says a side really makes (slower).
 
 scenario example-1nt-major "1NT 15-17; responder has a four-card major and 8+ points"
@@ -22,6 +24,11 @@ scenario example-weak-two "a weak two in hearts opposite an opening hand"
   tags: examples
   north: hearts = 6 and hcp in 5..10 and spades <= 3 and (holds(hearts, ace) or holds(hearts, king))
   south: hcp >= 12
+
+scenario example-third-seat-preempt "a light third-seat weak two, not at unfavourable"
+  tags: examples
+  north: seat = 3 and not unfavourable
+  north: longest = 6 and hcp in 3..10 and spades <= 3 and hearts <= 3 and not holds(clubs, ace)
 
 scenario example-overcall "East opens a minor, South has a five-card major to overcall"
   tags: examples

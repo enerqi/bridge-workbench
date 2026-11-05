@@ -347,6 +347,8 @@ main :: proc() {
 		check_a_single_board_is_centred(&view)
 		check_the_page_follows_the_view_size(&view)
 		check_the_toolbar_fits_a_narrow_pane(&view)
+	check_the_board_fits_a_short_view(&view)
+	check_the_page_comes_to_rest(&view)
 		check_the_panel_parks_clear_of_the_board(&view)
 		check_the_play_through(&view)
 		check_the_match_table(&view)
@@ -1519,6 +1521,106 @@ borders cut off. Reported from the real window, invisible to a windowless check 
 `flow: horizontal-flow` + `max-width: 100%` in norn`s `@media sciter` block is the fix. This asserts the
 CONSEQUENCE at a pane width rather than the property: every control ends up inside the toolbar`s own box.
 */
+/*
+THE BOARD FITS A SHORT VIEW. At 250-300% display scaling the hand pane is ~400-600 CSS px tall, and the board ran
+off the bottom: the hand page needed 75% to show its cards (reported 2026-11-02). The seats' text follows the
+view's height, but enough of the board does not (paddings, the title, the HCP lines) that a short view overflows.
+MEASURED 2026-11-02 at 760 wide: the board is ~140px + 48% of the view, under 74px of toolbar and title, so it
+fits from ~430px tall (bottom 413 in a 400 view, 427 in 420, 463 in 500). This guards that FLOOR; below it the workbench's
+page zoom is the answer, and a first start on a scaled screen now picks a smaller one (`default_zooms`).
+*/
+check_the_board_fits_a_short_view :: proc(view: ^sa.Windowless_View) {
+	defer {
+		_ = sa.resize_windowless(view, VIEW_WIDTH, VIEW_HEIGHT)
+		pump(view, 200)
+	}
+	for height in ([]i32{440, 500, 600, 900}) {
+		if err := sa.resize_windowless(view, 760, height); err != nil {
+			check(false, fmt.tprintf("the view resizes to %d tall (%v)", height, err))
+			return
+		}
+		for _ in 0 ..< 6 {
+			pump(view, 200) // the size watch, then the units a settled size sets
+		}
+		root, rerr := sa.root(view.window)
+		if rerr != nil {
+			check(false, "the short view has a root")
+			return
+		}
+		res, err := sa.eval_element(
+			root,
+			`(function () { var c = document.querySelector('.slide.active .compass'); if (!c) return 'none';
+			  var r = c.getBoundingClientRect(); return Math.round(r.top) + ' ' + Math.round(r.bottom); })()`,
+		)
+		text, _ := sa.value_to_string(&res, context.temp_allocator)
+		sa.value_clear(&res)
+		fields := strings.fields(text, context.temp_allocator)
+		if err != nil || len(fields) != 2 {
+			check(false, fmt.tprintf("the board is measurable at %d tall (%q)", height, text))
+			continue
+		}
+		bottom, _ := strconv.parse_int(fields[1])
+		check(bottom <= int(height), fmt.tprintf("the board (top %s, bottom %d) fits a 760x%d view", fields[0], bottom, height))
+	}
+}
+
+/*
+THE PAGE COMES TO REST. Reported 2026-11-02 at 250% display scaling: one seat shown, XL cards, and the board
+BEFORE the active one revealed (four hands, much taller): the page animated between two positions on a loop.
+Sampled here: after settling, the active board and the document's scroll must stop moving.
+*/
+check_the_page_comes_to_rest :: proc(view: ^sa.Windowless_View) {
+	page, ok := render_page(CHECK_DEALS_MULTI)
+	if !ok {
+		check(false, "a multi-board page renders for the rest check")
+		return
+	}
+	defer delete(page)
+	defer {
+		_ = sa.resize_windowless(view, VIEW_WIDTH, VIEW_HEIGHT)
+		pump(view, 200)
+	}
+	// 1124x436: the real window's dump (250% scaling, page at 75%), where the page flipped between a 1124px view
+	// with no scrollbar and a 1108px one with it.
+	for size in ([][2]i32{{1124, 436}, {760, 440}, {1000, 500}, {640, 520}}) {
+		if err := sa.load_html(view.window, page, "file://page-check/rest.html"); err != nil {
+			check(false, fmt.tprintf("the page loads for the rest check (%v)", err))
+			return
+		}
+		_ = sa.resize_windowless(view, size.x, size.y)
+		pump(view, 128)
+		root, _ := sa.root(view.window)
+		// XL, seat S, reveal board 1, then on to board 2.
+		steps := []string {
+			`document.querySelector('[data-cards="xl"]').click()`,
+			`document.querySelector('[data-seat="s"]').click()`,
+			`(function(){ var r = document.querySelector('.slide.active .reveal, .slide.active .reveal-all'); if (r) r.click(); })()`,
+			`document.querySelector('#nc-next').click()`,
+		}
+		for step in steps {
+			v, _ := sa.eval_element(root, step)
+			sa.value_clear(&v)
+			for _ in 0 ..< 4 {pump(view, 200)}
+		}
+		for _ in 0 ..< 6 {pump(view, 200)}
+		SAMPLE :: `(function(){ var a = document.querySelector('.slide.active'); var r = a ? a.getBoundingClientRect() : {left:-1, top:-1};
+			var s = document.scrollingElement || document.documentElement;
+			return Math.round(r.left) + ',' + Math.round(r.top) + ',' + s.scrollLeft + ',' + s.scrollTop + ',' + Math.round(document.documentElement.clientWidth); })()`
+		seen := make(map[string]int, allocator = context.temp_allocator)
+		samples: [dynamic]string
+		samples.allocator = context.temp_allocator
+		for _ in 0 ..< 12 {
+			pump(view, 150)
+			v, _ := sa.eval_element(root, SAMPLE)
+			text, _ := sa.value_to_string(&v, context.temp_allocator)
+			sa.value_clear(&v)
+			seen[text] += 1
+			append(&samples, text)
+		}
+		check(len(seen) == 1, fmt.tprintf("the page comes to rest at %dx%d (%d positions: %v)", size.x, size.y, len(seen), samples[:]))
+	}
+}
+
 check_the_toolbar_fits_a_narrow_pane :: proc(view: ^sa.Windowless_View) {
 	PANE_WIDTH :: 520 // a hand-page pane in a 1120px window, roughly, and narrower than the row`s contents
 	if err := sa.resize_windowless(view, PANE_WIDTH, VIEW_HEIGHT); err != nil {

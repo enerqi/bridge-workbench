@@ -1351,6 +1351,151 @@ test_the_keys_list_opens_from_either_view :: proc(t: ^testing.T) {
 	testing.expect(t, !effective_display_is_hidden(&app, "#report"), "the report pane should be back")
 }
 
+// THE PREVIEW DROPS A BUILT LOOK from the folder's bml.css: `just bml` appends `bml-look.css` to it, and that
+// block's tokens beat the preview's own look wherever the current look leaves a token to the sheet (found when
+// a real build made `test_the_bid_cell_shapes_reach_the_preview` paint the square cell as a rounded fade).
+@(test)
+test_the_preview_drops_a_built_look_from_the_sheet :: proc(t: ^testing.T) {
+	dir := scratch_scenario_dir(t, "wb-built-look-css")
+	if dir == "" {return}
+	sheet := ":root { --bml-bid-radius: 0; }\ndiv.start { color: red; }\n"
+	look := strings.concatenate({NOTES_LOOK_FILE_HEADER, ":root { --bml-bid-radius: 4px 0 0 4px; }\n"}, context.temp_allocator)
+	built := strings.concatenate({sheet, "\n", look}, context.temp_allocator)
+	if !write_scenario_file(dir, "bml.css", built) {return}
+	app: App
+	app.docs = dir
+	got := notes_css(&app)
+	testing.expect(t, !strings.contains(got, "4px 0 0 4px"), "the built look should be cut off")
+	testing.expect(t, strings.contains(got, "div.start { color: red; }"), "the sheet itself should stay")
+	testing.expect_value(t, without_built_look(sheet), sheet) // a sheet with no look is left whole
+}
+
+// ONE HAND PAGE LOAD AT A TIME (reported 2026-11-03: ctrl+o pressed several times on a page in w:/deals left two
+// pages in one document). The real window's `loadFile` is asynchronous and the windowless one is not, so the
+// overlap itself cannot happen here; what is held is the rule: while a load is under way a new file waits, the
+// newest wins, and it is loaded once the first completes. And ctrl+o with only one format on screen does not
+// reload it at all.
+@(test)
+test_a_page_asked_for_mid_load_waits_its_turn :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	defer delete(app.page_queued)
+	dir := scratch_scenario_dir(t, "wb-page-queue")
+	if dir == "" {return}
+	paths: [3]string
+	for &path, i in paths {
+		path, _ = filepath.join({dir, fmt.tprintf("page%d.html", i)}, context.temp_allocator)
+		_ = os.write_entire_file(path, transmute([]u8)string(FRAME_DOC))
+	}
+	testing.expect(t, show_page_file(&app, paths[0]), "the first page loads")
+	pump(&app)
+	testing.expect_value(t, app.shown_path, paths[0])
+
+	// A load still arriving (what the real window's `loadFile` leaves behind it).
+	app.page_loading = true
+	app.page_load_started = time.tick_now()
+	testing.expect(t, show_page_file(&app, paths[1]), "a page asked for mid-load is accepted")
+	testing.expect(t, show_page_file(&app, paths[2]), "and so is a newer one")
+	testing.expect_value(t, app.shown_path, paths[0]) // nothing went into the frame yet
+	testing.expect_value(t, app.page_queued, paths[2]) // the newest wins
+
+	// The frame completes (what `page_load_done` posts for).
+	app.page_loading = false
+	load_queued_page(&app)
+	pump(&app)
+	testing.expect_value(t, app.shown_path, paths[2])
+	testing.expect_value(t, app.page_queued, "")
+
+	// EVERY load into the pane waits its turn, not only a card file: with a text format beside the cards,
+	// ctrl+o alternated the two and the text went in over a page still arriving, which crashed the window.
+	app.page_loading = true
+	app.page_load_started = time.tick_now()
+	text_path, _ := filepath.join({dir, "page.pbn"}, context.temp_allocator)
+	_ = os.write_entire_file(text_path, transmute([]u8)string("[Deal \"N:AKQ.2.3.4 - - -\"]\n"))
+	_ = show_page_file(&app, paths[1])
+	testing.expect(t, show_text_file(&app, text_path), "a text file asked for mid-load is accepted")
+	testing.expect_value(t, app.page_queued_kind, Page_Request.Text)
+	testing.expect_value(t, app.shown_path, paths[2])
+	testing.expect(t, show_page_html(&app, MINIMAL_PAGE, "a page"), "and a page built in memory")
+	testing.expect_value(t, app.page_queued_kind, Page_Request.Html)
+	testing.expect_value(t, app.page_queued_title, "a page")
+	app.page_loading = false
+	load_queued_page(&app)
+	pump(&app)
+	testing.expect_value(t, app.shown_path, "") // the built page went in: no file owns it
+	testing.expect_value(t, app.page_queued, "")
+}
+
+// CTRL+O WITH ONE FORMAT ON SCREEN DOES NOTHING: stepping would land on the page already shown.
+@(test)
+test_stepping_one_format_does_not_reload_it :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	defer delete(app.page_queued)
+	dir := scratch_scenario_dir(t, "wb-one-format")
+	if dir == "" {return}
+	type_into(&app, "#outdir", dir)
+	app.selected = 0
+	name := app.scenarios[0].name
+	cards, _ := filepath.join({dir, fmt.tprintf("%s.html", name)}, context.temp_allocator)
+	CARDS_DOC :: `<html><head><meta charset="utf-8"></head><body><div class="track" id="nc-track"></div></body></html>`
+	_ = os.write_entire_file(cards, transmute([]u8)string(CARDS_DOC))
+	scan_outputs(&app)
+	step_output_format(&app, 1)
+	pump(&app)
+	testing.expect_value(t, filepath.base(app.shown_path), filepath.base(cards))
+
+	// A reload would be a load request; with one pretended under way, it would wait in the queue.
+	app.page_loading = true
+	app.page_load_started = time.tick_now()
+	step_output_format(&app, 1)
+	testing.expect_value(t, app.page_queued, "")
+	app.page_loading = false
+}
+
+// SETTINGS AND ABOUT EACH HAVE A BUTTON FOR THE KEYS LIST (reported: the list was only "obtusely referenced"
+// in About, as a key to press). Going back from it lands on the panel the button was in, and closing that
+// panel then still goes back to where it was opened from.
+@(test)
+test_settings_and_about_open_the_keys_list :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	show_view(&app, .Panes)
+	pump(&app)
+	show_prefs(&app, true)
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Prefs)
+	testing.expect(t, find(&app, "#prefs-keys") != nil, "settings should have a keys button")
+	click(&app, "#prefs-keys")
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Keys)
+	press_key(&app, .ESCAPE)
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Prefs)
+	click(&app, "#prefs-close")
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Panes)
+
+	show_about(&app, true)
+	pump(&app)
+	testing.expect(t, find(&app, "#about-keys") != nil, "about should have a keys button")
+	click(&app, "#about-keys")
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Keys)
+	press_key(&app, .SLASH, ctrl = true)
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.About)
+	click(&app, "#about-close")
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Panes)
+}
+
 // CTRL+, IS SETTINGS - the editors' convention, a toggle from any view.
 @(test)
 test_ctrl_comma_opens_and_closes_the_settings :: proc(t: ^testing.T) {
@@ -4317,6 +4462,10 @@ test_the_guide_examples_render :: proc(t: ^testing.T) {
 		{"caption", `<div class="bml-caption">`},
 		{"side by side", `<div class="bml-box"><div class="bml-box-side">`},
 		{"callout", `<div class="bml-callout bml-warning"><div class="bml-callout-head"><span class="bml-callout-label">Warning</span>`},
+		// Every kind Settings colours, not just one (reported 2026-11-02).
+		{"callout", `<div class="bml-callout bml-note">`},
+		{"callout", `<div class="bml-callout bml-info">`},
+		{"callout", `<div class="bml-callout bml-tip">`},
 		{"links", `href="https://github.com/enerqi/bml"`},
 		{"cut and paste", `transfer`},
 		{"competitive bid table", `<div class="bidtable">`},
@@ -4409,11 +4558,35 @@ test_the_guide_shows_and_inserts :: proc(t: ^testing.T) {
 	}
 	moved, _ := sa.eval(app.window, `document.$("#bml-text").plaintext.selectRange(4, 0, 4, 0)`)
 	sa.value_clear(&moved)
-	app.guide_insert = bullets
-	guide_insert(&app)
+	// CLICKED, through the preview document's own handler: the click reached it twice and the example went in
+	// twice (reported 2026-11-02), which setting `guide_insert` and calling the proc directly could not see.
+	app.preview_click_handler = sa.Event_Handler {
+		subscription = {.MOUSE, .BEHAVIOR_EVENT},
+		on_event     = on_preview_click,
+		user_data    = &app,
+	}
+	watch_preview_clicks(&app)
+	root, rooted := preview_document_root(&app)
+	testing.expect(t, rooted, "the guide is in the frame")
+	link := sa.select_first(root, fmt.tprintf(`a[href="wbinsert:%d"]`, bullets)) or_else nil if rooted else nil
+	testing.expect(t, link != nil, "the bullet list has an insert link")
+	if link == nil {return}
+	sa.do_click(link)
 	pump(&app)
 	written, _ := bml_source(&app, context.temp_allocator)
 	testing.expect(t, strings.contains(written, "more\n\n- 5+ hearts\n- 10+ points"), written)
+	testing.expectf(t, strings.count(written, "- 5+ hearts") == 1, "one click, one example: %q", written)
+
+	// ROUND THE PANE AND BACK, the guide still up (reported 2026-11-02: ctrl+t closed -> split left a white pane,
+	// since closing empties the frame and the guide thought it was still loaded). Every mode, as ctrl+t steps.
+	for mode in ([]Pane_Mode{.Wide, .Closed, .Split, .Closed, .Wide, .Split}) {
+		set_preview_mode(&app, mode)
+		pump(&app)
+		testing.expect_value(t, preview_mode(&app), mode)
+		want := 0 if mode == .Closed else len(examples) + 1
+		testing.expect_value(t, func_count(&app, `document.$("#bml-page").frame.document.$$("div.wb-guide").length`), want)
+	}
+	testing.expect(t, app.bml_guide, "closing the pane does not close the guide")
 
 	toggle_guide(&app)
 	pump(&app)
@@ -5493,6 +5666,7 @@ test_the_editor_bar_survives_a_narrow_window :: proc(t: ^testing.T) {
 			"#bml-export-zip",
 			"#bml-export-all",
 			// The palette's buttons, in the source pane's head.
+			"#bml-file-open",
 			"#bml-goto-open",
 			"#bml-link-open",
 			"#bml-insert-open",
@@ -7244,11 +7418,27 @@ test_the_preview_follows_the_caret_and_says_which_section :: proc(t: ^testing.T)
 		"the status should say the document is folded: %q",
 		section_why,
 	)
+	// The button names the way back AND keeps its icon (setting its text wiped the svg, reported 2026-11-02).
+	fold_button :: proc(t: ^testing.T, app: ^App, word, path: string, loc := #caller_location) {
+		label, _ := sa.text(find(app, "#bml-fold .fold-word"), context.temp_allocator)
+		testing.expect_value(t, label, word, loc = loc)
+		icon := find(app, "#bml-fold path")
+		testing.expect(t, icon != nil, "the fold button keeps its icon", loc = loc)
+		if icon == nil {return}
+		d, _ := sa.attribute(icon, "d", context.temp_allocator)
+		testing.expect_value(t, d, path, loc = loc)
+		// A toggle keeps its other classes: `icon-text` is what sizes the icon, and writing the whole class
+		// attribute dropped it, the button then taller than its neighbours (reported 2026-11-02).
+		class, _ := sa.attribute(find(app, "#bml-fold"), "class", context.temp_allocator)
+		testing.expectf(t, slice.contains(strings.fields(class, context.temp_allocator), "icon-text"), "the fold button keeps icon-text: %q", class, loc = loc)
+	}
+	fold_button(t, &app, "unfold", UNFOLD_MORE_PATH)
 
 	// And back, through the other button of the pair.
 	click(&app, "#bml-fold")
 	pump(&app)
 	testing.expect_value(t, app.bml_scope, Preview_Scope.Unfolded)
+	fold_button(t, &app, "fold", UNFOLD_LESS_PATH)
 }
 
 // A big document defaults the other way, and that is the whole point of the rule: the threshold is the
@@ -9021,6 +9211,45 @@ test_the_deal_panes_fit_the_window_at_any_zoom :: proc(t: ^testing.T) {
 	testing.expect(t, !old_ok, "an all-pixel layout should not be accepted")
 	result, _ := sa.eval(app.window, "wbSetZoom(1)")
 	sa.value_clear(&result)
+}
+
+// THE REPORT KEEPS ITS ROOM ON A SMALL SCREEN. At 250% display scaling (a 4K screen) the window is ~800x410 CSS
+// px, and the two panels took all of `.work`: the report squashed to a line with its scrollbar stuck (reported
+// 2026-11-02). A 2x zoom in this 1120x780 view is that screen. The report keeps a floor and `.work` scrolls.
+@(test)
+test_the_report_keeps_its_room_on_a_small_screen :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	for zoom in ([]f64{1.0, 2.0, 2.5}) {
+		result, _ := sa.eval(app.window, fmt.tprintf("wbSetZoom(%f)", zoom))
+		sa.value_clear(&result)
+		pump(&app)
+		report, _ := sa.location(find(&app, "#report"), .Border, .Root)
+		// Eight lines of its own monospace text at least, at this zoom (a line is ~1.2em of ~0.9em, ~15px at 1x).
+		testing.expectf(t, f64(report.height) >= 8 * 15 * zoom, "at %.1fx the report is %dpx tall", zoom, report.height)
+	}
+	result, _ := sa.eval(app.window, "wbSetZoom(1)")
+	sa.value_clear(&result)
+}
+
+// A FIRST START'S ZOOM FOLLOWS THE SCREEN: the defaults step down where display scaling has already made the
+// work area short in CSS px, and an unreadable screen keeps them.
+@(test)
+test_the_first_zoom_follows_the_screen :: proc(t: ^testing.T) {
+	cases := []struct {
+		height:       int,
+		window, page: f64,
+	} {
+		{0, DEFAULT_ZOOM, DEFAULT_PAGE_ZOOM}, // could not be read
+		{1040, DEFAULT_ZOOM, DEFAULT_PAGE_ZOOM}, // full HD at 100%, taskbar off
+		{816, 1.0, 0.9}, // 4K at 250%
+		{680, 0.9, 0.8}, // 4K at 300%
+	}
+	for c in cases {
+		window, page := default_zooms(c.height)
+		testing.expectf(t, window == c.window && page == c.page, "%dpx tall: %v / %v, want %v / %v", c.height, window, page, c.window, c.page)
+	}
 }
 
 // The framed page's heading height, a stand-in for "how big are the boards".
@@ -11742,10 +11971,15 @@ test_the_palette_buttons_write_at_the_source_caret :: proc(t: ^testing.T) {
 	show_editor(&app)
 	pump(&app)
 
+	// The head WRAPS only when it must: at the usual window size the buttons share the file name's line.
+	title_box, _ := sa.location(find(&app, "#bml-title"), .Border, .Root)
+	open_box, _ := sa.location(find(&app, "#bml-file-open"), .Border, .Root)
+	testing.expectf(t, open_box.y < title_box.y + title_box.height, "open should sit beside the file's name (title %v, open %v)", title_box, open_box)
+
 	for button in ([]struct {
 			id:   string,
 			mode: Goto_Mode,
-		}{{"#bml-goto-open", .Jump}, {"#bml-link-open", .Link}, {"#bml-insert-open", .Insert}}) {
+		}{{"#bml-file-open", .File}, {"#bml-goto-open", .Jump}, {"#bml-link-open", .Link}, {"#bml-insert-open", .Insert}}) {
 		click(&app, button.id)
 		pump(&app)
 		testing.expectf(t, app.goto_open && app.goto_mode == button.mode, "%s should open the %v palette", button.id, button.mode)
@@ -13072,13 +13306,19 @@ test_a_first_run_puts_the_samples_in_documents :: proc(t: ^testing.T) {
 test_the_example_scenarios_parse_clean :: proc(t: ^testing.T) {
 	scenario_dsl.set_vocabulary(bidding.vocabulary)
 	programs, diagnostics := scenario_dsl.parse(sample_scenarios[0].text, "examples.scenario", context.temp_allocator)
+	// One of them is about the TABLE (a third-seat preempt), so the examples show that half of the language.
+	reads_table := false
+	for &program in programs {
+		reads_table ||= program.reads_table
+	}
+	testing.expect(t, reads_table, "an example should read the seat or the vulnerability")
 	defer for &program in programs {
 		scenario_dsl.destroy_program(&program)
 	}
 	for diagnostic in diagnostics {
 		testing.expectf(t, false, "%s", scenario_dsl.diagnostic_text(diagnostic, context.temp_allocator))
 	}
-	testing.expect_value(t, len(programs), 4)
+	testing.expect_value(t, len(programs), 5)
 	for program in programs {
 		for compiled in bidding.registry {
 			testing.expectf(t, compiled.name != program.name, "%s is a compiled scenario's name", program.name)
@@ -13109,6 +13349,28 @@ test_the_guide_columns_keep_their_shares :: proc(t: ^testing.T) {
 	for share, i in shares {
 		n, _ := strconv.parse_int(share)
 		testing.expectf(t, n >= 38 && n <= 46, "%s: the source column is %d%% of the row, want about 42%%", examples[i].label, n)
+	}
+
+	// NOR SQUEEZED IN A NARROW PANE (reported 2026-11-02: the source a word a line beside a bid table): at 520px
+	// the source keeps its floor, and a bid table is no wider than its cell (the notes' sheet makes it 900px).
+	narrow, _ := sa.eval(g_view.window, `document.body.style.width = "520px"; document.body.style["max-width"] = "520px"; 1`)
+	sa.value_clear(&narrow)
+	pump_view()
+	widths, _ := sa.eval(
+		g_view.window,
+		`(function(){ var out=[]; for (var r of document.querySelectorAll("table.wb-guide-row")) { var c=r.querySelectorAll("td"); var bt=r.querySelector("div.bidtable"); out.push(c[0].state.box("width","border")+"/"+c[1].state.box("width","border")+"/"+(bt?bt.state.box("width","border"):0)); } return out.join(" "); })()`,
+	)
+	defer sa.value_clear(&widths)
+	wtext, _ := sa.value_to_string(&widths, context.temp_allocator)
+	rows := strings.fields(wtext, context.temp_allocator)
+	testing.expect_value(t, len(rows), len(examples))
+	for row, i in rows {
+		parts := strings.split(row, "/", context.temp_allocator)
+		source, _ := strconv.parse_int(parts[0])
+		out, _ := strconv.parse_int(parts[1])
+		bids, _ := strconv.parse_int(parts[2])
+		testing.expectf(t, source >= 180, "%s: the source column is %dpx at a 520px page, want its floor", examples[i].label, source)
+		testing.expectf(t, bids <= out, "%s: the bid table is %dpx in a %dpx cell", examples[i].label, bids, out)
 	}
 }
 

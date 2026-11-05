@@ -27,7 +27,7 @@ The `norn.Contextual_Predicate` for a program. Pair it with the program itself:
 Seat rules AND together — the compiled registry's `&&` between "North opens" and "South responds", said
 in the grammar instead of in Odin.
 */
-evaluate :: proc(summary: norn.Deal_Summary, userdata: rawptr) -> bool {
+evaluate :: proc(summary: norn.Deal_Summary, table: norn.Table, userdata: rawptr) -> bool {
 	program := (^Program)(userdata)
 	if program == nil {
 		return false
@@ -38,11 +38,51 @@ evaluate :: proc(summary: norn.Deal_Summary, userdata: rawptr) -> bool {
 		if rule.pair {
 			hand = combined(hand, summary[partner_of(rule.seat)])
 		}
-		if !eval_node(program, rule.root, hand) {
+		at := At{hand = hand, seat = rule.seat, table = table}
+		if !eval_node(program, rule.root, &at) {
 			return false
 		}
 	}
 	return true
+}
+
+// What a line is evaluated against: the hand (or the side's two, combined), whose it is, and the board's table.
+@(private)
+At :: struct {
+	hand:  norn.Hand_Summary,
+	seat:  norn.Seat,
+	table: norn.Table,
+}
+
+// The seat's place in the auction, 1 for the dealer, going round clockwise; 0 at a table with no dealer, which
+// only a condition that never asked for a table sees (and then no `seat` word is in it).
+seat_position :: proc(seat: norn.Seat, table: norn.Table) -> int {
+	dealer, ok := table.dealer.?
+	if !ok {
+		return 0
+	}
+	return (int(seat) - int(dealer) + len(norn.Seat)) %% len(norn.Seat) + 1
+}
+
+@(private)
+vulnerability_holds :: proc(word: Vulnerability_Word, seat: norn.Seat, table: norn.Table) -> bool {
+	ours := norn.vulnerable(table.vulnerability, seat)
+	theirs := norn.vulnerable(table.vulnerability, left_hand_opponent(seat))
+	switch word {
+	case .Vulnerable:
+		return ours
+	case .Favourable:
+		return !ours && theirs
+	case .Unfavourable:
+		return ours && !theirs
+	}
+	return false
+}
+
+// An opponent of `seat`: the next seat round.
+@(private)
+left_hand_opponent :: proc(seat: norn.Seat) -> norn.Seat {
+	return norn.Seat((int(seat) + 1) %% len(norn.Seat))
 }
 
 /*
@@ -53,13 +93,20 @@ does not emit malformed trees — but this runs a million times inside a generat
 and "reject the deal" is a better answer there than taking the process down.
 */
 @(private)
-eval_node :: proc(program: ^Program, index: int, hand: norn.Hand_Summary) -> bool {
+eval_node :: proc(program: ^Program, index: int, at: ^At) -> bool {
 	if index < 0 || index >= len(program.nodes) {
 		return false
 	}
+	hand := at.hand
 	switch node in program.nodes[index] {
 	case Compare_Node:
+		if node.quantity == .Seat {
+			return compare(node, seat_position(at.seat, at.table))
+		}
 		return compare(node, quantity_value(node.quantity, hand))
+
+	case Vulnerability_Node:
+		return vulnerability_holds(node.word, at.seat, at.table)
 
 	case Named_Node:
 		// Resolved at parse time, but the table could in principle have been swapped since; a name that
@@ -78,13 +125,13 @@ eval_node :: proc(program: ^Program, index: int, hand: norn.Hand_Summary) -> boo
 		return norn.is_balanced(hand)
 
 	case Not_Node:
-		return !eval_node(program, node.child, hand)
+		return !eval_node(program, node.child, at)
 
 	case And_Node:
-		return eval_node(program, node.left, hand) && eval_node(program, node.right, hand)
+		return eval_node(program, node.left, at) && eval_node(program, node.right, at)
 
 	case Or_Node:
-		return eval_node(program, node.left, hand) || eval_node(program, node.right, hand)
+		return eval_node(program, node.left, at) || eval_node(program, node.right, at)
 	}
 	return false
 }
@@ -110,6 +157,8 @@ quantity_value :: proc(quantity: Quantity, hand: norn.Hand_Summary) -> int {
 			longest = max(longest, norn.suit_length(hand, suit))
 		}
 		return longest
+	case .Seat:
+		return 0 // read off the table, not the hand: `eval_node` answers it
 	}
 	return 0
 }

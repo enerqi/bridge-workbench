@@ -44,7 +44,9 @@ GUIDE_EXAMPLES :: [?]Guide_Example {
 	{"deal diagram", "a header line (board, dealer, vulnerability, contract like 3NS, lead like sQ), then the hands: N: spades hearts diamonds clubs, - for a void", "#7, Dealer N, None, 3NS, sQ\nN: AKxx Qxx Kxx Axx\nS: xxx AKx AQx KQxx"},
 	{"caption", "#+CAPTION: a title over the diagram, auction or table under it - not a heading, so no new section", "#+CAPTION: Board 7 - the hold-up\nW N E S\n- 1N P 3N\nAP"},
 	{"side by side", "#BOX ... #ENDBOX: the diagram, auction or table it starts with on the left, the text after it beside them", "#BOX\nN: AKxx Qxx Kxx Axx\nS: xxx AKx AQx KQxx\n\nNine tricks on top: duck the first spade and the defence is cut off.\n#ENDBOX"},
-	{"callout", "#BOX note, info, tip or warning, then a title if you like: the box in a coloured frame. #BOX Title alone is a grey frame.", "#BOX warning Systems on\nAfter our 1NT is overcalled 2C, X is Stayman and transfers still apply.\n#ENDBOX"},
+	// EVERY KIND, not one (reported 2026-11-02: Settings' notes look colours note, info, tip, warning and the
+	// titled box, and the guide showed only warning).
+	{"callout", "#BOX note, info, tip or warning, then a title if you like: the box in a coloured frame. #BOX Title alone is a grey frame. Settings > Notes look colours each kind.", "#BOX note Remember\nOur 1NT is 15--17 in every seat.\n#ENDBOX\n\n#BOX info Why\nA weak 1NT is harder to compete over.\n#ENDBOX\n\n#BOX tip Tip\nWith 4-3-3-3, count the 4-card suit as a stopper.\n#ENDBOX\n\n#BOX warning Systems on\nAfter our 1NT is overcalled 2C, X is Stayman and transfers still apply.\n#ENDBOX\n\n#BOX Titled\nA plain frame with a title.\n#ENDBOX"},
 	{"class hook", "{.name} at the end of a heading, #BOX or #+CAPTION: line gives what it makes that CSS class, for a stylesheet of your own; the text and the heading's link leave it out", "** Defence to 1NT {.danger}\n\n#BOX tip Systems on {.compact}\nX is Stayman.\n#ENDBOX"},
 	{"links","[text](#heading) goes to a heading (ctrl+k picks one); [text](https://...) to the web", "See [Stayman](#Stayman), or the [BML source](https://github.com/enerqi/bml)."},
 	{"comment", "// at the start of a line: the line is left out of the page", "Shown.\n// a note to yourself, not on the page\nAlso shown."},
@@ -72,7 +74,14 @@ GUIDE_UNDRAWN :: [?]Guide_Example {
 // BOTH CELLS ARE SIZED, each with a max-width (reported 2026-10-31: explanation columns "very thin"). With only the
 // source's `width: 42%`, this engine sized the row from the content and the source cell took 950 of 1088px, the
 // rendered side wrapping a word a line; `test_the_guide_columns_keep_their_shares` measures it.
+// AND NEITHER CAN BE SQUEEZED (reported 2026-11-02, real window, shares or not: the source a word a line at ~85px):
+// the notes' sheet gives every bid table `width: 900px` (700/750 in its width @media), a minimum the table
+// algorithm must honour, so the rendered cell took the row and the source got what was left. In the guide a bid
+// table is as wide as its cell, the source has a floor of its own (a min-width on its text, which is content, so
+// any table algorithm keeps it), and the page is not held to the notes' 900px column: a guide is two columns.
 GUIDE_CSS :: `<style>
+body.content { max-width: 1500px; padding: 0 1.5em; }
+td.wb-guide-out div.bidtable { width: auto; max-width: 100%; }
 .wb-guide-intro { margin: 0.4em 0 1em 0; }
 .wb-guide { margin: 0 0 1.4em 0; }
 .wb-guide-head { margin-bottom: 0.3em; }
@@ -82,7 +91,7 @@ table.wb-guide-row { width: 100%; border-collapse: collapse; }
 table.wb-guide-row td { vertical-align: top; padding: 0; }
 td.wb-guide-src { width: 42%; max-width: 42%; padding-right: 1em; }
 td.wb-guide-out { width: 58%; max-width: 58%; }
-pre.wb-guide-src { margin: 0; padding: 0.4em 0.6em; background: rgba(128,128,128,0.12); font-size: 0.9em; white-space: pre-wrap; }
+pre.wb-guide-src { margin: 0; min-width: 16em; padding: 0.4em 0.6em; background: rgba(128,128,128,0.12); font-size: 0.9em; white-space: pre-wrap; }
 td.wb-guide-out > :first-child { margin-top: 0; }
 </style>`
 

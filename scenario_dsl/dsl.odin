@@ -25,7 +25,7 @@ package scenario_dsl
 	compiled registry does with `&&`. Within a seat line the operators are `and`, `or`, `not` and
 	parentheses, over two kinds of atom:
 
-	  * GENERIC — `hcp`, `spades`/`hearts`/`diamonds`/`clubs`, `controls`, `longest`, compared with
+	  * GENERIC — `hcp`, `spades`/`hearts`/`diamonds`/`clubs`, `controls`, `longest` (and `seat`, below), compared with
 	    `< <= = != >= >` or a range (`hcp in 15..17`), plus `balanced` and `holds(spades, ace)`;
 	  * NAMED — the bidding system's own vocabulary (`is_strong_1c`, `is_2cd_swedish_club_resp`, …),
 	    supplied by the CONSUMER through `set_vocabulary`. That is what lets a user compose THIS system
@@ -49,6 +49,24 @@ package scenario_dsl
 	like "3+ spades opposite 4+, or 3+ hearts opposite 4+": seat lines AND, so an `or` across seats has
 	nowhere to live. That would need seat-qualified atoms (`north.spades`), not added until a scenario
 	asks for one.
+
+	THE TABLE - who dealt and who is vulnerable - for the meanings that depend on it (a third-seat preempt is
+	lighter than a first-seat one; the rule of 2-3-4 is loose at favourable and sound at unfavourable):
+
+			scenario weak-2-third-seat "weak two in third seat, light"
+			  north: seat = 3 and longest = 6 and hcp in 3..10
+			  north: favourable or not vulnerable
+
+	`seat` is the hand's place in the auction, 1 for the dealer; `vulnerable`, `favourable` (not vulnerable,
+	the opponents are) and `unfavourable` are the vulnerability as that hand's side sees it, and also read on
+	a partnership line. A scenario can FIX either half instead of testing it:
+
+			  dealer: south                # South deals every board
+			  vulnerability: east-west     # none, north-south, east-west or both
+
+	A scenario using any of this has each deal checked at the dealer and vulnerability it is then SHOWN with
+	(`norn.Table_Draw`): whatever is not fixed is drawn at random per deal, and a deal at the wrong table is
+	thrown away like a deal with the wrong hand. The run's own "North deals" setting does not apply to it.
 
 	A DOUBLE-DUMMY LINE asks the solver about the WHOLE deal, after the seat lines have accepted it:
 
@@ -103,6 +121,7 @@ Quantity :: enum {
 	Diamonds,
 	Clubs,
 	Longest, // the length of the longest suit — the one shape question people ask most
+	Seat, // the hand's place in the auction: 1 for the dealer, 2 for the dealer's left, ... (a TABLE word)
 }
 
 Comparison :: enum {
@@ -141,6 +160,17 @@ Holds_Node :: struct {
 // `balanced` — norn's own definition, so the language and the compiled helpers agree on the word.
 Balanced_Node :: struct {}
 
+// The vulnerability as the hand's own side sees it - the way a player says it ("I'm at favourable"). TABLE words.
+Vulnerability_Word :: enum {
+	Vulnerable, // this side is vulnerable
+	Favourable, // this side is not, the opponents are
+	Unfavourable, // this side is, the opponents are not
+}
+
+Vulnerability_Node :: struct {
+	word: Vulnerability_Word,
+}
+
 // The operators index back into the same array. `-1` is "no child"; only a malformed tree has one, and
 // `eval` treats it as false rather than indexing out of bounds.
 Not_Node :: struct {
@@ -162,6 +192,7 @@ Node :: union {
 	Named_Node,
 	Holds_Node,
 	Balanced_Node,
+	Vulnerability_Node,
 	Not_Node,
 	And_Node,
 	Or_Node,
@@ -207,6 +238,11 @@ Program :: struct {
 	rules:        []Seat_Rule,
 	nodes:        []Node,
 	double_dummy: Maybe(Double_Dummy), // the `double-dummy:` line, if the scenario has one
+	// THE TABLE: a `dealer:` / `vulnerability:` line fixes that half; a `seat` or vulnerability word on a line
+	// reads it. Either makes the scenario one whose deals are checked at their table (`norn.Table_Draw`).
+	dealer:        Maybe(norn.Seat),
+	vulnerability: Maybe(norn.Vulnerability),
+	reads_table:   bool,
 	source:       string, // the file it came from, for diagnostics and for the UI to show
 	allocator:    runtime.Allocator,
 }
@@ -292,8 +328,59 @@ quantity_of :: proc(word: string) -> (quantity: Quantity, ok: bool) {
 		return .Clubs, true
 	case "longest":
 		return .Longest, true
+	case "seat":
+		return .Seat, true
 	}
 	return {}, false
+}
+
+// A vulnerability word, both spellings: the language is written by players on either side of the Atlantic.
+@(private)
+vulnerability_word_of :: proc(word: string) -> (v: Vulnerability_Word, ok: bool) {
+	switch word {
+	case "vulnerable":
+		return .Vulnerable, true
+	case "favourable", "favorable":
+		return .Favourable, true
+	case "unfavourable", "unfavorable":
+		return .Unfavourable, true
+	}
+	return {}, false
+}
+
+// The value of a `vulnerability:` line: who is vulnerable, named as the board's own vulnerability is.
+@(private)
+board_vulnerability_of :: proc(word: string) -> (v: norn.Vulnerability, ok: bool) {
+	switch word {
+	case "none", "nobody", "love-all":
+		return .None, true
+	case "north-south":
+		return .North_South, true
+	case "east-west":
+		return .East_West, true
+	case "both", "all":
+		return .Both, true
+	}
+	return {}, false
+}
+
+/*
+The `norn.Condition` a program is generated and measured with: its walker and the program, plus - when it
+reads or fixes the table - what the table draw fixes. ONE place builds it, so the loader and the editor's check
+cannot disagree about whether a scenario's deals are dealt at a table.
+*/
+condition :: proc(program: ^Program) -> norn.Condition {
+	predicate := norn.Interpreted_Predicate {
+		call = evaluate,
+		data = program,
+	}
+	if program.reads_table {
+		predicate.table = norn.Table_Draw {
+			dealer        = program.dealer,
+			vulnerability = program.vulnerability,
+		}
+	}
+	return predicate
 }
 
 // The seat a word names. FULL NAMES ONLY: `n`/`e`/`s`/`w` were considered and left out, because `s` for

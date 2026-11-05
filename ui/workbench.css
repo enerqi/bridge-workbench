@@ -1155,6 +1155,7 @@ aside .head.keys b {
    everything - no height is authored here and none should be. */
 .tagpicker {
 	size: *;
+	min-height: 11em; /* the report's floor, for the same reason */
 	flow: vertical;
 	padding: 0.6em 0.8em;
 	background: var(--surface);
@@ -1363,6 +1364,12 @@ aside .head.keys b {
 
 .palettebar > button {
 	margin-right: 0.35em;
+}
+
+/* With `open` (2026-11-04) the source pane's head is wider than a 720px window's source pane, so it WRAPS: the
+   palette group goes under the file's name when it does not fit beside it, rather than running off the edge. */
+#bml-source > .pane-head {
+	flow: horizontal-flow;
 }
 
 /* The open file's name, as the source pane's title. Gives way before the buttons do (a long name is
@@ -1576,6 +1583,20 @@ frame#look-hand {
 .about-line {
 	margin-bottom: 0.35em;
 	color: var(--ink-soft);
+}
+
+/* SETTINGS' HIERARCHY (reported 2026-11-02: a section's `reset all` and `fine tuning` read nearly as loud as
+   its title, both starting at the same edge). The titles are bigger, with a rule under them, and are the only
+   thing at the left edge: explanations start at the controls' column, the width of a `field-label` (5.5em of
+   small text plus its margins, 6.85 x 0.85em), and a button with no label of its own takes an empty one. */
+#prefs-side .about-head {
+	font-size: 1.2em;
+	margin: 1.4em 0 0.5em;
+	padding-bottom: 0.2em;
+	border-bottom: 1px solid var(--line);
+}
+#prefs-side .about-line {
+	padding-left: 5.8em;
 }
 
 .about-line a {
@@ -1806,8 +1827,12 @@ popup[role="tooltip"] {
 /* `<plaintext>` is the engine's code-editor element: scrolling, selection and a host-side interface
    (`content=`, `lines`, `selectRange`) for free. The analysis report is aligned monospace text, so it
    wants exactly this rather than a <div> — and it is the same widget the BML editor below uses. */
+/* A FLOOR, so the panels above cannot squash it to a line: `size: *` is only what is LEFT, and on a small screen
+   (250% display scaling, ~800x410 CSS px) nothing was - the report one line tall, its scrollbar stuck (reported
+   2026-11-02). With the floor `.work` grows past the window and scrolls instead. */
 #report {
 	size: *;
+	min-height: 11em;
 	padding: 0.4em 0.5em;
 	border: 1px solid var(--line);
 	border-radius: 6px;
