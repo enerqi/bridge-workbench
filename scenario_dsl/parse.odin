@@ -146,6 +146,8 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 	nodes := make([dynamic]Node, 0, 16, p.allocator)
 	rules := make([dynamic]Seat_Rule, 0, 4, p.allocator)
 	tags := make([dynamic]string, 0, 4, p.allocator)
+	system := ""
+	alternatives := make([dynamic]string, 0, 0, p.allocator)
 	double_dummy: Maybe(Double_Dummy)
 	dealer: Maybe(norn.Seat)
 	vulnerability: Maybe(norn.Vulnerability)
@@ -162,10 +164,15 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 		if strings.has_prefix(folded(line), "scenario") {
 			break // the next scenario; this one is finished
 		}
+		if is_also_line(line) {
+			parse_also_line(p, raw, line, &rules, &alternatives)
+			p.line_index += 1
+			continue
+		}
 
 		colon := strings.index_byte(line, ':')
 		if colon < 0 {
-			report(p, p.line_index, 1, "expected `key: value` — a seat, a partnership, `dealer:`, `vulnerability:`, `double-dummy:` or `tags:`")
+			report(p, p.line_index, 1, "expected `key: value` — a seat, a partnership, `dealer:`, `vulnerability:`, `double-dummy:`, `system:` or `tags:`")
 			p.line_index += 1
 			continue
 		}
@@ -209,6 +216,21 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 					"expected `double-dummy: <north-south|east-west> make <game|slam|grand>`",
 				)
 			}
+		case key == "system":
+			// ONE WORD, the way a tag is: it is matched exactly against the picker's systems and shown as a
+			// badge, so `2/1 GF` and `2over1` would be two systems by accident.
+			if system != "" {
+				report(p, p.line_index, 1, "a scenario has one `system:` line")
+			} else if !is_system_name(value) {
+				report(
+					p,
+					p.line_index,
+					value_col,
+					"expected `system: <name>` - one word of letters, digits and dashes, like `2over1` or `swedish-club`",
+				)
+			} else {
+				system = value
+			}
 		case key == "tags":
 			for tag in strings.split(value, ",", context.temp_allocator) {
 				trimmed := strings.trim_space(tag)
@@ -227,44 +249,14 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 					p,
 					p.line_index,
 					1,
-					"unknown key — expected a seat (north/east/south/west), a partnership (north-south/east-west), `dealer`, `vulnerability`, `double-dummy` or `tags`",
+					"unknown key — expected a seat (north/east/south/west), a partnership (north-south/east-west), `dealer`, `vulnerability`, `double-dummy`, `system` or `tags`",
 				)
 				p.line_index += 1
 				continue
 			}
-			if value == "" {
-				report(p, p.line_index, value_col, "this line has no condition")
-				p.line_index += 1
-				continue
+			if root, line_ok := parse_seat_condition(p, value, value_col, pair); line_ok {
+				append(&rules, Seat_Rule{seat = seat, pair = pair, root = root})
 			}
-			p.text = value
-			p.col = value_col
-			p.pair = pair
-			if root, expr_ok := parse_expression(p); expr_ok {
-				// The condition has to be the WHOLE line. The expression stops at the first thing it cannot
-				// read, and that was accepted in silence: `hcp in 8..11x` read as `8..11` (reported
-				// 2026-10-19), and `hcp >= 12 balanced` as `hcp >= 12`, which is worse - a forgotten `and`
-				// that quietly drops half the condition.
-				skip_spaces(p)
-				if p.text != "" {
-					extra := p.text
-					if space := strings.index_any(extra, " \t"); space > 0 {
-						extra = extra[:space]
-					}
-					report(
-						p,
-						p.line_index,
-						p.col,
-						strings.concatenate(
-							{"unexpected `", extra, "` — expected `and`, `or` or the end of the line"},
-							context.temp_allocator,
-						),
-					)
-				} else {
-					append(&rules, Seat_Rule{seat = seat, pair = pair, root = root})
-				}
-			}
-			p.pair = false
 		}
 		p.line_index += 1
 	}
@@ -277,12 +269,17 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			delete(tag, p.allocator)
 		}
 		delete(tags)
+		for alternative in alternatives {
+			delete(alternative, p.allocator)
+		}
+		delete(alternatives)
 		return {}, false
 	}
 
 	return Program {
 			name = strings.clone(name, p.allocator),
 			description = strings.clone(description, p.allocator),
+			system = strings.clone(system, p.allocator),
 			tags = tags[:],
 			rules = rules[:],
 			nodes = p.nodes[:],
@@ -290,10 +287,143 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			dealer = dealer,
 			vulnerability = vulnerability,
 			reads_table = p.reads_table || dealer != nil || vulnerability != nil,
+			alternatives = alternatives[:],
 			source = strings.clone(p.file, p.allocator),
 			allocator = p.allocator,
 		},
 		true
+}
+
+// The condition of a seat or partnership line, which has to be the WHOLE rest of the line.
+@(private)
+parse_seat_condition :: proc(p: ^Parser, value: string, value_col: int, pair: bool) -> (root: int, ok: bool) {
+	if value == "" {
+		report(p, p.line_index, value_col, "this line has no condition")
+		return 0, false
+	}
+	p.text = value
+	p.col = value_col
+	p.pair = pair
+	defer p.pair = false
+	root = parse_expression(p) or_return
+	// The expression stops at the first thing it cannot read, and that was accepted in silence: `hcp in
+	// 8..11x` read as `8..11` (reported 2026-10-19), and `hcp >= 12 balanced` as `hcp >= 12`, which is worse -
+	// a forgotten `and` that quietly drops half the condition.
+	skip_spaces(p)
+	if p.text != "" {
+		extra := p.text
+		if space := strings.index_any(extra, " \t"); space > 0 {
+			extra = extra[:space]
+		}
+		report(
+			p,
+			p.line_index,
+			p.col,
+			strings.concatenate({"unexpected `", extra, "` — expected `and`, `or` or the end of the line"}, context.temp_allocator),
+		)
+		return 0, false
+	}
+	return root, true
+}
+
+// How long an alternative's name may be: it is drawn as a pill on the board, beside the hands.
+ALTERNATIVE_NAME_MAX :: 40
+
+// `also "<name>" ...`: the word, then a space or the quote.
+@(private)
+is_also_line :: proc(line: string) -> bool {
+	lowered := folded(line)
+	return strings.has_prefix(lowered, "also") && (len(line) == 4 || line[4] == ' ' || line[4] == '\t' || line[4] == '"')
+}
+
+/*
+`also "<name>" <seat or side>: <condition>` - a line of a named ALTERNATIVE (see the header). The name is quoted
+because it is a phrase ("14, five-card suit") and may hold a colon. An alternative loosens a line the scenario
+already has, so the seat must have a line of the scenario's own ABOVE it: an `also` for a seat the scenario says
+nothing about would only ever narrow it, and its deals would all be the scenario's own.
+*/
+@(private)
+parse_also_line :: proc(p: ^Parser, raw, line: string, rules: ^[dynamic]Seat_Rule, alternatives: ^[dynamic]string) {
+	SHAPE :: "expected `also \"<name>\" <seat>: <condition>` - the name, in quotes, is what a deal's card shows"
+	column :: proc(raw, part: string) -> int {
+		return int(uintptr(raw_data(part)) - uintptr(raw_data(raw))) + 1
+	}
+	rest := strings.trim_left_space(line[4:])
+	if !strings.has_prefix(rest, `"`) {
+		report(p, p.line_index, column(raw, rest), SHAPE)
+		return
+	}
+	close := strings.index_byte(rest[1:], '"')
+	if close < 0 {
+		report(p, p.line_index, column(raw, rest), "this alternative's name has no closing quote")
+		return
+	}
+	name := strings.trim_space(rest[1:close + 1])
+	if name == "" {
+		report(p, p.line_index, column(raw, rest), "an alternative needs a name - it is what a deal's card shows")
+		return
+	}
+	if len(name) > ALTERNATIVE_NAME_MAX {
+		report(p, p.line_index, column(raw, rest), "keep an alternative's name to 40 characters - it is drawn on the board")
+		return
+	}
+	body := strings.trim_space(rest[close + 2:])
+	colon := strings.index_byte(body, ':')
+	if colon < 0 {
+		report(p, p.line_index, column(raw, body) if body != "" else len(raw) + 1, SHAPE)
+		return
+	}
+	key := folded(strings.trim_space(body[:colon]))
+	seat, is_seat := seat_of(key)
+	pair := false
+	if !is_seat {
+		seat, pair = pair_of(key)
+	}
+	if !is_seat && !pair {
+		report(
+			p,
+			p.line_index,
+			column(raw, body),
+			"an `also` line is a seat or partnership line: north/east/south/west or north-south/east-west",
+		)
+		return
+	}
+	has_own := false
+	for rule in rules {
+		if rule.also == 0 && rule.seat == seat && rule.pair == pair {
+			has_own = true
+		}
+	}
+	if !has_own {
+		report(
+			p,
+			p.line_index,
+			column(raw, body),
+			fmt_message(
+				p,
+				"an alternative replaces the scenario's own `%s:` lines, and there is none above it",
+				key,
+			),
+		)
+		return
+	}
+	value := strings.trim_space(body[colon + 1:])
+	value_col := column(raw, value) if value != "" else column(raw, body) + colon + 1
+	root, ok := parse_seat_condition(p, value, value_col, pair)
+	if !ok {
+		return
+	}
+	also := 0
+	for existing, i in alternatives {
+		if existing == name {
+			also = i + 1
+		}
+	}
+	if also == 0 {
+		append(alternatives, strings.clone(name, p.allocator))
+		also = len(alternatives)
+	}
+	append(rules, Seat_Rule{seat = seat, pair = pair, root = root, also = also})
 }
 
 // `north-south make slam`: a side, `make` (or `makes`), and game / slam / grand. `small slam` and
@@ -337,6 +467,20 @@ skip_body :: proc(p: ^Parser) {
 		}
 		p.line_index += 1
 	}
+}
+
+// A system's name: letters, digits and dashes, starting with a letter or digit.
+@(private)
+is_system_name :: proc(value: string) -> bool {
+	if value == "" || value[0] == '-' {
+		return false
+	}
+	for c in value {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // `1c-then-5hearts "strong 1C; South 5+ hearts"` — the name is the first word, the description is the

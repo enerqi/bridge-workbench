@@ -32,7 +32,40 @@ evaluate :: proc(summary: norn.Deal_Summary, table: norn.Table, userdata: rawptr
 	if program == nil {
 		return false
 	}
+	for also in 0 ..= len(program.alternatives) {
+		if lines_hold(program, summary, table, also) {
+			return true
+		}
+	}
+	return false
+}
+
+/*
+WHY a kept deal was kept: "" when the scenario's own lines hold, else the name of the first alternative whose
+lines do (norn's `Contextual_Explain`, asked only of kept deals). Alternatives are tried in the order the file
+names them, so a deal two of them admit carries the first one's name.
+*/
+explain :: proc(summary: norn.Deal_Summary, table: norn.Table, userdata: rawptr) -> string {
+	program := (^Program)(userdata)
+	if program == nil || lines_hold(program, summary, table, 0) {
+		return ""
+	}
+	for name, i in program.alternatives {
+		if lines_hold(program, summary, table, i + 1) {
+			return name
+		}
+	}
+	return ""
+}
+
+// Do the lines of alternative `also` hold (0: the scenario's own)? An alternative's lines REPLACE the scenario's
+// lines for the same seat or side, and the scenario's other lines still apply.
+@(private)
+lines_hold :: proc(program: ^Program, summary: norn.Deal_Summary, table: norn.Table, also: int) -> bool {
 	for rule in program.rules {
+		if rule.also != also && (rule.also != 0 || replaced_in(program, rule, also)) {
+			continue
+		}
 		// A partnership line reads its two hands as one — see `combined` for why that is exact.
 		hand := summary[rule.seat]
 		if rule.pair {
@@ -44,6 +77,20 @@ evaluate :: proc(summary: norn.Deal_Summary, table: norn.Table, userdata: rawptr
 		}
 	}
 	return true
+}
+
+// Does alternative `also` have a line for the seat (or side) this line of the scenario's own is about?
+@(private)
+replaced_in :: proc(program: ^Program, own: Seat_Rule, also: int) -> bool {
+	if also == 0 {
+		return false
+	}
+	for rule in program.rules {
+		if rule.also == also && rule.seat == own.seat && rule.pair == own.pair {
+			return true
+		}
+	}
+	return false
 }
 
 // What a line is evaluated against: the hand (or the side's two, combined), whose it is, and the board's table.

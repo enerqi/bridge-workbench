@@ -46,6 +46,11 @@ write_program_into :: proc(b: ^strings.Builder, program: ^Program) {
 	}
 	strings.write_byte(b, '\n')
 
+	if program.system != "" {
+		strings.write_string(b, "  system: ")
+		strings.write_string(b, program.system)
+		strings.write_byte(b, '\n')
+	}
 	if len(program.tags) > 0 {
 		strings.write_string(b, "  tags: ")
 		for tag, i in program.tags {
@@ -83,12 +88,23 @@ write_program_into :: proc(b: ^strings.Builder, program: ^Program) {
 		strings.write_byte(b, '\n')
 	}
 
-	for rule in program.rules {
-		strings.write_string(b, "  ")
-		strings.write_string(b, pair_word(rule.seat) if rule.pair else seat_word(rule.seat))
-		strings.write_string(b, ": ")
-		write_node(b, program, rule.root, .Top)
-		strings.write_byte(b, '\n')
+	// The scenario's own lines, then each alternative's together, in the order they were named.
+	for also in 0 ..= len(program.alternatives) {
+		for rule in program.rules {
+			if rule.also != also {
+				continue
+			}
+			strings.write_string(b, "  ")
+			if also > 0 {
+				strings.write_string(b, `also "`)
+				strings.write_string(b, program.alternatives[also - 1])
+				strings.write_string(b, `" `)
+			}
+			strings.write_string(b, pair_word(rule.seat) if rule.pair else seat_word(rule.seat))
+			strings.write_string(b, ": ")
+			write_node(b, program, rule.root, .Top)
+			strings.write_byte(b, '\n')
+		}
 	}
 }
 

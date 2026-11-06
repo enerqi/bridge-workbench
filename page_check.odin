@@ -355,6 +355,7 @@ main :: proc() {
 		check_the_par_toggle(&view)
 		check_the_two_hand_share_link(&view)
 		check_the_redealt_fade(&view)
+		check_the_why_pill(&view)
 		if dir := os.get_env("PAGE_CHECK_SNAP", context.allocator); dir != "" {
 			snap_the_layouts_panel(&view, dir)
 		}
@@ -1706,6 +1707,70 @@ check_a_single_board_is_centred :: proc(view: ^sa.Windowless_View) {
 
 	off := scroll_off_centre(root)
 	check(off >= 0 && off <= 2, fmt.tprintf("the single board is centred by the track padding (off by %d px)", off))
+}
+
+// A condition that keeps every deal and says each one came in through an alternative, for the pill below.
+@(private = "file")
+keep_all :: proc(_: norn.Deal_Summary, _: norn.Table, _: rawptr) -> bool {return true}
+
+@(private = "file")
+WHY_LABEL :: "14, five-card suit, upgraded"
+
+@(private = "file")
+why_always :: proc(_: norn.Deal_Summary, _: norn.Table, _: rawptr) -> string {return WHY_LABEL}
+
+/*
+WHY A DEAL IS ON THE PAGE (a scenario's `also` alternative, `norn.render_deal_label`): the pill the generator writes
+after a board is moved INTO its felt by the page's script and sits in the top-left corner - inside the board, clear
+of North's hand and of the HCP box opposite.
+*/
+check_the_why_pill :: proc(view: ^sa.Windowless_View) {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	norn.generate_accepted(
+		&b,
+		3,
+		.Html_Cards,
+		norn.Interpreted_Predicate{call = keep_all, explain = why_always},
+		randomize_table = true,
+		page_title = "why",
+	)
+	_ = sa.resize_windowless(view, VIEW_WIDTH, VIEW_HEIGHT)
+	if err := sa.load_html(view.window, strings.to_string(b), "file://page-check/why.html"); err != nil {
+		check(false, fmt.tprintf("the labelled page loads (%v)", err))
+		return
+	}
+	pump(view, 32)
+	root, rerr := sa.root(view.window)
+	if rerr != nil {
+		check(false, "the labelled page has a root")
+		return
+	}
+	pill, perr := sa.select_first(root, ".slide.active .compass > .why")
+	if perr != nil || pill == nil {
+		check(false, "the active board's label is inside its felt")
+		return
+	}
+	text, _ := sa.text(pill, context.temp_allocator)
+	check(text == WHY_LABEL, fmt.tprintf("the label reads %q (%q)", WHY_LABEL, text))
+	felt, _ := sa.select_first(root, ".slide.active .compass")
+	north, _ := sa.select_first(root, ".slide.active .seat-n")
+	stats, _ := sa.select_first(root, ".slide.active .stats")
+	p, _ := sa.location(pill, .Border, .Root)
+	f, _ := sa.location(felt, .Border, .Root)
+	n, _ := sa.location(north, .Border, .Root)
+	s, _ := sa.location(stats, .Border, .Root)
+	inside := p.x >= f.x && p.y >= f.y && p.x + p.width <= f.x + f.width && p.y + p.height <= f.y + f.height
+	// At this engine's widths the page takes its narrow layout (the HCP box a line across the top), so the pill is
+	// a line above it: at the top of the felt, and as wide as its words rather than a bar across the board.
+	check(
+		inside && p.y < f.y + f.height / 4 && p.width < f.width / 2,
+		fmt.tprintf("the pill is a short line at the top of the felt (pill %v, felt %v)", p, f),
+	)
+	apart :: proc(a, b: sa.Rect) -> bool {
+		return a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y
+	}
+	check(apart(p, n) && apart(p, s), fmt.tprintf("the pill covers neither North (%v) nor the HCP box (%v): %v", n, s, p))
 }
 
 scroll_off_centre :: proc(root: sa.Element) -> int {

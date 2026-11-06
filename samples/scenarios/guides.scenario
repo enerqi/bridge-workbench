@@ -1,0 +1,119 @@
+# Guide scenarios: worked examples of the scenario language, put here by Bridge Workbench. They are
+# yours to edit or delete; Settings > Samples > restore puts the file back only if it is missing.
+#
+# HIDDEN UNTIL ASKED FOR. Every scenario here is tagged `guide`, and the deals list leaves a guide out
+# until you pick the `guide` group (the groups button, or ctrl+g). Most are in the system `2over1`, so
+# set the list's system to 2over1 (or every system) to see them.
+#
+# Each one shows one thing the language can say, using 2/1 game forcing meanings. Where a built-in
+# scenario covers the same auction, the comment names it: the built-ins are the Swedish Club played by
+# this program's author, and the difference in meaning is usually the point. A guide has a name of its
+# own (guide-...) because a built-in scenario always wins a name it shares with a file.
+#
+# A scenario is a name, a description, and lines that AND together:
+#
+#   quantities   hcp  controls  spades  hearts  diamonds  clubs  longest  seat
+#   comparisons  <  <=  =  !=  >=  >        or a range:  hcp in 15..17
+#   other atoms  balanced   holds(spades, ace)   vulnerable  favourable  unfavourable
+#   operators    and  or  not  ( )
+
+
+# 1. THE BASIC SHAPE, and NAMED ALTERNATIVES.
+# The built-in `1n` is a 16-18 notrump. A 2/1 notrump is 15-17, and many players also open some hands
+# that are not quite that. Each `also` line names one such kind of hand: it REPLACES the north lines
+# above it, and a deal only it lets in shows its name on the board, so you can see which hands are the
+# debatable ones. Press check in the scenario editor to see how many deals each one adds.
+scenario guide-1nt "2/1: North opens 1NT, 15-17 - and the hands some open 1NT anyway"
+  system: 2over1
+  tags: guide
+  north: hcp in 15..17 and balanced
+  also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
+  also "4441, singleton honour" north: hcp in 15..17 and longest = 4 and ((spades = 1 and (holds(spades, ace) or holds(spades, king))) or (hearts = 1 and (holds(hearts, ace) or holds(hearts, king))) or (diamonds = 1 and (holds(diamonds, ace) or holds(diamonds, king))) or (clubs = 1 and (holds(clubs, ace) or holds(clubs, king))))
+
+
+# 2. NOT, and an alternative for a shape.
+# The built-in `1hs` is a limited 11-15 opening (a stronger hand opens 1C). A 2/1 major is 12-21 with a
+# five-card suit, except a balanced hand in the 1NT range, which opens 1NT. A light opening with a
+# six-card suit is the alternative.
+scenario guide-1m "2/1: North opens one of a major, 12-21"
+  system: 2over1
+  tags: guide
+  north: (spades >= 5 or hearts >= 5) and hcp in 12..21
+  north: not (hcp in 15..17 and balanced)
+  also "11 with a six-card suit" north: (spades >= 6 or hearts >= 6) and hcp = 11
+
+
+# 3. TWO HANDS: one line for each seat.
+# 1S - 1NT is semi-forcing in 2/1: 6-12 points without three spades. In Acol the same 1NT is 6-9, and
+# that is a different scenario - copy this one, change the range and give it `system: acol`.
+scenario guide-1s-1nt "2/1: 1S - 1NT, semi-forcing (6-12, fewer than three spades)"
+  system: 2over1
+  tags: guide
+  north: spades >= 5 and hcp in 12..21
+  south: hcp in 6..12 and spades <= 2
+
+
+# 4. THE 2/1 RESPONSE ITSELF, with OR inside a line.
+# A new suit at the two level forces to game. The built-in `1hs_game-force` is any 13+ response to a
+# limited major; this is the response that gives the system its name.
+scenario guide-1s-2over1 "2/1: 1S - 2C, 2D or 2H, game forcing"
+  system: 2over1
+  tags: guide
+  north: spades >= 5 and hcp in 12..21
+  south: hcp >= 12 and spades <= 2 and (clubs >= 4 or diamonds >= 4 or hearts >= 5)
+
+
+# 5. AN ALTERNATIVE ON THE SECOND HAND.
+# Jacoby 2NT: a game-forcing raise with four trumps. Some partnerships make it with a good 12 and a
+# shortage; spelling "a singleton or void somewhere" is three ORs, since there is no word for shortest.
+scenario guide-jacoby-2nt "2/1: 1H - 2NT, Jacoby (four hearts, game forcing)"
+  system: 2over1
+  tags: guide
+  north: hearts >= 5 and hcp in 12..21
+  south: hearts >= 4 and hcp >= 13
+  also "12 with a shortage" south: hearts >= 4 and hcp = 12 and (spades <= 1 or diamonds <= 1 or clubs <= 1)
+
+
+# 6. SEAT AND VULNERABILITY.
+# A weak two depends on where it is bid from. `seat` is the hand's place in the auction (1 = dealer);
+# `favourable` means not vulnerable against vulnerable opponents. Deals are dealt with random dealers
+# and vulnerability, and each is checked at the table it is shown at. The built-in `2hs-weak` ignores
+# both.
+scenario guide-weak-2h "2/1: a weak two in hearts - sound in first and second seat, lighter later"
+  system: 2over1
+  tags: guide, preempt
+  north: seat <= 2 and hearts = 6 and hcp in 5..10 and spades <= 3
+  also "third seat, five cards" north: seat = 3 and hearts = 5 and hcp in 6..10 and spades <= 3 and (holds(hearts, ace) or holds(hearts, king))
+  also "favourable, light" north: seat <= 3 and favourable and hearts = 6 and hcp in 3..10 and spades <= 3
+
+
+# 7. THE SAME NAME, A DIFFERENT CALL.
+# In 2/1, 2C is the strong artificial opening. The built-in `2c` is a club one-suiter of 11-15 - which
+# is exactly why a scenario says whose meanings it uses. "Nine playing tricks" cannot be counted in this
+# language; a long suit with 19-21 is a fair stand-in, and names itself on the board.
+scenario guide-2c-strong "2/1: North opens a strong, artificial 2C"
+  system: 2over1
+  tags: guide
+  north: hcp >= 22
+  also "19-21, a long suit" north: hcp in 19..21 and longest >= 7
+
+
+# 8. A PARTNERSHIP LINE.
+# north-south: reads both hands together, so hcp is the side's total. The built-in `1n_slam-try` asks for
+# 29+ opposite a 16-18 notrump; 33 together is the old rule for 6NT, whatever the notrump range.
+scenario guide-1nt-small-slam "2/1: 1NT opener, and 33+ between North and South"
+  system: 2over1
+  tags: guide, slam
+  north: hcp in 15..17 and balanced
+  north-south: hcp >= 33
+
+
+# 9. NO SYSTEM, AND A FIXED DEALER.
+# The opponents' bidding is the same whatever you play, so this one has no system line and is listed
+# under every system. `dealer: east` makes East deal every board, so East's 1NT is the first call. The
+# built-in `opp-1n-15-17` is the same idea.
+scenario guide-opp-1nt "East opens a 15-17 1NT; South has a five-card major to show"
+  tags: guide, competitive
+  dealer: east
+  east: hcp in 15..17 and balanced
+  south: hcp in 8..15 and (spades >= 5 or hearts >= 5)

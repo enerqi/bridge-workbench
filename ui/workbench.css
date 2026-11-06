@@ -412,6 +412,25 @@ aside .foot {
 	color: var(--ink-dim);
 }
 
+/* The SYSTEM a row's meanings are, while the list shows every system: a small outlined badge (`WSC`) before
+   the id, since the auction alone does not say whose 1NT it is. */
+#scenarios .row .sys {
+	display: inline-block;
+	margin-left: 0.6em;
+	padding: 0 0.3em;
+	border: 1px solid var(--line);
+	border-radius: 3px;
+	font-weight: 600;
+	font-size: var(--text-small);
+	color: var(--ink-dim);
+	vertical-align: middle;
+}
+
+/* The system picker's row: the label, and the dropdown taking the rest. */
+aside .side-system > select {
+	width: *;
+}
+
 /* A scenario from one of your .scenario files: the way to its file (`edit_scenario`). A button of its own,
    like the sources' `×`, so the click is the mark's and not the row's. */
 #scenarios .row .edit {

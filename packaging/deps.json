@@ -11,7 +11,7 @@
     "siblings": {
         "norn": {
             "repo": "enerqi/norn",
-            "commit": "9654be31f48deaf821b3d4d4d4f6a24962c4379b",
+            "commit": "4a96d28a0832c1f52443d7d0eedf60e7304926cc",
             "env": "NORN_HOME"
         },
         "odin-dds": {

@@ -11,6 +11,8 @@ package main
 	  * `Documents\Bridge notes\squad-system.bml` - a whole system (the English U16 squad agreements), so
 	    the notes view, its preview and the quiz have something real to show. Registered in `notes.dirs` and
 	    opened (`notes.dir`).
+	  * `Documents\Bridge scenarios\guides.scenario` - worked examples in 2/1 meanings, tagged `guide` and so
+	    hidden in the deals list until that group is picked.
 	  * `Documents\Bridge scenarios\examples.scenario` - a few scenarios in the text language, using only
 	    the generic atoms (the named helpers belong to this repository's own system). Registered in
 	    `scenarios.dirs`, before the scenarios are loaded, so they are in the deals list from the start.
@@ -40,7 +42,12 @@ Sample_File :: struct {
 
 // Package variables, not constants: a constant array cannot be sliced.
 sample_notes := [?]Sample_File{{"squad-system.bml", #load("../samples/notes/squad-system.bml", string)}}
-sample_scenarios := [?]Sample_File{{"examples.scenario", #load("../samples/scenarios/examples.scenario", string)}}
+sample_scenarios := [?]Sample_File {
+	{"examples.scenario", #load("../samples/scenarios/examples.scenario", string)},
+	// Worked examples of the language in 2/1 meanings, tagged `guide`: hidden in the deals list until that group
+	// is picked (`OPT_IN_GROUPS`).
+	{"guides.scenario", #load("../samples/scenarios/guides.scenario", string)},
+}
 
 SAMPLE_NOTES_DIR :: "Bridge notes"
 SAMPLE_SCENARIOS_DIR :: "Bridge scenarios"

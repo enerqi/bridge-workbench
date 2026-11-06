@@ -18,10 +18,15 @@ import "norn:cli"
 @(test)
 test_every_scenario_is_tagged :: proc(t: ^testing.T) {
 	for scenario in registry {
-		found := tags_for(scenario.name)
+		// An entry, not a tag: since the system became a field, a scenario of no system with no topic is an
+		// entry with nothing in it, and that is a classification too.
+		found := false
+		for tagging in taggings {
+			found ||= tagging.scenario == scenario.name
+		}
 		testing.expectf(
 			t,
-			len(found) > 0,
+			found,
 			"scenario %q is in the registry but has no entry in `taggings` — classify it in tags.odin",
 			scenario.name,
 		)
@@ -78,25 +83,28 @@ test_every_tag_used_is_declared :: proc(t: ^testing.T) {
 	}
 }
 
-// THE PRIMARY SPLIT IS A PARTITION: exactly one of `any-system` / `swedish-club` on every scenario. That is
-// what makes those two a real answer to "whose system is this" rather than two more topics — with both,
-// or neither, the question has no answer for that row.
+// EVERY SYSTEM NAMED IS A DECLARED SYSTEM, and every declared system has scenarios. A typo in a scenario's
+// system would put it in a system the picker does not offer, and nobody could see it but under "all".
 @(test)
-test_the_primary_split_is_a_partition :: proc(t: ^testing.T) {
+test_every_system_named_is_declared :: proc(t: ^testing.T) {
 	for tagging in taggings {
-		sides := 0
-		for carried in tagging.tags {
-			if carried == "any-system" || carried == "swedish-club" {
-				sides += 1
+		if tagging.system == "" {
+			continue
+		}
+		declared := false
+		for system in systems {
+			declared ||= system.name == tagging.system
+		}
+		testing.expectf(t, declared, "%q is in the system %q, which is not in `systems`", tagging.scenario, tagging.system)
+	}
+	for system in systems {
+		used := 0
+		for tagging in taggings {
+			if tagging.system == system.name {
+				used += 1
 			}
 		}
-		testing.expectf(
-			t,
-			sides == 1,
-			"%q carries %d of {any-system, swedish-club}; it must carry exactly one",
-			tagging.scenario,
-			sides,
-		)
+		testing.expectf(t, used > 0 && used < len(taggings), "the system %q has %d scenarios", system.name, used)
 	}
 }
 
@@ -109,24 +117,13 @@ test_no_tags_selected_admits_everything :: proc(t: ^testing.T) {
 		testing.expect(t, has_any_tag(scenario.name, {}), "an empty selection is not a filter")
 	}
 
-	// Every scenario is admitted by the union of the two halves of the partition, and that IS the registry.
-	both := []string{"any-system", "swedish-club"}
-	admitted := 0
-	for scenario in registry {
-		if has_any_tag(scenario.name, both) {
-			admitted += 1
-		}
-	}
-	testing.expect_value(t, admitted, len(registry))
-
 	// And a single group is a proper subset — a filter that admits everything would pass the test above
 	// while filtering nothing at all.
-	only_club := []string{"swedish-club"}
 	narrowed := 0
 	for scenario in registry {
-		if has_any_tag(scenario.name, only_club) {
+		if has_any_tag(scenario.name, {"competitive"}) {
 			narrowed += 1
 		}
 	}
-	testing.expect(t, narrowed > 0 && narrowed < len(registry), "swedish-club should be some of the registry")
+	testing.expect(t, narrowed > 0 && narrowed < len(registry), "competitive should be some of the registry")
 }

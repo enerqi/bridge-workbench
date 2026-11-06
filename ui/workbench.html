@@ -971,6 +971,11 @@
            tooltip ctrl+g. While `every scenario` is ticked the title says so (`draw_scenarios`). -->
       <div class="side-head">
         <div class="side-title" id="scenario-title">scenarios <span class="side-count" id="scenario-count"></span><span class="side-all" id="scenario-all"></span></div>
+        <!-- WHOSE MEANINGS THE LIST SHOWS (2026-11-05): one system, or every system. Not a group - the groups are
+             topics that combine with OR, and a system is one choice for the whole list, made once and remembered.
+             Scenarios of no system (hand types, partnership totals, the opponents' bidding) show under every one.
+             The options are the host's (`draw_system_picker`): the compiled systems, then any a file names. -->
+        <div class="side-row side-system" id="scenario-system-row"></div>
         <div class="side-row side-actions">
         <!-- TYPE TO FIND A SCENARIO. A hundred rows two lines tall is a wall, and the only instrument
              against it was the scrollbar - which is the wrong one for a list whose NAMES are the thing
@@ -1863,8 +1868,17 @@
     // `north:` / `tags:` - the key, up to and including its colon. The expression after it is where the
     // words are, so the scan starts there and the key cannot be re-marked as a name.
     var body = 0;
-    var colon = text.indexOf(":");
-    if (colon > 0) { bmlMark(el, 0, colon + 1, "scn-key"); body = colon + 1; }
+    // `also "<name>" north:` - the word, its quoted name (which may hold a colon), then the key.
+    var also = /^(\s*)(also)\b\s*("[^"]*"?)?/i.exec(text);
+    var from = 0;
+    if (also) {
+      bmlMark(el, also[1].length, also[1].length + also[2].length, "scn-key");
+      if (also[3]) bmlMark(el, also[0].length - also[3].length, also[0].length, "scn-str");
+      from = also[0].length;
+    }
+    var colon = text.indexOf(":", from);
+    if (colon > 0) { bmlMark(el, from, colon + 1, "scn-key"); body = colon + 1; }
+    else if (also) body = from;
 
     var rest = text.slice(body);
     var m;

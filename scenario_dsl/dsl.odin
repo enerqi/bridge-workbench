@@ -17,6 +17,7 @@ package scenario_dsl
 	THE SHAPE OF A FILE. One or more scenarios, each a header line and an indented body:
 
 		scenario 1c-then-5hearts "strong 1C; South 5+ hearts, 8-11"
+		  system: swedish-club
 		  tags: mine, competitive
 		  north: is_strong_1c
 		  south: hearts >= 5 and hcp in 8..11 and not balanced
@@ -67,6 +68,21 @@ package scenario_dsl
 	A scenario using any of this has each deal checked at the dealer and vulnerability it is then SHOWN with
 	(`norn.Table_Draw`): whatever is not fixed is drawn at random per deal, and a deal at the wrong table is
 	thrown away like a deal with the wrong hand. The run's own "North deals" setting does not apply to it.
+
+	ALTERNATIVES say what a scenario lets in BEYOND its strict definition, and name it:
+
+			scenario 1nt "1NT 15-17, and the hands some would open 1NT anyway"
+			  north: hcp in 15..17 and balanced
+			  south: hcp >= 8
+			  also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
+			  also "18, flat" north: hcp = 18 and balanced and longest = 4
+
+	An `also` line REPLACES the scenario's own lines for its seat (or side) - every `north:` line above, here -
+	and keeps the rest, so a deal is kept when the scenario's lines hold, or when any one alternative's do.
+	Several `also` lines with one name are one alternative. A deal kept ONLY by an alternative carries its name
+	on its card (`explain`, norn's `Contextual_Explain`), so the debatable deals are marked rather than either
+	shut out or passed off as textbook, and `check` counts what each alternative adds. Too wide beats too
+	narrow: a hand someone would open and the scenario refuses leaves no trace, one they would not is skipped.
 
 	A DOUBLE-DUMMY LINE asks the solver about the WHOLE deal, after the seat lines have accepted it:
 
@@ -217,11 +233,13 @@ Double_Dummy :: struct {
 
 // One seat's condition: which seat, and the root of its tree. With `pair` set it is a PARTNERSHIP line —
 // `seat` and its partner read as one combined hand — and `seat` is then North or East, the first word of
-// `north-south` / `east-west`.
+// `north-south` / `east-west`. `also` is 0 for the scenario's own lines and k for a line of its k-th
+// ALTERNATIVE (`Program.alternatives[k - 1]`).
 Seat_Rule :: struct {
 	seat: norn.Seat,
 	pair: bool,
 	root: int,
+	also: int,
 }
 
 /*
@@ -234,6 +252,10 @@ as soon as it is parsed and a scenario lives for the whole run; `allocator` is r
 Program :: struct {
 	name:         string,
 	description:  string,
+	// The bidding system whose meanings the scenario uses (`system: 2over1`), "" for none: a hand type or a
+	// partnership total that any system shares. The workbench's system picker shows a scenario under its
+	// own system and, with "" here, under every one.
+	system:       string,
 	tags:         []string,
 	rules:        []Seat_Rule,
 	nodes:        []Node,
@@ -243,6 +265,8 @@ Program :: struct {
 	dealer:        Maybe(norn.Seat),
 	vulnerability: Maybe(norn.Vulnerability),
 	reads_table:   bool,
+	// The names of the scenario's ALTERNATIVES (`also "<name>" <seat>: ...`), in the order they first appear.
+	alternatives:  []string,
 	source:       string, // the file it came from, for diagnostics and for the UI to show
 	allocator:    runtime.Allocator,
 }
@@ -250,6 +274,7 @@ Program :: struct {
 destroy_program :: proc(program: ^Program) {
 	delete(program.name, program.allocator)
 	delete(program.description, program.allocator)
+	delete(program.system, program.allocator)
 	for tag in program.tags {
 		delete(tag, program.allocator)
 	}
@@ -262,6 +287,10 @@ destroy_program :: proc(program: ^Program) {
 	}
 	delete(program.nodes, program.allocator)
 	delete(program.rules, program.allocator)
+	for name in program.alternatives {
+		delete(name, program.allocator)
+	}
+	delete(program.alternatives, program.allocator)
 	delete(program.source, program.allocator)
 	program^ = {}
 }
@@ -373,6 +402,9 @@ condition :: proc(program: ^Program) -> norn.Condition {
 	predicate := norn.Interpreted_Predicate {
 		call = evaluate,
 		data = program,
+	}
+	if len(program.alternatives) > 0 {
+		predicate.explain = explain // a deal only an alternative kept is labelled with its name
 	}
 	if program.reads_table {
 		predicate.table = norn.Table_Draw {

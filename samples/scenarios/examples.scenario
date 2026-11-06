@@ -14,11 +14,14 @@
 # seat (1 = the dealer) and vulnerable / favourable / unfavourable read the table each deal is
 # dealt at; dealer: and vulnerability: lines fix it instead.
 # A double-dummy: line keeps only deals the solver says a side really makes (slower).
+# An also line is a named alternative: it replaces the scenario's own lines for its seat, and a
+# deal only it lets in shows the name on its board.
 
 scenario example-1nt-major "1NT 15-17; responder has a four-card major and 8+ points"
   tags: examples
   north: hcp in 15..17 and balanced
   south: hcp >= 8 and (spades = 4 or hearts = 4)
+  also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
 
 scenario example-weak-two "a weak two in hearts opposite an opening hand"
   tags: examples

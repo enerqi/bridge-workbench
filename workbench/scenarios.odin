@@ -657,7 +657,9 @@ save_scenario_file :: proc(app: ^App) -> (ok: bool, why: string) {
 	draw_scenario_files(app) // the dirty dot goes
 	// SAVING PUTS IT IN THE DEALS LIST. It used to stop at the file and say "press reload", which was how
 	// somebody generated the previous version of a scenario, or looked for a new one that was not there.
-	return true, fmt.tprintf("saved · %s", update_deals_list(app))
+	said := update_deals_list(app)
+	reveal_opt_in_groups(app, path) // a guide is hidden until its group is picked; this one was just saved
+	return true, fmt.tprintf("saved · %s", said)
 }
 
 /*
@@ -842,6 +844,13 @@ NEW_SCENARIO_TEMPLATE :: `# A scenario is a name, a description, and one line pe
 # A double-dummy: line keeps only deals the solver says a side really makes, and puts each
 # kept deal's par on its page (slower - every deal the seat lines accept is solved):
 #   double-dummy: north-south make slam        (or game, or grand; north-south or east-west)
+#
+# An also line is a named alternative: it replaces the scenario's own lines for its seat,
+# and a deal only it lets in shows its name on the board:
+#   also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
+#
+# A system: line says whose meanings the scenario uses (system: 2over1). The deals list
+# shows one system at a time; a scenario without one is shown under every system.
 #
 # It is checked as you type: the report says what it means and how often it happens.
 # save writes the file and makes it a scenario in the deals list.
@@ -1219,9 +1228,13 @@ check_report :: proc(
 
 // Measure one scenario over `CHECK_TRIALS` deals and say what came back, in the terms the question is
 // actually asked in: a percentage is unreadable at these rates, so the useful form is "one deal in N".
+//
+// With ALTERNATIVES it also says what each adds, as a share of the deals kept: "14 upgraded" letting in a
+// fifth of the page is a different scenario from one letting in one deal in fifty.
 write_frequency :: proc(b: ^strings.Builder, program: ^scenario_dsl.Program) {
 	condition := scenario_dsl.condition(program) // with its table, when it reads one
-	hits := norn.count_accepted_seeded(CHECK_TRIALS, condition, CHECK_SEED)
+	labels := make(map[string]int, context.temp_allocator)
+	hits := norn.count_accepted_seeded(CHECK_TRIALS, condition, CHECK_SEED, labels = &labels)
 	switch {
 	case hits == 0:
 		fmt.sbprintf(b, "  happens: not once in %d deals — too tight to generate as it stands\n", CHECK_TRIALS)
@@ -1234,6 +1247,18 @@ write_frequency :: proc(b: ^strings.Builder, program: ^scenario_dsl.Program) {
 			100.0 * f64(hits) / f64(CHECK_TRIALS),
 			CHECK_TRIALS / hits,
 		)
+	}
+	if len(program.alternatives) == 0 {
+		return
+	}
+	fmt.sbprintf(b, "    its own lines: %d\n", labels[""])
+	for name in program.alternatives {
+		added := labels[name]
+		if added == 0 {
+			fmt.sbprintf(b, "    also %q: adds none — it lets in nothing the rest does not\n", name)
+			continue
+		}
+		fmt.sbprintf(b, "    also %q: adds %d (%.0f%% of the deals kept)\n", name, added, 100.0 * f64(added) / f64(hits))
 	}
 }
 
@@ -1270,11 +1295,13 @@ scenario_words :: proc(app: ^App) {
 		`A scenario file holds one or more scenarios:
 
     scenario <name> "<description>"
+      system: <name>                whose meanings it uses; none = any system's
       tags: <name>, <name>          groups it appears in, in the picker
       <seat>: <condition>           north / east / south / west
       <side>: <condition>           north-south / east-west
       dealer: <seat>                who deals every board (else drawn per deal)
       vulnerability: <who>          none / north-south / east-west / both
+      also "<name>" <seat>: <cond>  an alternative, named on the deals it lets in
 
 The lines AND together. Within a condition:
 
@@ -1312,6 +1339,15 @@ declaring. Every deal the seat lines accept is solved, so let them do the
 narrowing. One per scenario.
 
     double-dummy: north-south make slam      (game | slam | grand)
+
+ALTERNATIVES let in the hands some players would count and others would
+not, and say so on each one. An also line REPLACES the scenario's own lines
+for its seat and keeps the rest; a deal only an alternative kept carries
+its name on its board, so it can be skipped knowingly. Lines sharing a name
+are one alternative. check counts what each one adds.
+
+    north: hcp in 15..17 and balanced
+    also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
 
 `,
 	)

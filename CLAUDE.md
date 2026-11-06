@@ -108,10 +108,16 @@ current names first, and the workbench filter matches it). The id notation is do
 `bidding/scenarios.odin`: `1hs`/`1cd` for either major/minor, `opp-` before the opponents' calls (no brackets:
 `(` is syntax in nu and bash), `_` before the hand being practised (`1n_two-suiter`). Hook keys in `sim_hooks`
 must be CURRENT ids (a former one fails `validate_gen_hooks`). Pages generated before the rename keep their old
-file names, so regenerate the deals folder after it. The system axis of the tags is `any-system` (hand types,
-partnership totals, the opponents' auctions) vs `swedish-club` (everything that commits to a meaning of ours,
-including the 1NT/2NT/1M/weak-two auctions, whose ranges are WSC's); it is meant to become a `system` field -
-plan in `TODO-scenario-create-select-filter.md` ("scenarios belong to a SYSTEM").
+file names, so regenerate the deals folder after it. A scenario's SYSTEM is a field, not a tag (2026-11-05):
+`bidding/tags.odin`'s `taggings` carry `system` ("" = none: hand types, partnership totals, the opponents'
+auctions; `swedish-club` = everything that commits to a meaning of ours, including the 1NT/2NT/1M/weak-two
+auctions, whose ranges are WSC's), and a `.scenario` file says `system: <name>`. The deals list has a SYSTEM
+PICKER above the filter (`draw_system_picker`, remembered as `scenarios.system`): a system shows its own
+scenarios plus those of none, and under "every system" a row of a system carries its badge (`WSC`). The picker
+redraws its whole `<select>`: options set into a live one are not chosen by its value. The group `guide` is OPT-IN
+(`OPT_IN_GROUPS`): a scenario carrying it is hidden until that group is picked, the one exception to "no group
+selected means all of them"; saving a guide file picks it. Plan in
+`TODO-scenario-create-select-filter.md` ("scenarios belong to a SYSTEM").
 
 Local packages:
 

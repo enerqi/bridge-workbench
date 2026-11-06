@@ -149,6 +149,12 @@ App :: struct {
 	// that looks broken. Both narrowing controls start empty and say so.
 	tag_on:             []bool,
 
+	// THE SYSTEMS the list can be set to (the compiled ones, then any a `.scenario` file names), and the one it
+	// IS set to, "" for every system. Unlike the groups this one IS remembered (`SCENARIO_SYSTEM_PREF`): a
+	// system is picked once, like a profile, and a 2/1 player should not have to say so at every start.
+	systems:            []System_Entry,
+	system:             string,
+
 	// Shared with the worker. `post_callback` says THAT something changed; the lock is what makes it safe
 	// to read WHAT.
 	mutex:              sync.Mutex,
@@ -6643,7 +6649,7 @@ visible_scenarios :: proc(app: ^App, allocator := context.allocator) -> []int {
 	wanted := selected_tag_names(app, context.temp_allocator)
 	if outline.is_blank_query(query) {
 		for _, i in app.scenarios {
-			if in_selected_groups(app, i, wanted) {
+			if in_current_system(app, i) && in_selected_groups(app, i, wanted) {
 				append(&shown, i)
 			}
 		}
@@ -6653,8 +6659,8 @@ visible_scenarios :: proc(app: ^App, allocator := context.allocator) -> []int {
 	trimmed := strings.trim_space(query)
 	matches := make([dynamic]Scenario_Match, 0, len(app.scenarios), context.temp_allocator)
 	for scenario, i in app.scenarios {
-		if !in_selected_groups(app, i, wanted) {
-			continue // the groups decide WHICH scenarios are in play; the query only ranks them
+		if !in_current_system(app, i) || !in_selected_groups(app, i, wanted) {
+			continue // the system and the groups decide WHICH scenarios are in play; the query only ranks them
 		}
 		// The id, then the label, then the id before the rename: all three NAME the scenario. The label
 		// is what `two suiter` meets; `1h` already meets the id (`1hs`), since the label's glyphs are not
@@ -6753,6 +6759,7 @@ load_user_scenarios :: proc(app: ^App) {
 	app.scenarios = registry[:]
 
 	build_groups(app)
+	build_systems(app)
 }
 
 // Startup's first two reads, IN THIS ORDER and in one place so a test can hold them to it: the prefs file,
@@ -6808,6 +6815,28 @@ Group :: struct {
 	name:        string,
 	description: string,
 	from_files:  bool,
+	opt_in:      bool, // shown only when picked: see `OPT_IN_GROUPS`
+}
+
+/*
+GROUPS A SCENARIO IS HIDDEN BY until somebody asks for them.
+
+`guide` is the worked examples shipped as scenario files: a second system's auctions written to show the
+language, several restating a built-in scenario. Useful when you go looking for them and noise in a list
+you are practising from, so a scenario tagged `guide` is left out of the list until the group is picked
+(`in_selected_groups`) - the one exception to "no group selected means all of them". Typing in the filter does
+not bring one back: the filter narrows what the groups leave. Saving a guide file in the scenario editor
+picks the group, so what was saved can be seen (`reveal_opt_in_groups`).
+*/
+OPT_IN_GROUPS := []bidding.Tag{{"guide", "worked examples of the scenario language - shown only when picked"}}
+
+is_opt_in_group :: proc(name: string) -> bool {
+	for group in OPT_IN_GROUPS {
+		if group.name == name {
+			return true
+		}
+	}
+	return false
 }
 
 /*
@@ -6833,7 +6862,13 @@ build_groups :: proc(app: ^App) {
 				}
 			}
 			if !known {
-				append(&groups, Group{name = tag, description = "from your scenario files", from_files = true})
+				group := Group{name = tag, description = "from your scenario files", from_files = true}
+				for opt_in in OPT_IN_GROUPS {
+					if opt_in.name == tag {
+						group.description, group.opt_in = opt_in.description, true
+					}
+				}
+				append(&groups, group)
 			}
 		}
 	}
@@ -6876,11 +6911,19 @@ scenario_groups :: proc(app: ^App, index: int) -> []string {
 
 // Does this scenario carry any of the selected groups? The OR in "the groups widen": an empty selection
 // is not a filter at all, which is what makes "no group" mean "all of them".
+//
+// AN OPT-IN GROUP (`guide`) is the one exception to "no group means all of them": a scenario carrying one is
+// shown only while that group is selected, whatever else is.
 in_selected_groups :: proc(app: ^App, index: int, wanted: []string) -> bool {
+	carried := scenario_groups(app, index)
+	for tag in carried {
+		if is_opt_in_group(tag) && !slice.contains(wanted, tag) {
+			return false
+		}
+	}
 	if len(wanted) == 0 {
 		return true
 	}
-	carried := scenario_groups(app, index)
 	for want in wanted {
 		for tag in carried {
 			if tag == want {
@@ -6889,6 +6932,191 @@ in_selected_groups :: proc(app: ^App, index: int, wanted: []string) -> bool {
 		}
 	}
 	return false
+}
+
+/*
+THE SYSTEM PICKER: whose meanings the list shows.
+
+A scenario belongs to one system or to none. None is a hand type, a partnership total or the opponents'
+bidding - true whatever you play - and it is shown under every system. The rest are shown only under their
+own system, and when the list is set to every system a row from one says which with a badge (`WSC`), because
+the auction alone does not: `1♥/♠ – 1NT` is a different hand in each.
+
+NOT A GROUP. The groups are topics and combine with OR; a system is one choice for the whole list, and a
+2/1 player who could tick `swedish-club` and `competitive` together would be shown the other system's
+auctions by accident. So it is a dropdown of its own, above the filter, and it is remembered.
+*/
+System_Entry :: struct {
+	name:        string,
+	badge:       string,
+	description: string,
+	from_files:  bool,
+}
+
+SCENARIO_SYSTEM_PREF :: "scenarios.system"
+
+// The compiled systems, then each new system a loaded scenario names, in the order first seen. The strings
+// are borrowed (from `bidding.systems` and `app.loaded`), so only the slice is ours. A remembered system
+// nothing defines any more (its files have gone) puts the list back to every system.
+build_systems :: proc(app: ^App) {
+	systems := make([dynamic]System_Entry, 0, len(bidding.systems) + 2, app.allocator)
+	for system in bidding.systems {
+		append(&systems, System_Entry{name = system.name, badge = system.badge, description = system.description})
+	}
+	for program in app.loaded.programs {
+		if program.system == "" {
+			continue
+		}
+		known := false
+		for existing in systems {
+			known ||= existing.name == program.system
+		}
+		if !known {
+			append(
+				&systems,
+				System_Entry {
+					name = program.system,
+					badge = program.system,
+					description = "from your scenario files",
+					from_files = true,
+				},
+			)
+		}
+	}
+	if app.systems != nil {
+		delete(app.systems, app.allocator)
+	}
+	app.systems = systems[:]
+
+	wanted := app.system
+	if wanted == "" && app.prefs.values != nil {
+		wanted, _ = prefs.get(&app.prefs, SCENARIO_SYSTEM_PREF)
+	}
+	set_system_name(app, wanted if system_entry(app, wanted) != nil else "")
+}
+
+// The entry for a system's name, or nil.
+system_entry :: proc(app: ^App, name: string) -> ^System_Entry {
+	for &entry in app.systems {
+		if entry.name == name {
+			return &entry
+		}
+	}
+	return nil
+}
+
+@(private = "file")
+set_system_name :: proc(app: ^App, name: string) {
+	if name == app.system {
+		return
+	}
+	if app.system != "" {
+		delete(app.system, app.allocator)
+	}
+	app.system = strings.clone(name, app.allocator) if name != "" else ""
+}
+
+// The system a scenario belongs to, BY INDEX into `app.scenarios` (a loaded scenario may share a name with
+// a compiled one; see `scenario_groups`). "" for none.
+scenario_system :: proc(app: ^App, index: int) -> string {
+	compiled := len(bidding.registry)
+	if index >= compiled {
+		loaded_at := index - compiled
+		if loaded_at < len(app.loaded.programs) {
+			return app.loaded.programs[loaded_at].system
+		}
+		return ""
+	}
+	if index < 0 || index >= len(app.scenarios) {
+		return ""
+	}
+	return bidding.system_for(app.scenarios[index].name)
+}
+
+// Is this scenario in the list's system? Always, for a scenario of no system or a list set to every system.
+in_current_system :: proc(app: ^App, index: int) -> bool {
+	if app.system == "" {
+		return true
+	}
+	system := scenario_system(app, index)
+	return system == "" || system == app.system
+}
+
+// The badge a row carries: its system's, when the list is not already set to that system.
+scenario_badge :: proc(app: ^App, index: int) -> string {
+	system := scenario_system(app, index)
+	if system == "" || system == app.system {
+		return ""
+	}
+	if entry := system_entry(app, system); entry != nil {
+		return entry.badge
+	}
+	return system
+}
+
+// The dropdown, from `app.systems`, with the current one chosen. THE WHOLE `<select>` IS REDRAWN, not its
+// options: the engine's dropdown behaviour takes its options in when it attaches, and options set into a live
+// one afterwards are not chosen by its value (measured: the value read back empty).
+draw_system_picker :: proc(app: ^App) {
+	row := find(app, "#scenario-system-row")
+	if row == nil {
+		return
+	}
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, SYSTEM_PICKER_HEAD)
+	fmt.sbprintf(&b, `<option value=""%s>every system</option>`, " selected" if app.system == "" else "")
+	for entry in app.systems {
+		fmt.sbprintf(
+			&b,
+			`<option value="%s" title="%s"%s>%s</option>`,
+			escape_html(entry.name, context.temp_allocator),
+			escape_html(entry.description, context.temp_allocator),
+			" selected" if entry.name == app.system else "",
+			escape_html(entry.name, context.temp_allocator),
+		)
+	}
+	strings.write_string(&b, `</select>`)
+	sa.set_html(row, strings.to_string(b))
+}
+
+// The picker's label and opening tag; the hint is the markup's, kept here because the row is redrawn whole.
+SYSTEM_PICKER_HEAD :: `<label for="scenario-system" class="side-label">system</label><select id="scenario-system" title="Whose meanings of the auctions the list shows" data-hint="Which bidding system's scenarios the list shows. The same auction means different hands in different systems, so a scenario that commits to a meaning belongs to one; hand types and the opponents' bidding belong to none and are always shown. A scenario file names its system with a system: line.">`
+
+// The dropdown changed (or a test says it did): set the list's system, remember it, redraw the list.
+choose_system :: proc(app: ^App, name: string) {
+	set_system_name(app, name if system_entry(app, name) != nil else "")
+	if app.prefs.values != nil {
+		prefs.set(&app.prefs, SCENARIO_SYSTEM_PREF, app.system)
+		if app.prefs_path != "" {
+			_ = prefs.save(&app.prefs, app.prefs_path)
+		}
+	}
+	filter_scenarios(app)
+}
+
+// Pick every opt-in group a scenario in the file at `path` carries, so a guide just saved is on the list.
+// Run after the list was rebuilt from the folders; a no-op for any other file.
+reveal_opt_in_groups :: proc(app: ^App, path: string) {
+	changed := false
+	for program in app.loaded.programs {
+		if !same_dir(program.source, path) {
+			continue
+		}
+		for tag in program.tags {
+			if !is_opt_in_group(tag) {
+				continue
+			}
+			for group, i in app.groups {
+				if group.name == tag && i < len(app.tag_on) && !app.tag_on[i] {
+					app.tag_on[i] = true
+					changed = true
+				}
+			}
+		}
+	}
+	if changed {
+		render_groups(app)
+	}
 }
 
 // The names of the selected groups, for `in_selected_groups`. Empty when nothing is selected, which is
@@ -6929,6 +7157,7 @@ toggle_tag :: proc(app: ^App, index: int) {
 // they filter (which also repairs the selection). Every change to `tag_on` ends here, so no caller can redraw
 // two of the three and leave the third showing the old groups.
 render_groups :: proc(app: ^App) {
+	draw_system_picker(app)
 	draw_tag_chips(app)
 	draw_tag_picker(app)
 	filter_scenarios(app)
@@ -7971,6 +8200,15 @@ draw_scenarios :: proc(app: ^App) {
 		if scenario.label != "" && scenario.label != scenario.name {
 			id = fmt.tprintf(`<span class="id">%s</span>`, escape_html(scenario.name, context.temp_allocator))
 		}
+		// WHOSE MEANINGS, when the list is not set to that system: the auction alone does not say.
+		if badge := scenario_badge(app, i); badge != "" {
+			id = fmt.tprintf(
+				`<span class="sys" title="Uses the meanings of the system %s">%s</span>%s`,
+				escape_html(scenario_system(app, i), context.temp_allocator),
+				escape_html(badge, context.temp_allocator),
+				id,
+			)
+		}
 		fmt.sbprintf(
 			&b,
 			`<div class="row %s" data-index="%d"><span class="name"><span class="label">%s</span>%s%s</span><span class="title">%s</span><span class="have">%s</span></div>`,
@@ -8471,6 +8709,13 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		if id == "format" {
 			refresh_generate_label(app) // `regenerate` is per format
 			return false
+		}
+		// A `<select>` reports SELECTION_CHANGED, as `#format` does, so this sits before the VALUE_CHANGED gate.
+		if id == "scenario-system" {
+			if read_text(app, "#scenario-system") != app.system {
+				choose_system(app, read_text(app, "#scenario-system"))
+			}
+			return true
 		}
 		if be.code != .VALUE_CHANGED {
 			return false
@@ -9382,7 +9627,10 @@ main :: proc() {
 	// the first frame, so a window opened on a folder from an earlier session says what is in it rather
 	// than looking empty until something is pressed.
 	scan_outputs(app)
-	draw_scenarios(app)
+	// THROUGH THE FILTER, not a bare draw: a remembered system can hide the first scenario, and the filter is
+	// what moves the selection onto one the list shows.
+	draw_system_picker(app)
+	filter_scenarios(app)
 	draw_scenario_scope(app)
 	note_selected_page(app)
 	// The opening view. Said out loud rather than left implicit: the panes are what the stylesheet shows,
@@ -9457,6 +9705,10 @@ main :: proc() {
 	delete(app.scn_dir, app.allocator)
 	delete(app.tag_on, app.allocator)
 	delete(app.groups, app.allocator)
+	delete(app.systems, app.allocator)
+	if app.system != "" {
+		delete(app.system, app.allocator)
+	}
 	// The loaded scenarios own the PROGRAMS the interpreted conditions point into, so this frees the
 	// trees as well as the list. `app.scenarios` is the concatenation and owns nothing itself — and the
 	// order is the registry first, since its conditions point into what the next line frees.

@@ -912,6 +912,192 @@ test_a_table_condition_agrees_with_the_compiled_one :: proc(t: ^testing.T) {
 	testing.expectf(t, accepted > 0, "never accepted anything - the oracle proves nothing")
 }
 
+// ---- alternatives: what a scenario lets in beyond its definition, and why ---------------------------
+
+@(private = "file")
+ALTERNATIVES_SOURCE :: `scenario 1nt "1NT 15-17, and the hands some would open 1NT anyway"
+  north: hcp in 15..17 and balanced
+  south: hcp >= 8
+  also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
+  also "a weak responder" south: hcp in 6..7
+  also "a weak responder" north: hcp = 17 and balanced
+`
+
+// The same scenario in Odin: which way each deal is kept, the core first.
+@(private = "file")
+compiled_1nt_why :: proc(b: norn.Deal_Summary) -> (kept: bool, why: string) {
+	north, south := b[.North], b[.South]
+	n_hcp, s_hcp := norn.hcp(north), norn.hcp(south)
+	flat := norn.is_balanced(north)
+	longest := 0
+	for suit in norn.Suit {
+		longest = max(longest, norn.suit_length(north, suit))
+	}
+	switch {
+	case n_hcp >= 15 && n_hcp <= 17 && flat && s_hcp >= 8:
+		return true, ""
+	case n_hcp == 14 && flat && longest == 5 && s_hcp >= 8:
+		return true, "14, five-card suit"
+	case n_hcp == 17 && flat && s_hcp >= 6 && s_hcp <= 7:
+		return true, "a weak responder"
+	}
+	return false, ""
+}
+
+/*
+★ AN ALTERNATIVE REPLACES ITS SEAT'S LINES AND KEEPS THE REST, and the deal says which way it got in: every verdict
+and every reason compared with the Odin above, over a seeded stream. The second alternative has two lines, so it
+replaces BOTH seats' lines.
+*/
+@(test)
+test_an_alternative_loosens_its_seat_and_names_the_deal :: proc(t: ^testing.T) {
+	program, ok := parse_one(t, ALTERNATIVES_SOURCE)
+	if !ok {return}
+	defer destroy_program(&program)
+	testing.expect_value(t, len(program.alternatives), 2)
+	testing.expect_value(t, write_program(&program, context.temp_allocator), ALTERNATIVES_SOURCE)
+
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 20261105)
+	disagreements := 0
+	by_why: map[string]int
+	defer delete(by_why)
+	for _ in 0 ..< 60_000 {
+		summary := norn.summarize_deal(norn.deal_hands())
+		want, want_why := compiled_1nt_why(summary)
+		got := evaluate(summary, {}, &program)
+		got_why := explain(summary, {}, &program) if got else ""
+		if got != want || got_why != want_why {
+			disagreements += 1
+		}
+		if got {
+			by_why[got_why] += 1
+		}
+	}
+	testing.expectf(t, disagreements == 0, "%d deals where text and code disagreed", disagreements)
+	for why in ([]string{"", "14, five-card suit", "a weak responder"}) {
+		testing.expectf(t, by_why[why] > 0, "%q never kept a deal - the oracle proves nothing about it", why)
+	}
+
+	// norn asks the same question through the condition, and counts by it.
+	labels := make(map[string]int, context.temp_allocator)
+	kept := norn.count_accepted_seeded(20_000, condition(&program), 3, labels = &labels)
+	testing.expect_value(t, labels[""] + labels["14, five-card suit"] + labels["a weak responder"], kept)
+
+	// A scenario without alternatives has nothing to explain, so norn never asks.
+	plain, plain_ok := parse_one(t, "scenario x\n  north: hcp >= 10\n")
+	if plain_ok {
+		predicate := condition(&plain).(norn.Interpreted_Predicate)
+		testing.expect(t, predicate.explain == nil, "no alternatives, no explain")
+		destroy_program(&plain)
+	}
+}
+
+// A malformed `also` line is one diagnostic, at the part that is wrong, and the rest of the scenario stands.
+@(test)
+test_a_bad_alternative_is_one_diagnostic :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	cases := []struct {
+		line: string,
+		says: string,
+	} {
+		{`  also north: hcp = 14`, "in quotes"},
+		{`  also "" north: hcp = 14`, "needs a name"},
+		{`  also "open" north: hcp = 14`, ""}, // fine: the control
+		{`  also "14 north: hcp = 14`, "closing quote"},
+		{`  also "a name far too long to sit on the board beside the hands" north: hcp = 14`, "40 characters"},
+		{`  also "upgrade" east: hcp = 14`, "none above it"},
+		{`  also "upgrade" tags: x`, "seat or partnership"},
+		{`  also "upgrade" north hcp = 14`, "in quotes"},
+		{`  also "upgrade" north: hcp = 14 balanced`, "unexpected"},
+		{`  also "upgrade" north-south: hcp >= 25`, "none above it"},
+	}
+	for c in cases {
+		source := strings.concatenate({"scenario x\n  north: hcp in 15..17\n", c.line, "\n"}, context.temp_allocator)
+		programs, diagnostics := parse(source, "f.scenario", context.temp_allocator)
+		testing.expectf(t, len(programs) == 1, "%q lost the scenario", c.line)
+		if c.says == "" {
+			testing.expectf(t, len(diagnostics) == 0, "%q: unexpected %v", c.line, diagnostics)
+		} else {
+			testing.expectf(
+				t,
+				len(diagnostics) == 1 && strings.contains(diagnostics[0].message, c.says),
+				"%q: %v",
+				c.line,
+				diagnostics,
+			)
+		}
+		for &program in programs {
+			destroy_program(&program)
+		}
+	}
+}
+
+// `system:` names whose meanings a scenario uses: one word, one line, printed back where it was read.
+@(test)
+test_a_scenario_names_its_system :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	source := "scenario 1m-1n \"1M - 1NT, semi-forcing\"\n  system: 2over1\n  tags: mine\n  north: hcp in 11..21\n"
+	program, ok := parse_one(t, source)
+	if !ok {return}
+	defer destroy_program(&program)
+	testing.expect_value(t, program.system, "2over1")
+	testing.expect_value(t, write_program(&program, context.temp_allocator), source)
+
+	cases := []struct {
+		line: string,
+		says: string,
+	} {
+		{`  system: swedish-club`, ""},
+		{`  system: 2/1 GF`, "one word"},
+		{`  system:`, "one word"},
+		{`  system: -x`, "one word"},
+	}
+	for c in cases {
+		text := strings.concatenate({"scenario x\n", c.line, "\n  north: hcp in 15..17\n"}, context.temp_allocator)
+		programs, diagnostics := parse(text, "f.scenario", context.temp_allocator)
+		testing.expectf(t, len(programs) == 1, "%q lost the scenario", c.line)
+		if c.says == "" {
+			testing.expectf(t, len(diagnostics) == 0, "%q: unexpected %v", c.line, diagnostics)
+		} else {
+			testing.expectf(
+				t,
+				len(diagnostics) == 1 && strings.contains(diagnostics[0].message, c.says),
+				"%q: %v",
+				c.line,
+				diagnostics,
+			)
+		}
+		for &parsed in programs {
+			destroy_program(&parsed)
+		}
+	}
+	// Two lines are one too many.
+	twice := "scenario x\n  system: a\n  system: b\n  north: hcp >= 1\n"
+	programs, diagnostics := parse(twice, "f.scenario", context.temp_allocator)
+	testing.expect(t, len(diagnostics) == 1 && strings.contains(diagnostics[0].message, "one `system:`"))
+	for &parsed in programs {
+		destroy_program(&parsed)
+	}
+}
+
+// A deal only an alternative kept carries the alternative's name on its card; a deal the scenario's own lines
+// kept carries none.
+@(test)
+test_an_alternative_is_named_on_the_card :: proc(t: ^testing.T) {
+	program, ok := parse_one(t, "scenario x\n  north: hcp >= 18\n  also \"17 & up\" north: hcp = 17\n")
+	if !ok {return}
+	defer destroy_program(&program)
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 9)
+	page := strings.builder_make(context.temp_allocator)
+	norn.generate_accepted(&page, 30, .Html_Cards, condition(&program), 2_000_000)
+	text := strings.to_string(page)
+	marked := strings.count(text, `<div class="why"`)
+	testing.expectf(t, marked > 0 && marked < 30, "%d of 30 boards marked", marked)
+	testing.expect(t, strings.contains(text, ">17 &amp; up</div>"), "the name is on the card, escaped")
+}
+
 // And through generation: every kept deal is at a table the condition accepts, and a fixed dealer deals them
 // all. Counted with norn's own generator, so the table the deal is SHOWN at is the one that was checked.
 @(test)

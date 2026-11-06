@@ -179,6 +179,10 @@ test_app_destroy :: proc(app: ^App, loc := #caller_location) {
 	strings.builder_destroy(&app.transcript)
 	delete(app.tag_on, app.allocator)
 	delete(app.groups, app.allocator)
+	delete(app.systems, app.allocator)
+	if app.system != "" {
+		delete(app.system, app.allocator)
+	}
 	scenario_dsl.destroy_loaded(&app.loaded, app.allocator)
 	delete(app.scenarios, app.allocator)
 	for directory in app.scenario_dirs {
@@ -1095,7 +1099,7 @@ test_a_group_narrows_the_list_and_composes_with_the_filter :: proc(t: ^testing.T
 	pump(&app)
 	testing.expect_value(t, len(visible_scenarios(&app, context.temp_allocator)), len(app.scenarios))
 
-	club, found := tag_index("swedish-club")
+	club, found := tag_index("competitive")
 	if !found {
 		return
 	}
@@ -1106,21 +1110,21 @@ test_a_group_narrows_the_list_and_composes_with_the_filter :: proc(t: ^testing.T
 	for index in grouped {
 		testing.expectf(
 			t,
-			bidding.has_any_tag(app.scenarios[index].name, {"swedish-club"}),
-			"%q is shown under swedish-club but does not carry it",
+			bidding.has_any_tag(app.scenarios[index].name, {"competitive"}),
+			"%q is shown under competitive but does not carry it",
 			app.scenarios[index].name,
 		)
 	}
 	testing.expect_value(t, len(scenario_row_elements(&app)), len(grouped))
 
 	// And typing narrows THAT, rather than starting again from the whole registry.
-	type_filter(&app, "1c")
+	type_filter(&app, "opp")
 	both := visible_scenarios(&app, context.temp_allocator)
 	testing.expect(t, len(both) <= len(grouped), "the query must narrow the group, not widen it")
 	for index in both {
 		testing.expectf(
 			t,
-			bidding.has_any_tag(app.scenarios[index].name, {"swedish-club"}),
+			bidding.has_any_tag(app.scenarios[index].name, {"competitive"}),
 			"%q survived the query but is outside the selected group",
 			app.scenarios[index].name,
 		)
@@ -1132,6 +1136,63 @@ test_a_group_narrows_the_list_and_composes_with_the_filter :: proc(t: ^testing.T
 	testing.expect(t, len(ungrouped) >= len(both), "dropping the group cannot lose rows")
 }
 
+// THE SYSTEM PICKER: a system shows its own scenarios plus those of no system, hides the other systems', and
+// a row from another system carries its badge only while the list shows every system.
+@(test)
+test_the_system_picker_shows_one_system_and_the_shared_set :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	testing.expect_value(t, app.system, "")
+	draw_system_picker(&app)
+	filter_scenarios(&app)
+	pump(&app)
+	everything := len(visible_scenarios(&app, context.temp_allocator))
+	testing.expect_value(t, everything, len(app.scenarios))
+	// Every system: the WSC rows say so.
+	badges, berr := sa.select_all(find(&app, "#scenarios"), ".row .sys", context.temp_allocator)
+	testing.expect_value(t, berr, nil)
+	club := 0
+	for scenario in app.scenarios {
+		if bidding.system_for(scenario.name) == "swedish-club" {
+			club += 1
+		}
+	}
+	testing.expect_value(t, len(badges), club)
+
+	// Set to the club through the dropdown's own value: every scenario still shown (they are all its or no
+	// system's), and no badges, since every row is the list's system or none.
+	set_input(&app, "#scenario-system", "swedish-club")
+	choose_system(&app, read_text(&app, "#scenario-system"))
+	pump(&app)
+	testing.expect_value(t, app.system, "swedish-club")
+	testing.expect_value(t, len(visible_scenarios(&app, context.temp_allocator)), everything)
+	badges, _ = sa.select_all(find(&app, "#scenarios"), ".row .sys", context.temp_allocator)
+	testing.expect_value(t, len(badges), 0)
+
+	// A system with none of the compiled scenarios (as a file's would be): only the shared set is left, and
+	// the selection moves onto a row the list shows.
+	more := make([]System_Entry, len(app.systems) + 1, app.allocator)
+	copy(more, app.systems)
+	more[len(app.systems)] = System_Entry{name = "2over1", badge = "2/1"}
+	delete(app.systems, app.allocator)
+	app.systems = more
+	choose_system(&app, "2over1")
+	shown := visible_scenarios(&app, context.temp_allocator)
+	testing.expect_value(t, len(shown), len(app.scenarios) - club)
+	for index in shown {
+		testing.expectf(t, scenario_system(&app, index) == "", "%q is not shared", app.scenarios[index].name)
+	}
+	testing.expect(t, slice.contains(shown, app.selected), "the selection must be a row the list shows")
+
+	// An unknown name is every system, not an empty list.
+	choose_system(&app, "no-such-system")
+	testing.expect_value(t, app.system, "")
+}
+
 // TWO GROUPS ARE A UNION, NOT AN INTERSECTION. The decision the whole control hangs off: intersected, two
 // groups would be a near-empty list nobody asked for.
 @(test)
@@ -1140,7 +1201,7 @@ test_two_groups_are_a_union :: proc(t: ^testing.T) {
 	if !test_app(t, &app) {return}
 	defer test_app_destroy(&app)
 
-	first, ok_first := tag_index("swedish-club")
+	first, ok_first := tag_index("slam")
 	second, ok_second := tag_index("competitive")
 	if !ok_first || !ok_second {
 		return
@@ -1182,7 +1243,7 @@ test_the_group_chips_appear_only_when_a_group_is_selected :: proc(t: ^testing.T)
 	pump(&app)
 	testing.expect(t, effective_display_is_hidden(&app, "#tagchips"), "no group selected, no chip row")
 
-	club, found := tag_index("swedish-club")
+	club, found := tag_index("competitive")
 	if !found {
 		return
 	}
@@ -7816,6 +7877,83 @@ concatenated registry, because a loaded scenario may share a name with a compile
 says which is meant. And the compiled groups keep their positions, because the picker's DIGITS are
 positions: `1` must not become a different group because a file appeared in a directory.
 */
+// A GUIDE IS HIDDEN UNTIL ITS GROUP IS PICKED: not shown with no group selected, not shown under another
+// group it also carries, not brought back by the filter; shown once `guide` is on. And saving a guide file
+// picks the group (`reveal_opt_in_groups`).
+@(test)
+test_a_guide_is_shown_only_when_its_group_is_picked :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	temp, temp_err := os.temp_directory(context.temp_allocator)
+	if temp_err != nil {return}
+	folder, join_err := filepath.join({temp, "workbench-scenario-guides"}, context.temp_allocator)
+	if join_err != nil {return}
+	_ = os.make_directory(folder)
+	defer os.remove_all(folder)
+	path, path_err := filepath.join({folder, "guides.scenario"}, context.temp_allocator)
+	if path_err != nil {return}
+	source := `scenario guide-slam "a worked example"
+  tags: guide, slam
+  north-south: hcp >= 33
+scenario plain-one "not a guide"
+  tags: slam
+  north: hcp >= 20
+`
+	if os.write_entire_file(path, transmute([]u8)source) != nil {return}
+
+	scenario_dsl.destroy_loaded(&app.loaded, app.allocator)
+	delete(app.scenarios, app.allocator)
+	scenario_dsl.set_vocabulary(bidding.vocabulary)
+	app.loaded = scenario_dsl.load_directories({folder}, app.allocator)
+	registry := make([dynamic]cli.Scenario, 0, len(bidding.registry) + len(app.loaded.scenarios), app.allocator)
+	append(&registry, ..bidding.registry)
+	append(&registry, ..app.loaded.scenarios)
+	app.scenarios = registry[:]
+	build_groups(&app)
+	if len(app.loaded.scenarios) != 2 {
+		testing.expect(t, false, "the scenario file did not load")
+		return
+	}
+	guide_index := len(bidding.registry) // the guide is the first loaded scenario
+	shows_guide := proc(app: ^App, index: int) -> bool {
+		return slice.contains(visible_scenarios(app, context.temp_allocator), index)
+	}
+
+	guide, slam := -1, -1
+	for group, i in app.groups {
+		if group.name == "guide" {guide = i}
+		if group.name == "slam" {slam = i}
+	}
+	if guide < 0 || slam < 0 {
+		testing.expect(t, false, "the guide and slam groups should both be listed")
+		return
+	}
+	testing.expect(t, app.groups[guide].opt_in, "`guide` is an opt-in group")
+
+	testing.expect(t, !shows_guide(&app, guide_index), "no group selected: the guide is hidden")
+	testing.expect(t, shows_guide(&app, guide_index + 1), "a plain file scenario is shown")
+	toggle_tag(&app, slam)
+	testing.expect(t, !shows_guide(&app, guide_index), "under slam alone the guide stays hidden")
+	type_filter(&app, "guide")
+	testing.expect(t, !shows_guide(&app, guide_index), "the filter does not bring it back")
+	type_filter(&app, "")
+	toggle_tag(&app, slam)
+	toggle_tag(&app, guide)
+	testing.expect(t, shows_guide(&app, guide_index), "with guide picked it is shown")
+	testing.expect(t, !shows_guide(&app, guide_index + 1), "and guide alone narrows to the guides")
+	testing.expect_value(t, tag_population(&app, "guide"), 1)
+
+	// Saving its file picks the group again.
+	toggle_tag(&app, guide)
+	reveal_opt_in_groups(&app, path)
+	testing.expect(t, app.tag_on[guide], "saving a guide picks `guide`")
+	testing.expect(t, shows_guide(&app, guide_index), "so the saved guide is on the list")
+}
+
 @(test)
 test_a_loaded_scenarios_tags_become_a_group :: proc(t: ^testing.T) {
 	app: App
@@ -11292,6 +11430,7 @@ test_snapshot_the_views :: proc(t: ^testing.T) {
 	defer sa.detach_window_handler(app.window, &app.handler)
 
 	show_view(&app, .Panes)
+	draw_system_picker(&app)
 	draw_scenarios(&app) // the rows and the title's count, as startup draws them
 	pump(&app)
 	snapshot_png("deals")
@@ -13325,6 +13464,52 @@ test_the_example_scenarios_parse_clean :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, strings.has_prefix(sample_notes[0].text, "#+TITLE:"), "the sample notes are a notes file")
+}
+
+// The guide scenarios parse clean, every one is a `guide` named `guide-...` (so no compiled scenario shadows it),
+// all but the no-system example are 2over1, and every built-in a comment names (`built-in \`x\``) exists.
+@(test)
+test_the_guide_scenarios_parse_clean :: proc(t: ^testing.T) {
+	scenario_dsl.set_vocabulary(bidding.vocabulary)
+	text := sample_scenarios[1].text
+	programs, diagnostics := scenario_dsl.parse(text, "guides.scenario", context.temp_allocator)
+	defer for &program in programs {
+		scenario_dsl.destroy_program(&program)
+	}
+	for diagnostic in diagnostics {
+		testing.expectf(t, false, "%s", scenario_dsl.diagnostic_text(diagnostic, context.temp_allocator))
+	}
+	testing.expect_value(t, len(programs), 9)
+	without_system := 0
+	for program in programs {
+		testing.expectf(t, strings.has_prefix(program.name, "guide-"), "%s should be named guide-...", program.name)
+		testing.expectf(t, slice.contains(program.tags, "guide"), "%s is not tagged guide", program.name)
+		if program.system == "" {
+			without_system += 1
+		} else {
+			testing.expectf(t, program.system == "2over1", "%s is in %q", program.name, program.system)
+		}
+	}
+	testing.expect_value(t, without_system, 1)
+
+	MARK :: "built-in `"
+	named := 0
+	rest := text
+	for {
+		at := strings.index(rest, MARK)
+		if at < 0 {
+			break
+		}
+		rest = rest[at + len(MARK):]
+		end := strings.index_byte(rest, '`')
+		if end < 0 {
+			break
+		}
+		_, known := cli.lookup(bidding.registry, rest[:end])
+		testing.expectf(t, known, "a comment names the built-in %q, which does not exist", rest[:end])
+		named += 1
+	}
+	testing.expect(t, named >= 5, "the guides should point at the built-ins they restate")
 }
 
 // THE GUIDE'S TWO COLUMNS KEEP THEIR SHARES on every example (reported 2026-10-31: the rendered side a word wide,
