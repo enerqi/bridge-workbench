@@ -850,7 +850,8 @@ NEW_SCENARIO_TEMPLATE :: `# A scenario is a name, a description, and one line pe
 #   also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
 #
 # A system: line says whose meanings the scenario uses (system: 2over1). The deals list
-# shows one system at a time; a scenario without one is shown under every system.
+# shows one system at a time; a scenario without one is shown under every system. A system
+# block names conditions its scenarios use by name - press words for systems and meanings.
 #
 # It is checked as you type: the report says what it means and how often it happens.
 # save writes the file and makes it a scenario in the deals list.
@@ -1042,6 +1043,28 @@ EVERY PROGRAM IS FREED before returning: a check is a measurement and owns nothi
 programs the REGISTRY points at are `app.loaded`'s, built by `reload_scenarios`, and are untouched by
 this — which is why pressing `check` cannot change what generate would run.
 */
+// The open file's path as the loader recorded it (its systems are keyed by it), or the joined path.
+loaded_path_of :: proc(app: ^App) -> string {
+	path, _ := filepath.join({app.scn_dir, app.scn_open}, context.temp_allocator)
+	for def in app.loaded.systems.defs {
+		if same_dir(def.file, path) {
+			return def.file
+		}
+	}
+	return path
+}
+
+// The system blocks the buffer defines, for the report (scratch).
+systems_in_file :: proc(systems: ^scenario_dsl.Systems, file: string) -> []scenario_dsl.System_Def {
+	found := make([dynamic]scenario_dsl.System_Def, 0, 2, context.temp_allocator)
+	for def in systems.defs {
+		if def.file == file {
+			append(&found, def)
+		}
+	}
+	return found[:]
+}
+
 check_scenario :: proc(app: ^App) {
 	text, got := scenario_source(app, context.temp_allocator)
 	if !got {
@@ -1056,7 +1079,16 @@ check_scenario :: proc(app: ^App) {
 	scenario_dsl.set_vocabulary(bidding.vocabulary)
 
 	file := app.scn_open if app.scn_open != "" else "the editor"
-	programs, diagnostics := scenario_dsl.parse(text, file, context.temp_allocator)
+	// THE SYSTEMS OF EVERY OTHER FILE, plus this buffer's own: a meaning used here may be defined elsewhere, and
+	// one defined here may have changed since the files were read. Read in the list's system, as the deals list is.
+	systems := scenario_dsl.systems_without_file(&app.loaded.systems, loaded_path_of(app), context.temp_allocator)
+	found := make([dynamic]scenario_dsl.Diagnostic, 0, 4, context.temp_allocator)
+	scenario_dsl.read_systems(text, file, &systems, &found)
+	scenario_dsl.check_systems(&systems, &found, only_file = file)
+	programs, parsed := scenario_dsl.parse(text, file, context.temp_allocator, &systems, app.system)
+	append(&found, ..parsed)
+	diagnostics := found[:]
+	app.scn_systems = systems_in_file(&systems, file)
 	defer {
 		for &program in programs {
 			scenario_dsl.destroy_program(&program)
@@ -1065,6 +1097,7 @@ check_scenario :: proc(app: ^App) {
 
 	marked := show_scenario_problems(app, diagnostics)
 	set_scenario_report(app, check_report(app, programs, diagnostics, context.temp_allocator))
+	app.scn_systems = nil // scratch: it lived for the report
 
 	switch {
 	case len(diagnostics) > 0 && len(programs) > 0:
@@ -1186,9 +1219,26 @@ check_report :: proc(
 ) -> string {
 	b := strings.builder_make(0, 1024, allocator)
 
-	if len(programs) == 0 && len(diagnostics) == 0 {
+	if len(programs) == 0 && len(diagnostics) == 0 && len(app.scn_systems) == 0 {
 		strings.write_string(&b, "nothing to check — this file holds no scenarios yet.\n")
 		return strings.to_string(b)
+	}
+
+	// THE SYSTEMS THIS FILE DEFINES, and their meanings by name.
+	for def in app.scn_systems {
+		fmt.sbprintf(&b, "system %s", def.name)
+		if def.parent != "" {
+			fmt.sbprintf(&b, " extends %s", def.parent)
+		}
+		fmt.sbprintf(&b, ": %d meaning%s", len(def.meanings), plural(len(def.meanings)))
+		for meaning, i in def.meanings {
+			strings.write_string(&b, ", " if i > 0 else " - ")
+			strings.write_string(&b, meaning.name)
+		}
+		strings.write_byte(&b, '\n')
+	}
+	if len(app.scn_systems) > 0 && len(programs) > 0 {
+		strings.write_byte(&b, '\n')
 	}
 
 	for &program, i in programs {
@@ -1196,6 +1246,7 @@ check_report :: proc(
 			strings.write_byte(&b, '\n')
 		}
 		scenario_dsl.write_program_into(&b, &program)
+		write_meanings_used(&b, &program)
 		write_frequency(&b, &program)
 	}
 
@@ -1224,6 +1275,27 @@ check_report :: proc(
 		}
 	}
 	return strings.to_string(b)
+}
+
+// WHERE EACH MEANING CAME FROM, so nobody argues with a definition they cannot see: "nt-opening from ours
+// (over 2over1)" when the list's system overrides the scenario's own.
+write_meanings_used :: proc(b: ^strings.Builder, program: ^scenario_dsl.Program) {
+	seen := make([dynamic]string, 0, 4, context.temp_allocator)
+	for node in program.nodes {
+		meaning, is := node.(scenario_dsl.Meaning_Node)
+		if !is || slice.contains(seen[:], meaning.name) {
+			continue
+		}
+		strings.write_string(b, "  meanings: " if len(seen) == 0 else ", ")
+		append(&seen, meaning.name)
+		fmt.sbprintf(b, "%s from %s", meaning.name, meaning.system)
+		if meaning.overrides != "" {
+			fmt.sbprintf(b, " (over %s)", meaning.overrides)
+		}
+	}
+	if len(seen) > 0 {
+		strings.write_byte(b, '\n')
+	}
 }
 
 // Measure one scenario over `CHECK_TRIALS` deals and say what came back, in the terms the question is
@@ -1348,6 +1420,23 @@ are one alternative. check counts what each one adds.
 
     north: hcp in 15..17 and balanced
     also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
+
+SYSTEMS AND MEANINGS. A file may also hold system blocks. A system names
+its MEANINGS - conditions written once - and its scenarios use them by
+name. A system may EXTEND another and override only what differs:
+
+    system 2over1 "2/1 game forcing"
+      meaning nt-opening: hcp in 15..17 and balanced
+    system ours extends 2over1 "2/1 as we play it"
+      meaning nt-opening: hcp in 14..16 and balanced
+
+    scenario my-1nt "1NT"
+      system: 2over1
+      north: nt-opening
+
+With the deals list set to ours, every 2over1 scenario is listed under it
+and reads ours' meanings; check says where each one came from. A meaning
+may use other meanings, and the systems may be in any of your files.
 
 `,
 	)

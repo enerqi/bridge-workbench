@@ -1857,6 +1857,17 @@
     // A comment is the whole line: the parser strips from `#` to the end, and so does this.
     if (/^\s*#/.test(text)) { bmlMark(el, 0, text.length, "scn-comment"); return; }
 
+    // `system 2over1 extends ... "..."`: a system block's header (not a scenario's `system:` line).
+    var sys = /^(\s*)(system)\s+(?=[^\s:])/i.exec(text);
+    if (sys) {
+      bmlMark(el, sys[1].length, sys[1].length + sys[2].length, "scn-key");
+      var ext = /\sextends\b/i.exec(text);
+      if (ext) bmlMark(el, ext.index + 1, ext.index + ext[0].length, "scn-key");
+      var q = text.indexOf('"');
+      if (q >= 0) bmlMark(el, q, text.length, "scn-str");
+      return;
+    }
+
     var head = SCN_HEADER.exec(text);
     if (head) {
       bmlMark(el, head[1].length, head[1].length + head[2].length, "scn-key");
@@ -1869,7 +1880,8 @@
     // words are, so the scan starts there and the key cannot be re-marked as a name.
     var body = 0;
     // `also "<name>" north:` - the word, its quoted name (which may hold a colon), then the key.
-    var also = /^(\s*)(also)\b\s*("[^"]*"?)?/i.exec(text);
+    // `meaning <name>:` takes the same path: the word, then the name and its colon as the key.
+    var also = /^(\s*)(also|meaning)\b\s*("[^"]*"?)?/i.exec(text);
     var from = 0;
     if (also) {
       bmlMark(el, also[1].length, also[1].length + also[2].length, "scn-key");

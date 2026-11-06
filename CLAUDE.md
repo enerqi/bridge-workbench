@@ -116,7 +116,11 @@ PICKER above the filter (`draw_system_picker`, remembered as `scenarios.system`)
 scenarios plus those of none, and under "every system" a row of a system carries its badge (`WSC`). The picker
 redraws its whole `<select>`: options set into a live one are not chosen by its value. The group `guide` is OPT-IN
 (`OPT_IN_GROUPS`): a scenario carrying it is hidden until that group is picked, the one exception to "no group
-selected means all of them"; saving a guide file picks it. Plan in
+selected means all of them"; saving a guide file picks it. A file may hold `system <name> [extends <other>]` blocks of
+`meaning <name>: <condition>` lines (`scenario_dsl/systems.odin`); a scenario uses a meaning by name, and is read
+in the picker's system when that system extends its own - so choosing `ours` (extending 2over1) re-reads every
+2over1 scenario with ours' meanings (`choose_system`, `sim --system`). Text scenarios cost the same per deal as
+compiled ones (measured: dealing is ~450ns, the condition a few percent). Plan in
 `TODO-scenario-create-select-filter.md` ("scenarios belong to a SYSTEM").
 
 Local packages:

@@ -84,6 +84,9 @@ package scenario_dsl
 	shut out or passed off as textbook, and `check` counts what each alternative adds. Too wide beats too
 	narrow: a hand someone would open and the scenario refuses leaves no trace, one they would not is skipped.
 
+	SYSTEMS AND NAMED MEANINGS - `system 2over1` blocks whose `meaning nt-opening: ...` lines a scenario uses by
+	name, and `system ours extends 2over1` overriding one - are systems.odin's.
+
 	A DOUBLE-DUMMY LINE asks the solver about the WHOLE deal, after the seat lines have accepted it:
 
 			scenario slam-zone "N-S hold 32+ between them and a major fit"
@@ -167,6 +170,16 @@ Named_Node :: struct {
 	index: int, // into the vocabulary table
 }
 
+// A system's NAMED MEANING (`nt-opening`), expanded where it is used: `root` is its condition, in this
+// program's own nodes; `system` is the system whose definition was used, `overrides` the next one up that
+// defines it too ("" if none). See systems.odin.
+Meaning_Node :: struct {
+	name:      string,
+	system:    string,
+	overrides: string,
+	root:      int,
+}
+
 // `holds(spades, ace)`
 Holds_Node :: struct {
 	suit: norn.Suit,
@@ -206,6 +219,7 @@ Or_Node :: struct {
 Node :: union {
 	Compare_Node,
 	Named_Node,
+	Meaning_Node,
 	Holds_Node,
 	Balanced_Node,
 	Vulnerability_Node,
@@ -281,8 +295,13 @@ destroy_program :: proc(program: ^Program) {
 	delete(program.tags, program.allocator)
 	for node in program.nodes {
 		// Only `Named_Node` owns a string; the rest are plain values.
-		if named, is_named := node.(Named_Node); is_named {
-			delete(named.name, program.allocator)
+		#partial switch n in node {
+		case Named_Node:
+			delete(n.name, program.allocator)
+		case Meaning_Node:
+			delete(n.name, program.allocator)
+			delete(n.system, program.allocator)
+			delete(n.overrides, program.allocator)
 		}
 	}
 	delete(program.nodes, program.allocator)

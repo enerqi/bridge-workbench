@@ -1193,6 +1193,72 @@ test_the_system_picker_shows_one_system_and_the_shared_set :: proc(t: ^testing.T
 	testing.expect_value(t, app.system, "")
 }
 
+// A SYSTEM THAT EXTENDS ANOTHER, through the picker: `ours` is listed with its description, choosing it shows
+// the 2over1 scenarios with no badge and re-reads them with ours' meaning, and choosing 2over1 again puts
+// 2over1's back. The scenario editor's check says where the meaning came from.
+@(test)
+test_choosing_an_extending_system_reads_its_meanings :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	temp, temp_err := os.temp_directory(context.temp_allocator)
+	if temp_err != nil {return}
+	folder, _ := filepath.join({temp, "workbench-extends"}, context.temp_allocator)
+	_ = os.make_directory(folder)
+	defer os.remove_all(folder)
+	path, _ := filepath.join({folder, "mine.scenario"}, context.temp_allocator)
+	source := `system 2over1 "2/1"
+  meaning nt-opening: hcp in 15..17 and balanced
+system ours extends 2over1 "ours, a 14-16 notrump"
+  meaning nt-opening: hcp in 14..16 and balanced
+scenario uses-nt "1NT"
+  system: 2over1
+  north: nt-opening
+`
+	if os.write_entire_file(path, transmute([]u8)source) != nil {return}
+
+	app.prefs = prefs.load("", context.temp_allocator)
+	defer prefs.destroy(&app.prefs)
+	prefs.set(&app.prefs, SCENARIO_DIRS_PREF, folder)
+	free_user_scenarios(&app)
+	load_user_scenarios(&app)
+	if !testing.expect_value(t, len(app.loaded.programs), 1) {return}
+	index := len(bidding.registry)
+
+	ours := system_entry(&app, "ours")
+	if !testing.expect(t, ours != nil, "a system a file defines is in the picker") {return}
+	testing.expect_value(t, ours.parent, "2over1")
+	testing.expect_value(t, ours.description, "ours, a 14-16 notrump")
+
+	meaning_system := proc(app: ^App) -> string {
+		for node in app.loaded.programs[0].nodes {
+			if m, is := node.(scenario_dsl.Meaning_Node); is {
+				return m.system
+			}
+		}
+		return ""
+	}
+	testing.expect_value(t, meaning_system(&app), "2over1")
+
+	choose_system(&app, "ours")
+	testing.expect_value(t, app.system, "ours")
+	testing.expect_value(t, meaning_system(&app), "ours")
+	testing.expect(t, slice.contains(visible_scenarios(&app, context.temp_allocator), index), "ours shows 2over1's scenarios")
+	testing.expect_value(t, scenario_badge(&app, index), "")
+
+	// The editor's check says where the meaning came from.
+	report := check_report(&app, {app.loaded.programs[0]^}, {}, context.temp_allocator)
+	testing.expect(t, strings.contains(report, "nt-opening from ours (over 2over1)"), report)
+
+	choose_system(&app, "2over1")
+	testing.expect_value(t, meaning_system(&app), "2over1")
+	choose_system(&app, "")
+	testing.expect_value(t, scenario_badge(&app, index), "2over1")
+}
+
 // TWO GROUPS ARE A UNION, NOT AN INTERSECTION. The decision the whole control hangs off: intersected, two
 // groups would be a near-empty list nobody asked for.
 @(test)
@@ -13491,6 +13557,17 @@ test_the_guide_scenarios_parse_clean :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect_value(t, without_system, 1)
+	// The guides use the meanings of the 2over1 system the file defines.
+	testing.expect(t, strings.contains(text, "\nsystem 2over1 "), "the guides define the 2over1 system")
+	uses := 0
+	for program in programs {
+		for node in program.nodes {
+			if _, is := node.(scenario_dsl.Meaning_Node); is {
+				uses += 1
+			}
+		}
+	}
+	testing.expect(t, uses >= 6, "the guides should use the system's meanings")
 
 	MARK :: "built-in `"
 	named := 0

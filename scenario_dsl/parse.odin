@@ -35,6 +35,13 @@ Parser :: struct {
 	pair:        bool,
 	// A table word (`seat`, `vulnerable`, ...) was read in this scenario.
 	reads_table: bool,
+	// NAMED MEANINGS (systems.odin): the systems read so far, the list's chosen system, the system this
+	// scenario's meanings are read in ("" for none), and the meanings being expanded, innermost last (a
+	// meaning that uses itself, even through others, is refused rather than expanded for ever).
+	systems:     ^Systems,
+	active:      string,
+	reading:     string,
+	expanding:   [dynamic]string,
 }
 
 /*
@@ -43,16 +50,35 @@ Parse a whole file's worth of text into scenarios.
 Returns what it could parse plus every diagnostic it found — never one or the other. A file that is
 entirely wrong yields no programs and several diagnostics; a file with one bad scenario yields the rest.
 */
+//
+// SYSTEMS: with `systems` nil this file's own system blocks are read and checked, and its scenarios may use
+// their meanings. A caller reading several files (the loader, the editor's check) passes the systems of all of
+// them instead, already read and checked, and this file's blocks are then skipped here. `active` is the system
+// the list is set to: a scenario of a system it extends reads its meanings there (`reading_system`).
 parse :: proc(
 	source: string,
 	file: string,
 	allocator := context.allocator,
+	systems: ^Systems = nil,
+	active := "",
 ) -> (
 	programs: []Program,
 	diagnostics: []Diagnostic,
 ) {
 	found := make([dynamic]Program, 0, 4, allocator)
 	problems := make([dynamic]Diagnostic, 0, 4, allocator)
+
+	own_systems: Systems
+	systems := systems
+	if systems == nil {
+		own_systems = make_systems(allocator)
+		read_systems(source, file, &own_systems, &problems)
+		check_systems(&own_systems, &problems)
+		systems = &own_systems
+	}
+	defer if systems == &own_systems {
+		destroy_systems(&own_systems)
+	}
 
 	lines := strings.split_lines(source, context.temp_allocator)
 	p := Parser {
@@ -61,6 +87,9 @@ parse :: proc(
 		lines       = lines,
 		diagnostics = &problems,
 		allocator   = allocator,
+		systems     = systems,
+		active      = active,
+		expanding   = make([dynamic]string, 0, 4, context.temp_allocator),
 	}
 
 	for p.line_index < len(lines) {
@@ -69,8 +98,14 @@ parse :: proc(
 			p.line_index += 1
 			continue
 		}
+		if is_system_header(line) {
+			// Read before the scenarios (`read_systems`); its lines are not a scenario's.
+			p.line_index += 1
+			skip_body(&p)
+			continue
+		}
 		if !strings.has_prefix(folded(line), "scenario") {
-			report(&p, p.line_index, 1, "expected a `scenario` line to start a scenario")
+			report(&p, p.line_index, 1, "expected a `scenario` line to start a scenario, or a `system` line")
 			p.line_index += 1
 			continue
 		}
@@ -153,6 +188,9 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 	vulnerability: Maybe(norn.Vulnerability)
 	p.nodes = nodes
 	p.reads_table = false
+	// THE SYSTEM ITS MEANINGS ARE READ IN, known before the first seat line: the `system:` line may come after
+	// the lines that use a meaning.
+	p.reading = reading_system(p.systems, own_system_line(p), p.active)
 
 	for p.line_index < len(p.lines) {
 		raw := strip_comment(p.lines[p.line_index])
@@ -161,8 +199,8 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			p.line_index += 1
 			continue
 		}
-		if strings.has_prefix(folded(line), "scenario") {
-			break // the next scenario; this one is finished
+		if is_block_header(line) {
+			break // the next scenario or system; this one is finished
 		}
 		if is_also_line(line) {
 			parse_also_line(p, raw, line, &rules, &alternatives)
@@ -305,6 +343,12 @@ parse_seat_condition :: proc(p: ^Parser, value: string, value_col: int, pair: bo
 	p.col = value_col
 	p.pair = pair
 	defer p.pair = false
+	return parse_whole_condition(p)
+}
+
+// The condition from `p.text` to the end of it: an expression, and nothing after it.
+@(private)
+parse_whole_condition :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	root = parse_expression(p) or_return
 	// The expression stops at the first thing it cannot read, and that was accepted in silence: `hcp in
 	// 8..11x` read as `8..11` (reported 2026-10-19), and `hcp >= 12 balanced` as `hcp >= 12`, which is worse -
@@ -462,7 +506,7 @@ parse_double_dummy :: proc(value: string) -> (dd: Double_Dummy, ok: bool) {
 skip_body :: proc(p: ^Parser) {
 	for p.line_index < len(p.lines) {
 		line := strings.trim_space(strip_comment(p.lines[p.line_index]))
-		if line != "" && strings.has_prefix(folded(line), "scenario") {
+		if line != "" && is_block_header(line) {
 			return
 		}
 		p.line_index += 1
@@ -616,6 +660,13 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 		return parse_comparison(p, quantity, start_col)
 	}
 
+	// A MEANING of the system this scenario is read in, expanded here (systems.odin).
+	if p.systems != nil && p.reading != "" {
+		if meaning, defined_in, overrides, found := find_meaning(p.systems, p.reading, word); found {
+			return expand_meaning(p, meaning, defined_in, overrides, start_col)
+		}
+	}
+
 	// A NAME FROM THE CONSUMER'S VOCABULARY, resolved now rather than at run time.
 	if index, known := find_in_vocabulary(word); known {
 		return add_node(p, Named_Node{name = strings.clone(word, p.allocator), index = index}), true
@@ -627,6 +678,71 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 		fmt_message(p, "unknown condition `%s` — not a quantity, and not in this system's vocabulary", word),
 	)
 	return 0, false
+}
+
+/*
+Expand a meaning where it is used: its condition parsed into this scenario's tree under a `Meaning_Node` that
+keeps the name. Its own mistakes were reported where it is written (`check_systems`), so here they are
+collected quietly and the use gets one diagnostic naming the meaning.
+*/
+@(private)
+expand_meaning :: proc(p: ^Parser, meaning: ^Meaning_Def, defined_in, overrides: string, start_col: int) -> (root: int, ok: bool) {
+	for name in p.expanding {
+		if name == meaning.name {
+			report(p, p.line_index, start_col, fmt_message(p, "`%s` uses itself, through the meanings it uses", meaning.name))
+			return 0, false
+		}
+	}
+	saved_text, saved_col, saved_line := p.text, p.col, p.line_index
+	saved_diagnostics, saved_allocator := p.diagnostics, p.allocator
+	quiet := make([dynamic]Diagnostic, 0, 2, context.temp_allocator)
+	p.diagnostics, p.allocator = &quiet, context.temp_allocator
+	p.text, p.col, p.line_index = meaning.text, meaning.col, meaning.line
+	append(&p.expanding, meaning.name)
+	inner, inner_ok := parse_whole_condition(p)
+	pop(&p.expanding)
+	p.text, p.col, p.line_index = saved_text, saved_col, saved_line
+	p.diagnostics, p.allocator = saved_diagnostics, saved_allocator
+
+	if !inner_ok {
+		why := quiet[0].message if len(quiet) > 0 else "it does not read"
+		report(
+			p,
+			p.line_index,
+			start_col,
+			strings.concatenate({"the meaning `", meaning.name, "` (", defined_in, ") does not fit here: ", why}, context.temp_allocator),
+		)
+		return 0, false
+	}
+	return add_node(
+			p,
+			Meaning_Node {
+				name = strings.clone(meaning.name, p.allocator),
+				system = strings.clone(defined_in, p.allocator),
+				overrides = strings.clone(overrides, p.allocator),
+				root = inner,
+			},
+		),
+		true
+}
+
+// The value of this scenario's `system:` line, looked ahead for from its header: "" when it has none.
+@(private)
+own_system_line :: proc(p: ^Parser) -> string {
+	for i in p.line_index ..< len(p.lines) {
+		line := strings.trim_space(strip_comment(p.lines[i]))
+		if line == "" {
+			continue
+		}
+		if is_block_header(line) {
+			break
+		}
+		colon := strings.index_byte(line, ':')
+		if colon > 0 && folded(strings.trim_space(line[:colon])) == "system" {
+			return strings.trim_space(line[colon + 1:])
+		}
+	}
+	return ""
 }
 
 @(private)

@@ -59,8 +59,8 @@ run_sim :: proc() -> int {
 	// `scenario_dsl`, which is this repository's package — the library parses arguments for a generic
 	// generator, and where THIS user's scenario files live is not a generic question.
 	scenario_dsl.set_vocabulary(bidding.vocabulary)
-	directories, arguments := scenario_arguments(context.temp_allocator)
-	loaded := scenario_dsl.load_directories(directories)
+	directories, arguments, system := scenario_arguments(context.temp_allocator)
+	loaded := scenario_dsl.load_directories(directories, active = system)
 	defer scenario_dsl.destroy_loaded(&loaded)
 
 	// Diagnostics go to STDERR and do not stop the run: a typo in one scenario file should cost that
@@ -96,7 +96,7 @@ design, since a misspelled flag should not be quietly ignored — so a flag this
 reach it. That is why `cli.main_program` takes an explicit `argv`: everything except `--scenarios` and its
 value is handed on.
 */
-scenario_arguments :: proc(allocator := context.allocator) -> (directories: []string, rest: []string) {
+scenario_arguments :: proc(allocator := context.allocator) -> (directories: []string, rest: []string, system: string) {
 	found := make([dynamic]string, 0, 4, allocator)
 	remaining := make([dynamic]string, 0, len(os.args), allocator)
 
@@ -108,8 +108,18 @@ scenario_arguments :: proc(allocator := context.allocator) -> (directories: []st
 		}
 	}
 
+	// `--system <name>` (or BRIDGE_SYSTEM) reads the scenario files in that system: a scenario of a system it
+	// extends takes its meanings from it, as the workbench does when its list is set to that system.
+	system = os.get_env("BRIDGE_SYSTEM", allocator)
 	arguments := os.args[1:]
 	for i := 0; i < len(arguments); i += 1 {
+		if arguments[i] == "--system" {
+			if i + 1 < len(arguments) {
+				system = strings.clone(arguments[i + 1], allocator)
+				i += 1
+			}
+			continue
+		}
 		if arguments[i] == "--scenarios" {
 			if i + 1 < len(arguments) {
 				append(&found, strings.clone(arguments[i + 1], allocator))
@@ -119,7 +129,7 @@ scenario_arguments :: proc(allocator := context.allocator) -> (directories: []st
 		}
 		append(&remaining, arguments[i])
 	}
-	return found[:], remaining[:]
+	return found[:], remaining[:], system
 }
 
 main :: proc() { 	// Operational setup only; program semantics live in `run_sim` above

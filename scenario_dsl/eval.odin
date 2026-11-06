@@ -165,6 +165,9 @@ eval_node :: proc(program: ^Program, index: int, at: ^At) -> bool {
 		entry := vocabulary[node.index]
 		return entry.call != nil && entry.call(hand)
 
+	case Meaning_Node:
+		return eval_node(program, node.root, at)
+
 	case Holds_Node:
 		return norn.holds(hand, node.suit, node.rank)
 

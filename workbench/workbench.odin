@@ -91,6 +91,7 @@ UPDATE :: uintptr(13) // the About panel's release check answered; the sentence 
 ANALYSE_PART :: uintptr(14) // lparam = thousandths of the board under way, while its make-chance layouts are solved
 GUIDE_INSERT :: uintptr(15) // an example's `insert` in the BML guide was clicked; write it at the caret (`guide_insert`)
 PAGE_QUEUED :: uintptr(16) // the hand page's load finished with another asked for meanwhile; load it (`show_page_file`)
+SYSTEM_CHOSEN :: uintptr(17) // the system dropdown changed; apply it (`choose_system`), which may redraw the dropdown
 
 Job_Kind :: enum {
 	Generate,
@@ -154,6 +155,8 @@ App :: struct {
 	// system is picked once, like a profile, and a 2/1 player should not have to say so at every start.
 	systems:            []System_Entry,
 	system:             string,
+	// The system blocks the scenario editor's buffer defines, as its last check read them (scratch, for the report).
+	scn_systems:        []scenario_dsl.System_Def,
 
 	// Shared with the worker. `post_callback` says THAT something changed; the lock is what makes it safe
 	// to read WHAT.
@@ -792,6 +795,11 @@ on_posted :: proc(handler: ^sa.Host_Handler, posted: sa.Posted) {
 
 	case PAGE_QUEUED:
 		load_queued_page(app)
+
+	case SYSTEM_CHOSEN:
+		// Posted: applying a system can re-read the scenario files and redraw the dropdown, and replacing the
+		// `<select>` inside its own change event is the tear-the-tree-out hazard `LIVE` describes.
+		choose_system(app, read_text(app, "#scenario-system"))
 
 	case LIVE:
 		// The only message that does not come from a worker thread. It comes from the frame`s TIMER handler,
@@ -6751,7 +6759,12 @@ load_user_scenarios :: proc(app: ^App) {
 		add(&directories, remembered, app.allocator)
 	}
 	app.scenario_dirs = directories[:]
-	app.loaded = scenario_dsl.load_directories(app.scenario_dirs, app.allocator)
+	// READ IN THE CHOSEN SYSTEM: a scenario of a system it extends takes its meanings from it.
+	active := app.system
+	if active == "" && app.prefs.values != nil {
+		active, _ = prefs.get(&app.prefs, SCENARIO_SYSTEM_PREF)
+	}
+	app.loaded = scenario_dsl.load_directories(app.scenario_dirs, app.allocator, active)
 
 	registry := make([dynamic]cli.Scenario, 0, len(bidding.registry) + len(app.loaded.scenarios), app.allocator)
 	append(&registry, ..bidding.registry)
@@ -6950,6 +6963,7 @@ System_Entry :: struct {
 	name:        string,
 	badge:       string,
 	description: string,
+	parent:      string, // the system it extends (a `system x extends y` block), "" for none
 	from_files:  bool,
 }
 
@@ -6962,6 +6976,22 @@ build_systems :: proc(app: ^App) {
 	systems := make([dynamic]System_Entry, 0, len(bidding.systems) + 2, app.allocator)
 	for system in bidding.systems {
 		append(&systems, System_Entry{name = system.name, badge = system.badge, description = system.description})
+	}
+	// The systems the files DEFINE, with their descriptions and what they extend; then any a scenario only names.
+	for def in app.loaded.systems.defs {
+		if def.broken || system_entry_in(systems[:], def.name) {
+			continue
+		}
+		append(
+			&systems,
+			System_Entry {
+				name = def.name,
+				badge = def.name,
+				description = def.description if def.description != "" else "from your scenario files",
+				parent = def.parent,
+				from_files = true,
+			},
+		)
 	}
 	for program in app.loaded.programs {
 		if program.system == "" {
@@ -6993,6 +7023,32 @@ build_systems :: proc(app: ^App) {
 		wanted, _ = prefs.get(&app.prefs, SCENARIO_SYSTEM_PREF)
 	}
 	set_system_name(app, wanted if system_entry(app, wanted) != nil else "")
+}
+
+@(private = "file")
+system_entry_in :: proc(systems: []System_Entry, name: string) -> bool {
+	for entry in systems {
+		if entry.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Does the list's system `chosen` take in scenarios of `system`: is it that system, or does it extend it?
+system_includes :: proc(app: ^App, chosen, system: string) -> bool {
+	at := chosen
+	for steps := 0; at != "" && steps <= len(app.systems); steps += 1 {
+		if at == system {
+			return true
+		}
+		entry := system_entry(app, at)
+		if entry == nil {
+			return false
+		}
+		at = entry.parent
+	}
+	return false
 }
 
 // The entry for a system's name, or nil.
@@ -7039,13 +7095,13 @@ in_current_system :: proc(app: ^App, index: int) -> bool {
 		return true
 	}
 	system := scenario_system(app, index)
-	return system == "" || system == app.system
+	return system == "" || system_includes(app, app.system, system)
 }
 
 // The badge a row carries: its system's, when the list is not already set to that system.
 scenario_badge :: proc(app: ^App, index: int) -> string {
 	system := scenario_system(app, index)
-	if system == "" || system == app.system {
+	if system == "" || system_includes(app, app.system, system) {
 		return ""
 	}
 	if entry := system_entry(app, system); entry != nil {
@@ -7083,13 +7139,26 @@ draw_system_picker :: proc(app: ^App) {
 SYSTEM_PICKER_HEAD :: `<label for="scenario-system" class="side-label">system</label><select id="scenario-system" title="Whose meanings of the auctions the list shows" data-hint="Which bidding system's scenarios the list shows. The same auction means different hands in different systems, so a scenario that commits to a meaning belongs to one; hand types and the opponents' bidding belong to none and are always shown. A scenario file names its system with a system: line.">`
 
 // The dropdown changed (or a test says it did): set the list's system, remember it, redraw the list.
+//
+// A SYSTEM THAT EXTENDS ANOTHER changes the other's scenarios (their meanings are read in it), so while any
+// file defines one the scenarios are read again in the new choice. Not during a run, which is generating from
+// the scenarios as they are: the list then follows the choice and the meanings follow at the next rescan.
 choose_system :: proc(app: ^App, name: string) {
+	before := strings.clone(app.system, context.temp_allocator)
 	set_system_name(app, name if system_entry(app, name) != nil else "")
 	if app.prefs.values != nil {
 		prefs.set(&app.prefs, SCENARIO_SYSTEM_PREF, app.system)
 		if app.prefs_path != "" {
 			_ = prefs.save(&app.prefs, app.prefs_path)
 		}
+	}
+	extends := false
+	for def in app.loaded.systems.defs {
+		extends ||= def.parent != "" && !def.broken
+	}
+	if extends && app.system != before && !app.running {
+		_, _ = reload_scenarios(app)
+		return
 	}
 	filter_scenarios(app)
 }
@@ -8713,7 +8782,7 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		// A `<select>` reports SELECTION_CHANGED, as `#format` does, so this sits before the VALUE_CHANGED gate.
 		if id == "scenario-system" {
 			if read_text(app, "#scenario-system") != app.system {
-				choose_system(app, read_text(app, "#scenario-system"))
+				sa.post_callback(app.window, SYSTEM_CHOSEN)
 			}
 			return true
 		}

@@ -1119,3 +1119,176 @@ test_a_table_scenario_generates_at_its_table :: proc(t: ^testing.T) {
 		testing.expect(t, evaluate(norn.summarize_deal(deals[i]), table, &program), "a kept deal fails its own condition")
 	}
 }
+// ---- systems and named meanings -------------------------------------------------------------------
+
+MEANINGS_SOURCE :: `system 2over1 "2/1 game forcing"
+  meaning nt-opening: hcp in 15..17 and balanced
+  meaning major-opening: (spades >= 5 or hearts >= 5) and hcp in 12..21
+  meaning strong: hcp >= 15
+
+system ours extends 2over1 "2/1 as we play it"
+  meaning nt-opening: hcp in 14..16 and balanced
+
+scenario 1nt-major "1NT, responder has a four-card major"
+  system: 2over1
+  north: nt-opening
+  south: hcp >= 8 and (spades = 4 or hearts = 4)
+
+scenario strong-major "a strong major opening"
+  north: major-opening and strong
+  system: 2over1
+`
+
+// A meaning is its condition: the same verdict on every deal as the condition written out, and the scenario
+// prints back with the meaning's name rather than what it expands to.
+@(test)
+test_a_meaning_is_its_condition :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	programs, diagnostics := parse(MEANINGS_SOURCE, "m.scenario", context.temp_allocator)
+	defer for &program in programs {
+		destroy_program(&program)
+	}
+	testing.expectf(t, len(diagnostics) == 0, "unexpected %v", diagnostics)
+	if len(programs) != 2 {
+		testing.expectf(t, false, "parsed %d scenarios", len(programs))
+		return
+	}
+	written := write_program(&programs[1], context.temp_allocator)
+	testing.expect(t, strings.contains(written, "north: major-opening and strong"), written)
+
+	inline, ok := parse_one(t, "scenario x\n  north: hcp in 15..17 and balanced\n  south: hcp >= 8 and (spades = 4 or hearts = 4)\n")
+	if !ok {return}
+	defer destroy_program(&inline)
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 20261106)
+	disagreements, kept := 0, 0
+	for _ in 0 ..< 40_000 {
+		summary := norn.summarize_deal(norn.deal_hands())
+		got := evaluate(summary, {}, &programs[0])
+		if got != evaluate(summary, {}, &inline) {
+			disagreements += 1
+		}
+		if got {
+			kept += 1
+		}
+	}
+	testing.expectf(t, disagreements == 0, "%d deals where the meaning and its text disagreed", disagreements)
+	testing.expect(t, kept > 0, "the oracle proves nothing if nothing was kept")
+}
+
+// The meaning of a node: which system's definition it is, and what it overrides.
+@(private = "file")
+first_meaning :: proc(program: ^Program, name: string) -> (Meaning_Node, bool) {
+	for node in program.nodes {
+		if m, is := node.(Meaning_Node); is && m.name == name {
+			return m, true
+		}
+	}
+	return {}, false
+}
+
+// A SYSTEM THAT EXTENDS ANOTHER changes the other's scenarios when it is the one chosen: with `ours` active,
+// the 2over1 scenario reads ours' 14-16 notrump, and says it overrides 2over1's; with nothing (or 2over1)
+// active it reads 2over1's own. A meaning ours does not override is still 2over1's.
+@(test)
+test_an_extending_system_overrides_a_meaning :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	for active in ([]string{"", "2over1", "ours"}) {
+		programs, diagnostics := parse(MEANINGS_SOURCE, "m.scenario", context.temp_allocator, active = active)
+		defer for &program in programs {
+			destroy_program(&program)
+		}
+		testing.expectf(t, len(diagnostics) == 0 && len(programs) == 2, "%q: %v", active, diagnostics)
+		if len(programs) != 2 {
+			continue
+		}
+		nt, found := first_meaning(&programs[0], "nt-opening")
+		testing.expectf(t, found, "%q: no nt-opening node", active)
+		if active == "ours" {
+			testing.expect_value(t, nt.system, "ours")
+			testing.expect_value(t, nt.overrides, "2over1")
+		} else {
+			testing.expect_value(t, nt.system, "2over1")
+			testing.expect_value(t, nt.overrides, "")
+		}
+		major, _ := first_meaning(&programs[1], "major-opening")
+		testing.expect_value(t, major.system, "2over1")
+
+		// 14 balanced: a notrump only in ours.
+		fourteen := 0
+		state: rand.Xoshiro256_Random_State
+		context.random_generator = norn.seeded_xoshiro(&state, 7)
+		for _ in 0 ..< 20_000 {
+			summary := norn.summarize_deal(norn.deal_hands())
+			if evaluate(summary, {}, &programs[0]) && norn.hcp(summary[.North]) == 14 {
+				fourteen += 1
+			}
+		}
+		testing.expectf(t, (fourteen > 0) == (active == "ours"), "%q: %d fourteen-point notrumps", active, fourteen)
+	}
+}
+
+// What can go wrong with a system or a meaning: one diagnostic each, at the line that is wrong.
+@(test)
+test_a_bad_system_or_meaning_is_one_diagnostic :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	cases := []struct {
+		source: string,
+		says:   string,
+		line:   int,
+	} {
+		{"system a extends nowhere\n  meaning m: hcp >= 1\n", "no system called `nowhere`", 1},
+		{"system a\n  meaning m: hcp >= 1\nsystem a\n  meaning n: hcp >= 2\n", "defined already", 3},
+		{"system a\n  meaning m: hcp >= 1 and m\n", "uses itself", 2},
+		{"system a\n  meaning m: n\n  meaning n: m\n", "uses itself", 2},
+		{"system a\n  meaning m: hcp >== 1\n", "", 2},
+		{"system a\n  meaning hcp: hcp >= 1\n", "already a word", 2},
+		{"system a\n  meaning is_big: hcp >= 1\n", "already a word", 2},
+		{"system a\n  meaning m: hcp >= 1\n  meaning m: hcp >= 2\n", "already a meaning", 3},
+		{"system a\n  hcp >= 1\n", "`meaning <name>: <condition>`", 2},
+		{"system a b c d\n", "expected `system <name>`", 1},
+		{"system a\n  meaning flat: balanced\nscenario x\n  system: a\n  north-south: flat\n", "does not fit here", 5},
+		{"system a\n  meaning m: hcp >= 1\nscenario x\n  north: m\n", "unknown condition `m`", 4},
+	}
+	for c in cases {
+		programs, diagnostics := parse(c.source, "f.scenario", context.temp_allocator)
+		for &program in programs {
+			destroy_program(&program)
+		}
+		if !testing.expectf(t, len(diagnostics) >= 1, "%q: no diagnostic", c.source) {
+			continue
+		}
+		testing.expectf(
+			t,
+			strings.contains(diagnostics[0].message, c.says) && diagnostics[0].pos.line == c.line,
+			"%q: %v",
+			c.source,
+			diagnostics,
+		)
+	}
+}
+
+// SYSTEMS ACROSS FILES: a meaning defined in one file is used by a scenario in another, and the loader keeps
+// the systems for the picker.
+@(test)
+test_a_meaning_from_another_file :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	temp, temp_err := os.temp_directory(context.temp_allocator)
+	if temp_err != nil {return}
+	folder, _ := filepath.join({temp, "scenario-dsl-meanings"}, context.temp_allocator)
+	_ = os.make_directory(folder)
+	defer os.remove_all(folder)
+	a, _ := filepath.join({folder, "a-scenarios.scenario"}, context.temp_allocator)
+	b, _ := filepath.join({folder, "b-system.scenario"}, context.temp_allocator)
+	_ = os.write_entire_file(a, transmute([]u8)string("scenario uses-it\n  system: 2over1\n  north: nt-opening\n"))
+	_ = os.write_entire_file(b, transmute([]u8)string("system 2over1 \"2/1\"\n  meaning nt-opening: hcp in 15..17 and balanced\n"))
+
+	loaded := load_directories({folder})
+	defer destroy_loaded(&loaded)
+	testing.expectf(t, len(loaded.diagnostics) == 0, "%v", loaded.diagnostics)
+	testing.expect_value(t, len(loaded.scenarios), 1)
+	testing.expect_value(t, len(loaded.systems.defs), 1)
+	if len(loaded.systems.defs) == 1 {
+		testing.expect_value(t, loaded.systems.defs[0].description, "2/1")
+	}
+}

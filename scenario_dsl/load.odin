@@ -31,6 +31,9 @@ SCENARIO_EXTENSION :: ".scenario"
 Loaded :: struct {
 	scenarios:   []cli.Scenario,
 	programs:    []^Program,
+	// Every system block the files define (systems.odin): the meanings the scenarios were read with, and what
+	// the system picker lists.
+	systems:     Systems,
 	tags:        [][]string, // parallel to `scenarios`: the groups each one declared
 	diagnostics: []Diagnostic,
 }
@@ -43,6 +46,7 @@ destroy_loaded :: proc(loaded: ^Loaded, allocator := context.allocator) {
 	delete(loaded.programs, allocator)
 	delete(loaded.scenarios, allocator)
 	delete(loaded.tags, allocator)
+	destroy_systems(&loaded.systems)
 	for diagnostic in loaded.diagnostics {
 		delete(diagnostic.message, allocator)
 		delete(diagnostic.pos.file, allocator)
@@ -62,11 +66,20 @@ from.
 A directory that does not exist is not an error — a configured-but-absent folder is a normal state for a
 list of places to look, and failing the whole load because one is missing would be the wrong bargain.
 */
-load_directories :: proc(directories: []string, allocator := context.allocator) -> (loaded: Loaded) {
+//
+// TWO PASSES: every file's system blocks first, checked as a whole, then the scenarios against them - a meaning
+// may be defined in another file from the scenarios that use it. `active` is the system the list is set to: a
+// scenario of a system it extends reads its meanings there (`reading_system`).
+load_directories :: proc(directories: []string, allocator := context.allocator, active := "") -> (loaded: Loaded) {
 	scenarios := make([dynamic]cli.Scenario, 0, 8, allocator)
 	programs := make([dynamic]^Program, 0, 8, allocator)
 	tags := make([dynamic][]string, 0, 8, allocator)
 	problems := make([dynamic]Diagnostic, 0, 4, allocator)
+	systems := make_systems(allocator)
+	Read :: struct {
+		path, text: string,
+	}
+	files := make([dynamic]Read, 0, 8, context.temp_allocator)
 
 	for directory in directories {
 		if directory == "" || !os.is_dir(directory) {
@@ -105,33 +118,46 @@ load_directories :: proc(directories: []string, allocator := context.allocator) 
 				)
 				continue
 			}
-			file_programs, file_problems := parse(string(data), path, allocator)
-			for diagnostic in file_problems {
-				append(&problems, diagnostic)
-			}
-			delete(file_problems, allocator)
-
-			for program in file_programs {
-				// One allocation per program, so the pointer handed to `Interpreted_Predicate` is stable
-				// for the life of the run — see the header.
-				held := new(Program, allocator)
-				held^ = program
-				append(&programs, held)
-				append(&tags, held.tags)
-				append(
-					&scenarios,
-					cli.Scenario {
-						name = held.name,
-						description = held.description,
-						predicate = condition(held),
-					},
-				)
-			}
-			delete(file_programs, allocator)
+			append(&files, Read{path = path, text = string(data)})
+			read_systems(string(data), path, &systems, &problems)
 		}
 	}
+	check_systems(&systems, &problems)
 
-	return Loaded{scenarios = scenarios[:], programs = programs[:], tags = tags[:], diagnostics = problems[:]}
+	for file in files {
+		path := file.path
+		file_programs, file_problems := parse(file.text, path, allocator, &systems, active)
+		for diagnostic in file_problems {
+			append(&problems, diagnostic)
+		}
+		delete(file_problems, allocator)
+
+		for program in file_programs {
+			// One allocation per program, so the pointer handed to `Interpreted_Predicate` is stable
+			// for the life of the run — see the header.
+			held := new(Program, allocator)
+			held^ = program
+			append(&programs, held)
+			append(&tags, held.tags)
+			append(
+				&scenarios,
+				cli.Scenario {
+					name = held.name,
+					description = held.description,
+					predicate = condition(held),
+				},
+			)
+		}
+		delete(file_programs, allocator)
+	}
+
+	return Loaded {
+		scenarios = scenarios[:],
+		programs = programs[:],
+		systems = systems,
+		tags = tags[:],
+		diagnostics = problems[:],
+	}
 }
 
 // An insertion sort: a directory holds a handful of scenario files, and the alternative is importing a

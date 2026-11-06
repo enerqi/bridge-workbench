@@ -133,6 +133,9 @@ write_node :: proc(b: ^strings.Builder, program: ^Program, index: int, level: Le
 	case Named_Node:
 		strings.write_string(b, node.name)
 
+	case Meaning_Node:
+		strings.write_string(b, node.name) // as written: the meaning, not what it expands to
+
 	case Holds_Node:
 		strings.write_string(b, "holds(")
 		strings.write_string(b, suit_word(node.suit))
