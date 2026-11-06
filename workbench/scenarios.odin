@@ -76,6 +76,31 @@ and a thread per scenario. This is the cheap first look that stops them needing 
 */
 CHECK_TRIALS :: 20_000
 
+// The most scenarios `check` measures: past this many a file's measuring would hold the window for seconds.
+CHECK_MEASURE_MAX :: 24
+
+/*
+THE BUILT-IN SCENARIOS AS A FOLDER of their own, first in the sources list: `bidding.builtin_files`, compiled into
+the exe, opened READ ONLY. Worth seeing because a user's system can extend the built-in one and override its
+meanings - and the meaning being overridden should not be a guess. `app.scn_dir` holds this word while one is
+open; it is no path, and every place that would touch the disk asks `editing_builtin` first.
+*/
+BUILTIN_DIR :: "built-in"
+
+editing_builtin :: proc(app: ^App) -> bool {
+	return app.scn_dir == BUILTIN_DIR
+}
+
+// The text of a built-in file by name, or false.
+builtin_text :: proc(name: string) -> (text: string, ok: bool) {
+	for file in bidding.builtin_files {
+		if file.name == name {
+			return file.text, true
+		}
+	}
+	return "", false
+}
+
 // The sample's seed. FIXED, so pressing `check` twice on unchanged text gives the same number twice:
 // a percentage that moved when nothing moved reads as an unstable condition rather than as noise.
 CHECK_SEED :: u64(0x5CE7_A1_0D_5EED_0001)
@@ -192,6 +217,13 @@ list_scenario_files :: proc(dir: string, allocator := context.allocator) -> []st
 	if dir == "" {
 		return nil
 	}
+	if dir == BUILTIN_DIR {
+		names := make([]string, len(bidding.builtin_files), allocator)
+		for file, i in bidding.builtin_files {
+			names[i] = strings.clone(file.name, allocator)
+		}
+		return names
+	}
 	infos, err := os.read_directory_by_path(dir, 0, context.temp_allocator)
 	if err != nil {
 		return nil
@@ -216,6 +248,9 @@ list_scenario_files :: proc(dir: string, allocator := context.allocator) -> []st
 // file into the BML editor.
 draw_scenario_files :: proc(app: ^App) {
 	draw_scenario_sources(app)
+	// SAVE ONLY WHAT CAN BE SAVED: a file of the user's that is open. Redrawn here because every change of folder
+	// or file comes through here; ctrl+s still reaches `save_scenario_file`, which says why it refuses.
+	set_enabled(app, "#scn-save", app.scn_open != "" && !editing_builtin(app))
 	folder := app.scn_dir if app.scn_dir != "" else "no folder chosen"
 	// The label for the second level. Not the path: the folder is the marked row just above, path and all, and
 	// in a 250px column a path wrapped to three lines. The path stays as the tooltip.
@@ -369,8 +404,18 @@ draw_scenario_sources :: proc(app: ^App) {
 		return
 	}
 	b := strings.builder_make(context.temp_allocator)
+	// THE BUILT-IN SCENARIOS first, as they load first: read only, never forgotten.
+	builtin := app.loaded.builtin_count
+	fmt.sbprintf(
+		&b,
+		`<div class="row%s" data-sdir="%s" title="The scenarios this program ships, read only: copy one into a file of your own to change it"><span class="path">built in</span><div class="what"><span class="lbl">read only · %d scenario%s</span></div></div>`,
+		" sel" if editing_builtin(app) else "",
+		BUILTIN_DIR,
+		builtin,
+		plural(builtin),
+	)
 	if len(app.scenario_dirs) == 0 {
-		strings.write_string(&b, `<div class="empty">no folders yet — press add… to choose one</div>`)
+		strings.write_string(&b, `<div class="empty">no folders of your own yet — press add… to choose one</div>`)
 		sa.set_html(box, strings.to_string(b))
 		return
 	}
@@ -525,14 +570,13 @@ dir_from_env :: proc(dir: string) -> bool {
 // ---------------------------------------------------------------------------------------------------
 // From the deals list to the file
 
-// The program behind row `index` of the deals list, when it came from a `.scenario` file: the registry is the
-// compiled scenarios, then `app.loaded.scenarios` in order, and `app.loaded.programs` is parallel to those.
+// The program behind row `index` of the deals list: the registry is `app.loaded.scenarios` (the built-in ones
+// first), and `app.loaded.programs` is parallel to it.
 scenario_program :: proc(app: ^App, index: int) -> (program: ^scenario_dsl.Program, ok: bool) {
-	k := index - len(bidding.registry)
-	if index >= len(app.scenarios) || k < 0 || k >= len(app.loaded.programs) {
+	if index < 0 || index >= len(app.scenarios) || index >= len(app.loaded.programs) {
 		return nil, false
 	}
-	return app.loaded.programs[k], true
+	return app.loaded.programs[index], true
 }
 
 /*
@@ -543,12 +587,15 @@ which rows were yours. Over unsaved text it is the editor's own two-step: the fi
 the text, the next one discards it - the same guard a click on another file meets.
 */
 edit_scenario :: proc(app: ^App, index: int) {
-	program, from_file := scenario_program(app, index)
-	if !from_file {
+	program, found := scenario_program(app, index)
+	if !found {
 		return
 	}
 	dir := parent_dir(program.source)
 	name := filepath.base(program.source)
+	if scenario_dsl.is_builtin_source(program.source) {
+		dir, name = BUILTIN_DIR, program.source[len(scenario_dsl.BUILTIN_PREFIX):]
+	}
 	show_scenario_editor(app)
 	if !same_dir(dir, app.scn_dir) || app.scn_open != name {
 		if app.scn_open != "" && scenario_modified(app) && !app.scn_armed {
@@ -598,15 +645,27 @@ scenario_line :: proc(text: string, name: string) -> int {
 // change does not rewrite every line of a CRLF file — the same care `open_bml` takes and for the same
 // reason.
 open_scenario_file :: proc(app: ^App, name: string) -> (ok: bool, why: string) {
-	path, jerr := filepath.join({app.scn_dir, name}, context.temp_allocator)
-	if jerr != nil {
-		return false, fmt.tprintf("could not resolve %s", name)
+	source: string
+	if editing_builtin(app) {
+		found: bool
+		if source, found = builtin_text(name); !found {
+			return false, fmt.tprintf("there is no built-in file %s", name)
+		}
+	} else {
+		path, jerr := filepath.join({app.scn_dir, name}, context.temp_allocator)
+		if jerr != nil {
+			return false, fmt.tprintf("could not resolve %s", name)
+		}
+		data, rerr := os.read_entire_file_from_path(path, context.temp_allocator)
+		if rerr != nil {
+			return false, fmt.tprintf("could not read %s: %v", name, rerr)
+		}
+		source = string(data)
 	}
-	data, rerr := os.read_entire_file_from_path(path, context.temp_allocator)
-	if rerr != nil {
-		return false, fmt.tprintf("could not read %s: %v", name, rerr)
+	// READ ONLY for a built-in file: the widget refuses typing, and `save` refuses too.
+	if element := find(app, "#scn-text"); element != nil {
+		_ = sa.set_attribute(element, "readonly", "readonly" if editing_builtin(app) else "")
 	}
-	source := string(data)
 
 	delete(app.scn_open, app.allocator)
 	app.scn_open = strings.clone(name, app.allocator)
@@ -627,7 +686,8 @@ open_scenario_file :: proc(app: ^App, name: string) -> (ok: bool, why: string) {
 	clear_scenario_problems(app)
 	set_scenario_report(app, "")
 	draw_scenario_files(app)
-	scenario_status(app, "") // the name is the source pane's title (`draw_file_title`)
+	// The name is the source pane's title (`draw_file_title`); a built-in file says what it is.
+	scenario_status(app, "built in, read only - copy what you want to change into a file of your own" if editing_builtin(app) else "")
 	return true, ""
 }
 
@@ -637,6 +697,9 @@ open_scenario_file :: proc(app: ^App, name: string) -> (ok: bool, why: string) {
 save_scenario_file :: proc(app: ^App) -> (ok: bool, why: string) {
 	if app.scn_open == "" {
 		return false, "nothing is open"
+	}
+	if editing_builtin(app) {
+		return false, "a built-in file is read only - copy what you want to change into a file of your own"
 	}
 	text, got := scenario_source(app, context.temp_allocator)
 	if !got {
@@ -713,7 +776,7 @@ the testable half is `create_scenario_file`.
 new_scenario_file :: proc(app: ^App) {
 	// IN THE FOLDER BEING EDITED - the one marked in the folders list, whose files are listed under it. Without
 	// `path` the dialog opened wherever Windows last left it, which read as the new file going somewhere else.
-	script := dialog_script("selectFile", "New scenario file", app.scn_dir, save = true)
+	script := dialog_script("selectFile", "New scenario file", "" if editing_builtin(app) else app.scn_dir, save = true)
 	result, err := sa.eval(app.window, script)
 	defer sa.value_clear(&result)
 	if err != nil {
@@ -830,6 +893,7 @@ NEW_SCENARIO_TEMPLATE :: `# A scenario is a name, a description, and one line pe
 #
 #   quantities   hcp  controls  spades  hearts  diamonds  clubs  longest
 #   comparisons  <  <=  =  !=  >=  >        or a range:  hcp in 15..17
+#   against each other, and added up:       spades > hearts    spades + hearts >= 9
 #   other atoms  balanced   holds(spades, ace)
 #   names        ready-made helpers, some written for one bidding system - press words to list them
 #
@@ -1045,6 +1109,9 @@ this — which is why pressing `check` cannot change what generate would run.
 */
 // The open file's path as the loader recorded it (its systems are keyed by it), or the joined path.
 loaded_path_of :: proc(app: ^App) -> string {
+	if editing_builtin(app) {
+		return strings.concatenate({scenario_dsl.BUILTIN_PREFIX, app.scn_open}, context.temp_allocator)
+	}
 	path, _ := filepath.join({app.scn_dir, app.scn_open}, context.temp_allocator)
 	for def in app.loaded.systems.defs {
 		if same_dir(def.file, path) {
@@ -1241,13 +1308,33 @@ check_report :: proc(
 		strings.write_byte(&b, '\n')
 	}
 
+	// HOW OFTEN, for a file of a few scenarios: each one is CHECK_TRIALS deals on the engine thread, so a big file
+	// (the built-in one holds 110) would hold the window for seconds. There only the scenario the CARET is in is
+	// measured, and the report says how to measure another.
+	at_caret := -1
+	if len(programs) > CHECK_MEASURE_MAX {
+		at_caret = scenario_at_caret(app, programs)
+		fmt.sbprintf(
+			&b,
+			"%d scenarios - too many to measure all at once, so only the one the caret is in is measured. Put the caret in another and press check to measure that one.\n",
+			len(programs),
+		)
+		// The measured one AT THE TOP, where the report opens, not somewhere in a hundred entries.
+		if at_caret >= 0 {
+			fmt.sbprintf(&b, "\n%s\n", programs[at_caret].name)
+			write_frequency(&b, &programs[at_caret])
+		}
+		strings.write_byte(&b, '\n')
+	}
 	for &program, i in programs {
 		if i > 0 {
 			strings.write_byte(&b, '\n')
 		}
 		scenario_dsl.write_program_into(&b, &program)
 		write_meanings_used(&b, &program)
-		write_frequency(&b, &program)
+		if len(programs) <= CHECK_MEASURE_MAX {
+			write_frequency(&b, &program)
+		}
 	}
 
 	if len(diagnostics) > 0 {
@@ -1263,18 +1350,36 @@ check_report :: proc(
 	}
 
 	// The name clash is a REPORT rather than a refusal, because it is not an error: `cli.lookup` takes the
-	// first exact match and the compiled registry comes first, so a file may define `1c` all it likes
-	// and the compiled one is what generates. Silently is the wrong way for that to be true.
+	// first exact match and the built-in scenarios come first, so a file may define `1c` all it likes
+	// and the built-in one is what generates. Silently is the wrong way for that to be true.
 	for &program in programs {
-		if shadowed_by_compiled(app, program.name) {
+		if shadowed_by_builtin(app, program.name) {
 			fmt.sbprintf(
 				&b,
-				"\nnote: `%s` is also a compiled scenario, and the compiled one wins — rename this to reach it.\n",
+				"\nnote: `%s` is also a built-in scenario, and the built-in one wins — rename this to reach it.\n",
 				program.name,
 			)
 		}
 	}
 	return strings.to_string(b)
+}
+
+// Which of `programs` the editor's caret is in: the last whose `scenario` line is at or above it, or -1 (the caret
+// above the first, in a system block, say).
+scenario_at_caret :: proc(app: ^App, programs: []scenario_dsl.Program) -> int {
+	text, ok := scenario_source(app, context.temp_allocator)
+	if !ok {
+		return -1
+	}
+	caret := caret_row(app, "#scn-text")
+	found, found_row := -1, -1
+	for program, i in programs {
+		row := scenario_line(text, program.name)
+		if row <= caret && row > found_row {
+			found, found_row = i, row
+		}
+	}
+	return found
 }
 
 // WHERE EACH MEANING CAME FROM, so nobody argues with a definition they cannot see: "nt-opening from ours
@@ -1291,6 +1396,15 @@ write_meanings_used :: proc(b: ^strings.Builder, program: ^scenario_dsl.Program)
 		fmt.sbprintf(b, "%s from %s", meaning.name, meaning.system)
 		if meaning.overrides != "" {
 			fmt.sbprintf(b, " (over %s)", meaning.overrides)
+		}
+		if meaning.amended_by != "" {
+			fmt.sbprintf(b, ", amended by %s", meaning.amended_by)
+		}
+		if len(meaning.alternatives) > 0 {
+			strings.write_string(b, ", also ")
+			for alternative, i in meaning.alternatives {
+				fmt.sbprintf(b, "%s%q", ", " if i > 0 else "", alternative.name)
+			}
 		}
 	}
 	if len(seen) > 0 {
@@ -1320,10 +1434,19 @@ write_frequency :: proc(b: ^strings.Builder, program: ^scenario_dsl.Program) {
 			CHECK_TRIALS / hits,
 		)
 	}
-	if len(program.alternatives) == 0 {
+	if len(program.alternatives) == 0 && len(program.meaning_alternatives) == 0 {
 		return
 	}
 	fmt.sbprintf(b, "    its own lines: %d\n", labels[""])
+	// A MEANING'S alternatives first, as `explain` tries them first.
+	for name in program.meaning_alternatives {
+		added := labels[name]
+		if added == 0 {
+			fmt.sbprintf(b, "    a meaning's also %q: adds none — it lets in nothing the rest does not\n", name)
+			continue
+		}
+		fmt.sbprintf(b, "    a meaning's also %q: adds %d (%.0f%% of the deals kept)\n", name, added, 100.0 * f64(added) / f64(hits))
+	}
 	for name in program.alternatives {
 		added := labels[name]
 		if added == 0 {
@@ -1334,10 +1457,14 @@ write_frequency :: proc(b: ^strings.Builder, program: ^scenario_dsl.Program) {
 	}
 }
 
-// Is there a COMPILED scenario of this name? `cli.lookup` takes the first exact match and the compiled
-// registry is concatenated first, so a compiled name shadows a file's — see `load_user_scenarios`.
-shadowed_by_compiled :: proc(app: ^App, name: string) -> bool {
-	for scenario in bidding.registry {
+// Is there a BUILT-IN scenario of this name? `cli.lookup` takes the first exact match and the built-in ones
+// load first, so a built-in name shadows a file's — see `load_user_scenarios`. Not when the buffer IS the
+// built-in file.
+shadowed_by_builtin :: proc(app: ^App, name: string) -> bool {
+	if editing_builtin(app) {
+		return false
+	}
+	for scenario in app.loaded.scenarios[:app.loaded.builtin_count] {
 		if scenario.name == name {
 			return true
 		}
@@ -1367,10 +1494,13 @@ scenario_words :: proc(app: ^App) {
 		`A scenario file holds one or more scenarios:
 
     scenario <name> "<description>"
+      label: <auction>              shown on the list's row, e.g. 1♥/♠ – ? : slam try
+      formerly: <old name>          a name it had before; looking it up still works
       system: <name>                whose meanings it uses; none = any system's
       tags: <name>, <name>          groups it appears in, in the picker
       <seat>: <condition>           north / east / south / west
       <side>: <condition>           north-south / east-west
+      deal: <condition>             each part names its hand: north(...)
       dealer: <seat>                who deals every board (else drawn per deal)
       vulnerability: <who>          none / north-south / east-west / both
       also "<name>" <seat>: <cond>  an alternative, named on the deals it lets in
@@ -1382,6 +1512,8 @@ The lines AND together. Within a condition:
     spades  hearts  diamonds  clubs
     <  <=  =  !=  >=  >            comparisons     hcp >= 15
     in <low>..<high>               a range         hcp in 15..17
+    <number> <op> <number>         one against another   spades > hearts
+    <number> + <number>            added up (up to four) spades + hearts >= 9
     balanced                       norn's own definition
     holds(<suit>, <rank>)          holds(spades, ace)
     seat                           the hand's place in the auction, 1 = dealer
@@ -1403,6 +1535,15 @@ hand. balanced and the named helpers describe one hand, so they belong on
 a seat line.
 
     north-south: hcp >= 32 and (spades >= 8 or hearts >= 8)
+
+opc is the side's combined OPC total, so it goes on a side's line only.
+
+A DEAL line is for a condition that crosses hands - "North has five
+spades and South four, OR the same in hearts". Each part of it names its
+hand or side, and the line ANDs with the others like any line:
+
+    deal: north(spades >= 5) and south(spades >= 4) or north(hearts >= 5) and south(hearts >= 4)
+    deal: east-west(hcp < 15) and (west(spades >= 7) or east(spades >= 7))
 
 A double-dummy line keeps only the deals a side really makes, double dummy,
 and shows each kept deal's par on its page. Game is 3NT, four of a major
@@ -1437,6 +1578,20 @@ name. A system may EXTEND another and override only what differs:
 With the deals list set to ours, every 2over1 scenario is listed under it
 and reads ours' meanings; check says where each one came from. A meaning
 may use other meanings, and the systems may be in any of your files.
+
+A MEANING'S ALTERNATIVES are the hands some count and others do not, each
+an also line under the meaning; a deal kept only through one carries its
+name on its board. A system extending another switches an inherited one
+off, or adds its own, without restating the meaning - name the meaning
+with no condition:
+
+    system 2over1
+      meaning nt-opening: hcp in 15..17 and balanced
+        also "14, five-card minor": hcp = 14 and balanced and longest = 5
+    system ours extends 2over1
+      meaning nt-opening
+        without "14, five-card minor"
+        also "4441": hcp in 15..17 and longest = 4 and clubs = 1
 
 `,
 	)

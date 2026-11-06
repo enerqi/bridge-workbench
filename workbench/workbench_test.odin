@@ -119,7 +119,7 @@ test_app :: proc(t: ^testing.T, app: ^App) -> (ok: bool) {
 	app.allocator = context.allocator
 	app.selected = 0
 	// The same wiring `main` does, so the tests see the registry the window sees. With no scenario
-	// directories configured this loads nothing and leaves `app.scenarios` as `bidding.registry`.
+	// directories configured this loads the built-in scenarios alone (`bidding.builtin_files`).
 	load_user_scenarios(app)
 	app.transcript = strings.builder_make()
 	return true
@@ -1225,8 +1225,8 @@ scenario uses-nt "1NT"
 	prefs.set(&app.prefs, SCENARIO_DIRS_PREF, folder)
 	free_user_scenarios(&app)
 	load_user_scenarios(&app)
-	if !testing.expect_value(t, len(app.loaded.programs), 1) {return}
-	index := len(bidding.registry)
+	if !testing.expect_value(t, len(app.loaded.programs) - app.loaded.builtin_count, 1) {return}
+	index := app.loaded.builtin_count
 
 	ours := system_entry(&app, "ours")
 	if !testing.expect(t, ours != nil, "a system a file defines is in the picker") {return}
@@ -1234,7 +1234,7 @@ scenario uses-nt "1NT"
 	testing.expect_value(t, ours.description, "ours, a 14-16 notrump")
 
 	meaning_system := proc(app: ^App) -> string {
-		for node in app.loaded.programs[0].nodes {
+		for node in app.loaded.programs[app.loaded.builtin_count].nodes {
 			if m, is := node.(scenario_dsl.Meaning_Node); is {
 				return m.system
 			}
@@ -1250,7 +1250,7 @@ scenario uses-nt "1NT"
 	testing.expect_value(t, scenario_badge(&app, index), "")
 
 	// The editor's check says where the meaning came from.
-	report := check_report(&app, {app.loaded.programs[0]^}, {}, context.temp_allocator)
+	report := check_report(&app, {app.loaded.programs[index]^}, {}, context.temp_allocator)
 	testing.expect(t, strings.contains(report, "nt-opening from ours (over 2over1)"), report)
 
 	choose_system(&app, "2over1")
@@ -7974,17 +7974,16 @@ scenario plain-one "not a guide"
 	scenario_dsl.destroy_loaded(&app.loaded, app.allocator)
 	delete(app.scenarios, app.allocator)
 	scenario_dsl.set_vocabulary(bidding.vocabulary)
-	app.loaded = scenario_dsl.load_directories({folder}, app.allocator)
-	registry := make([dynamic]cli.Scenario, 0, len(bidding.registry) + len(app.loaded.scenarios), app.allocator)
-	append(&registry, ..bidding.registry)
+	app.loaded = scenario_dsl.load_directories({folder}, app.allocator, builtins = bidding.builtin_files)
+	registry := make([dynamic]cli.Scenario, 0, len(app.loaded.scenarios), app.allocator)
 	append(&registry, ..app.loaded.scenarios)
 	app.scenarios = registry[:]
 	build_groups(&app)
-	if len(app.loaded.scenarios) != 2 {
+	if len(app.loaded.scenarios) - app.loaded.builtin_count != 2 {
 		testing.expect(t, false, "the scenario file did not load")
 		return
 	}
-	guide_index := len(bidding.registry) // the guide is the first loaded scenario
+	guide_index := app.loaded.builtin_count // the guide is the first scenario from the file
 	shows_guide := proc(app: ^App, index: int) -> bool {
 		return slice.contains(visible_scenarios(app, context.temp_allocator), index)
 	}
@@ -8043,15 +8042,14 @@ test_a_loaded_scenarios_tags_become_a_group :: proc(t: ^testing.T) {
 	scenario_dsl.destroy_loaded(&app.loaded, app.allocator)
 	delete(app.scenarios, app.allocator)
 	scenario_dsl.set_vocabulary(bidding.vocabulary)
-	app.loaded = scenario_dsl.load_directories({folder}, app.allocator)
-	registry := make([dynamic]cli.Scenario, 0, len(bidding.registry) + len(app.loaded.scenarios), app.allocator)
-	append(&registry, ..bidding.registry)
+	app.loaded = scenario_dsl.load_directories({folder}, app.allocator, builtins = bidding.builtin_files)
+	registry := make([dynamic]cli.Scenario, 0, len(app.loaded.scenarios), app.allocator)
 	append(&registry, ..app.loaded.scenarios)
 	app.scenarios = registry[:]
 	build_groups(&app)
 
 	testing.expect_value(t, len(app.scenarios), compiled_scenarios + 1)
-	if len(app.loaded.scenarios) != 1 {
+	if len(app.loaded.scenarios) - app.loaded.builtin_count != 1 {
 		testing.expect(t, false, "the scenario file did not load")
 		return
 	}
@@ -8524,7 +8522,7 @@ test_check_says_when_a_compiled_scenario_wins_the_name :: proc(t: ^testing.T) {
 
 	testing.expect(
 		t,
-		strings.contains(read_scenario_report(&app), "the compiled one wins"),
+		strings.contains(read_scenario_report(&app), "the built-in one wins"),
 		"a shadowed name should be reported",
 	)
 }
@@ -8927,7 +8925,8 @@ test_the_sources_list_shows_every_folder_and_switches_between_them :: proc(t: ^t
 	box := find(&app, "#scn-sources")
 	testing.expect(t, box != nil, "the scenarios tab has no sources list")
 	if box == nil {return}
-	rows, err := sa.select_all(box, ".row", context.temp_allocator)
+	// The folders' rows: the built-in one heads the list and is tested on its own.
+	rows, err := sa.select_all(box, `.row:not([data-sdir="built-in"])`, context.temp_allocator)
 	testing.expect_value(t, err, nil)
 	testing.expect_value(t, len(rows), 2)
 	if len(rows) != 2 {return}
@@ -8948,10 +8947,10 @@ test_the_sources_list_shows_every_folder_and_switches_between_them :: proc(t: ^t
 /*
 A ROW FROM ONE OF YOUR FILES IS MARKED, AND THE MARK OPENS THE FILE at that scenario's line.
 
-The deals list mixes the compiled scenarios with those read from `.scenario` files, and the way from a row to
+The deals list mixes the built-in scenarios with those read from your `.scenario` files, and the way from a row to
 its file was the scenarios tab, a folder and a file chosen by hand. Here the scenario is the SECOND in a file
 in the second folder while the editor is on the first: the ✎ must switch folder and file and put the caret on
-its `scenario` line, a compiled row must have no mark, and over unsaved text the first press must keep it.
+its `scenario` line, a built-in row's mark is the read-only kind, and over unsaved text the first press must keep it.
 */
 @(test)
 test_the_edit_mark_opens_a_scenarios_file :: proc(t: ^testing.T) {
@@ -8991,8 +8990,8 @@ test_the_edit_mark_opens_a_scenarios_file :: proc(t: ^testing.T) {
 	show_view(&app, .Panes)
 	draw_scenarios(&app)
 	pump(&app)
-	marks, _ := sa.select_all(find(&app, "#scenarios"), ".row .edit", context.temp_allocator)
-	testing.expect_value(t, len(marks), 3) // the three file scenarios, and no compiled one
+	marks, _ := sa.select_all(find(&app, "#scenarios"), ".row .edit:not(.builtin)", context.temp_allocator)
+	testing.expect_value(t, len(marks), 3) // the three file scenarios; a built-in one's mark is another kind
 	mark := find(&app, fmt.tprintf(`#scenarios .edit[data-edit="%d"]`, index))
 	testing.expect(t, mark != nil, "the scenario's row has no edit mark")
 	if mark == nil {return}
@@ -9028,6 +9027,86 @@ test_the_edit_mark_opens_a_scenarios_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.scn_open, "b.scenario")
 	testing.expect_value(t, caret_row(&app, "#scn-text"), 4)
 	testing.expect_value(t, app.selected, 0) // the press edits, it does not select the row
+}
+
+/*
+THE BUILT-IN SCENARIOS ARE TEXT, AND THE EDITOR SHOWS THEM READ ONLY. With no folder of the user's the deals list
+is the built-in file's scenarios alone, each from a program; a built-in row's mark opens that file in the editor
+at the scenario's line, read only (the widget's attribute, and `save` refuses); the sources list heads with it;
+and a check of the built-in buffer is clean - its own systems are not counted twice against the loaded ones.
+*/
+@(test)
+test_the_built_in_scenarios_open_read_only :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	testing.expect(t, app.loaded.builtin_count > 100, "the built-in file's scenarios load")
+	testing.expect_value(t, len(app.scenarios), app.loaded.builtin_count)
+	index := -1
+	for scenario, i in app.scenarios {
+		if scenario.name == "1n" {
+			index = i
+		}
+	}
+	if !testing.expect(t, index >= 0, "the built-in 1n is listed") {return}
+	testing.expect_value(t, scenario_system(&app, index), "swedish-club")
+	_, by_old_name := cli.lookup(app.scenarios, "1n-opener")
+	testing.expect(t, by_old_name, "a built-in scenario answers its former name")
+
+	// The mark shows on the selected (or hovered) row only, so the row is selected first.
+	app.selected = index
+	show_view(&app, .Panes)
+	draw_scenarios(&app)
+	pump(&app)
+	mark := find(&app, fmt.tprintf(`#scenarios .edit.builtin[data-edit="%d"]`, index))
+	if !testing.expect(t, mark != nil, "a built-in row carries the read-only mark") {return}
+	sa.do_click(mark)
+	pump(&app)
+	testing.expect_value(t, current_view(&app), View.Scenarios)
+	testing.expect_value(t, app.scn_dir, BUILTIN_DIR)
+	testing.expect_value(t, app.scn_open, "swedish-club.scenario")
+	text, _ := scenario_source(&app, context.temp_allocator)
+	testing.expect_value(t, caret_row(&app, "#scn-text"), scenario_line(text, "1n"))
+	readonly, _ := sa.attribute(find(&app, "#scn-text"), "readonly", context.temp_allocator)
+	testing.expect_value(t, readonly, "readonly")
+	disabled, _ := sa.attribute(find(&app, "#scn-save"), "disabled", context.temp_allocator)
+	testing.expect(t, disabled != "", "save is disabled on a built-in file")
+	saved, why := save_scenario_file(&app)
+	testing.expect(t, !saved, "a built-in file is not saved")
+	testing.expect(t, strings.contains(why, "read only"), why)
+
+	box := find(&app, "#scn-sources")
+	if !testing.expect(t, box != nil, "the scenarios tab has no sources list") {return}
+	first, _ := sa.select_all(box, ".row", context.temp_allocator)
+	if testing.expect(t, len(first) >= 1, "the sources list is empty") {
+		sdir, _ := sa.attribute(first[0], "data-sdir", context.temp_allocator)
+		testing.expect_value(t, sdir, BUILTIN_DIR)
+	}
+
+	check_scenario(&app)
+	pump(&app)
+	testing.expect_value(t, scenario_problem_count(&app), 0)
+	report := read_scenario_report(&app)
+	testing.expect(t, strings.contains(report, "system swedish-club"), report)
+	testing.expect(t, !strings.contains(report, "wins"), "the built-in file does not shadow itself")
+	// Too many to measure them all: the one at the caret (1n, where the mark put it) is measured, at the top.
+	testing.expect(t, !strings.contains(report, "sim --"), "the report points at no command line")
+	testing.expect(t, strings.count(report, "happens:") == 1, "one scenario is measured")
+	testing.expect(t, strings.contains(report, "\n1n\n  happens:"), report[:min(len(report), 400)])
+
+	// A file of the user's takes save back, and its text back to editable.
+	dir := scratch_scenario_dir(t, "wb-scn-builtin-then-mine")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "mine.scenario", "scenario wb-mine \"mine\"\n  north: hcp >= 12\n") {return}
+	adopt_scenario_dir(&app, dir)
+	if opened, message := open_scenario_file(&app, "mine.scenario"); !testing.expect(t, opened, message) {return}
+	disabled, _ = sa.attribute(find(&app, "#scn-save"), "disabled", context.temp_allocator)
+	testing.expect_value(t, disabled, "")
+	readonly, _ = sa.attribute(find(&app, "#scn-text"), "readonly", context.temp_allocator)
+	testing.expect_value(t, readonly, "")
 }
 
 // ONE FOLDER, HOWEVER IT IS SPELLED, loads once. The environment and the pref can both name a folder, with
@@ -9116,7 +9195,7 @@ test_the_forget_button_takes_a_folder_out_of_the_sources :: proc(t: ^testing.T) 
 	_, kept := cli.lookup(app.scenarios, "wb-keep")
 	testing.expect(t, kept, "and the other folder's should stay")
 	testing.expect(t, same_dir(app.scn_dir, keep), "the editor should move to the folder that is left")
-	rows, _ := sa.select_all(box, ".row", context.temp_allocator)
+	rows, _ := sa.select_all(box, `.row:not([data-sdir="built-in"])`, context.temp_allocator)
 	testing.expect_value(t, len(rows), 1)
 }
 
@@ -11013,6 +11092,18 @@ test_the_qr_panel_shows_the_code_and_closes_like_about :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expectf(t, wrong == 0, "%d of %d modules painted wrong", wrong, expected.code.size * expected.code.size)
+
+	// THE CODE FILLS THE ROOM THE PANEL HAS (`wbFitQr`): the card's last line ends at the card's inner bottom, or
+	// the code is as wide as the card - and either way nothing spills out of the card.
+	card := find(&app, "#qr-panel > .about-card")
+	last := find(&app, "#qr-panel .about-card > .line")
+	if card != nil && last != nil {
+		inner, _ := sa.location(card, .Content, .Root)
+		end, _ := sa.location(last, .Margin, .Root)
+		gap := int(inner.y + inner.height) - int(end.y + end.height)
+		testing.expectf(t, gap >= -1, "the panel's last line spills %d px out of the card", -gap)
+		testing.expectf(t, gap <= 2 || w >= int(inner.width) - 2, "%d px left under the code (%d px, card %v)", gap, w, inner)
+	}
 	link, _ := sa.text(find(&app, "#qr-link"), context.temp_allocator)
 	testing.expect(t, strings.has_prefix(link, "https://example.github.io/bridge/player.html#v1."), link)
 	facts, _ := sa.text(find(&app, "#qr-facts"), context.temp_allocator)

@@ -1839,13 +1839,13 @@
   // system's own helpers, or a misspelling of one, and the parser is what tells those two apart.
   var SCN_OPS   = { "and": 1, "or": 1, "not": 1, "in": 1 };
   var SCN_ATOMS = {
-    "hcp": 1, "controls": 1, "longest": 1, "balanced": 1, "holds": 1,
+    "hcp": 1, "controls": 1, "opc": 1, "longest": 1, "balanced": 1, "holds": 1,
     "spades": 1, "hearts": 1, "diamonds": 1, "clubs": 1,
     "two": 1, "three": 1, "four": 1, "five": 1, "six": 1, "seven": 1, "eight": 1, "nine": 1,
     "ten": 1, "jack": 1, "queen": 1, "king": 1, "ace": 1,
     // The table: `seat` and the vulnerability words on a line, and the values of `dealer:` / `vulnerability:`.
     "seat": 1, "vulnerable": 1, "favourable": 1, "favorable": 1, "unfavourable": 1, "unfavorable": 1,
-    "north": 1, "east": 1, "south": 1, "west": 1, "none": 1, "both": 1
+    "north": 1, "east": 1, "south": 1, "west": 1, "north-south": 1, "east-west": 1, "none": 1, "both": 1
   };
 
   function scnColorizeLine(el) {
@@ -1876,12 +1876,20 @@
       return;
     }
 
+    // `label:` / `formerly:` - free text after the key, not a condition (a label holds colons and dashes).
+    var plain = /^(\s*)(label|formerly)\s*:/i.exec(text);
+    if (plain) {
+      bmlMark(el, plain[1].length, plain[0].length, "scn-key");
+      if (plain[0].length < text.length) bmlMark(el, plain[0].length, text.length, "scn-str");
+      return;
+    }
+
     // `north:` / `tags:` - the key, up to and including its colon. The expression after it is where the
     // words are, so the scan starts there and the key cannot be re-marked as a name.
     var body = 0;
     // `also "<name>" north:` - the word, its quoted name (which may hold a colon), then the key.
     // `meaning <name>:` takes the same path: the word, then the name and its colon as the key.
-    var also = /^(\s*)(also|meaning)\b\s*("[^"]*"?)?/i.exec(text);
+    var also = /^(\s*)(also|meaning|without)\b\s*("[^"]*"?)?/i.exec(text);
     var from = 0;
     if (also) {
       bmlMark(el, also[1].length, also[1].length + also[2].length, "scn-key");
@@ -3478,6 +3486,35 @@
     var value = parseFloat(document.documentElement.style.getPropertyValue("zoom"));
     return (value > 0) ? value : 1;
   }
+
+  // THE QR CODE FILLS THE PANEL'S FREE ROOM: what the card's inner box leaves under its last line, added to the
+  // code's side; as wide as the card at most; never under the stylesheet's 26em floor. MEASURED where the last line
+  // ends (in the document's coordinates) rather than added up from the children's margin boxes: vertical margins
+  // collapse here, so a sum overcounts (35px at 1120x780). Run on the panel's `sizechange` (a window resize, a
+  // zoom, the panel shown) and by the host after it writes a code (`draw_share_qr`). `state.box` measures screen
+  // px; a style takes CSS px, so the zoom is divided out, as the split drag does.
+  function wbFitQr() {
+    var card = document.$("#qr-panel > .about-card");
+    var box = document.$("#qr-code");
+    var svg = box ? box.$("svg") : null;
+    if (!card || !svg || card.state.box("height", "inner") <= 0) return 0;
+    var last = null;
+    for (var child of card.children) {
+      if (child.state.box("height", "border") > 1) last = child;
+    }
+    var free = card.state.box("bottom", "inner", "document") - last.state.box("bottom", "margin", "document");
+    var room = Math.min(card.state.box("width", "inner"), svg.state.box("height", "border") + free);
+    var side = Math.floor(room / wbZoom());
+    if (side > 0) {
+      svg.style.width = side + "px";
+      svg.style.height = side + "px";
+    }
+    return side;
+  }
+  (function () {
+    var panel = document.$("#qr-panel");
+    if (panel) panel.on("sizechange", function () { wbFitQr(); });
+  })();
 
   // Set the scale and hand back what it ended up as, which is not what was asked for at the limits. A
   // factor of 1 REMOVES the property rather than setting it, so an unzoomed window carries no inline style

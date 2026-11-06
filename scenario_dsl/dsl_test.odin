@@ -15,6 +15,7 @@ package scenario_dsl
 */
 
 import "core:math/rand"
+import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -1007,7 +1008,7 @@ test_a_bad_alternative_is_one_diagnostic :: proc(t: ^testing.T) {
 		{`  also "14 north: hcp = 14`, "closing quote"},
 		{`  also "a name far too long to sit on the board beside the hands" north: hcp = 14`, "40 characters"},
 		{`  also "upgrade" east: hcp = 14`, "none above it"},
-		{`  also "upgrade" tags: x`, "seat or partnership"},
+		{`  also "upgrade" tags: x`, "seat, partnership or deal"},
 		{`  also "upgrade" north hcp = 14`, "in quotes"},
 		{`  also "upgrade" north: hcp = 14 balanced`, "unexpected"},
 		{`  also "upgrade" north-south: hcp >= 25`, "none above it"},
@@ -1079,6 +1080,65 @@ test_a_scenario_names_its_system :: proc(t: ^testing.T) {
 	for &parsed in programs {
 		destroy_program(&parsed)
 	}
+}
+
+// A scenario's LABEL (the auction as a player writes it, colons and all) and FORMER NAME are carried to the
+// loaded `cli.Scenario`, so the list shows the label and a lookup by the old name still finds it.
+@(test)
+test_a_scenario_has_a_label_and_a_former_name :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	source := "scenario 1hs_slam-try \"slam try\"\n  label: 1♥/♠ – ? : slam try\n  formerly: 1major-slam-try\n  system: swedish-club\n  north: hcp in 11..15\n"
+	program, ok := parse_one(t, source)
+	if !ok {return}
+	defer destroy_program(&program)
+	testing.expect_value(t, program.label, "1♥/♠ – ? : slam try")
+	testing.expect_value(t, program.formerly, "1major-slam-try")
+	testing.expect_value(t, write_program(&program, context.temp_allocator), source)
+
+	quoted, quoted_ok := parse_one(t, "scenario x\n  label: \"1NT\"\n  north: hcp >= 1\n")
+	if quoted_ok {
+		testing.expect_value(t, quoted.label, "1NT")
+		destroy_program(&quoted)
+	}
+
+	cases := []struct {
+		text: string,
+		says: string,
+	} {
+		{"scenario x\n  label:\n  north: hcp >= 1\n", "expected `label:"},
+		{"scenario x\n  formerly: two words\n  north: hcp >= 1\n", "one word"},
+		{"scenario x\n  label: a\n  label: b\n  north: hcp >= 1\n", "one `label:`"},
+		{"scenario x\n  formerly: a\n  formerly: b\n  north: hcp >= 1\n", "one `formerly:`"},
+	}
+	for c in cases {
+		programs, diagnostics := parse(c.text, "f.scenario", context.temp_allocator)
+		testing.expectf(t, len(programs) == 1, "%q lost the scenario", c.text)
+		testing.expectf(
+			t,
+			len(diagnostics) == 1 && strings.contains(diagnostics[0].message, c.says),
+			"%q: %v",
+			c.text,
+			diagnostics,
+		)
+		for &parsed in programs {
+			destroy_program(&parsed)
+		}
+	}
+
+	// Loaded, the scenario carries both, and `cli.lookup` answers the old name.
+	temp, temp_err := os.temp_directory(context.temp_allocator)
+	if temp_err != nil {return}
+	folder, _ := filepath.join({temp, "dsl-label-test"}, context.temp_allocator)
+	_ = os.make_directory(folder)
+	defer os.remove_all(folder)
+	path, _ := filepath.join({folder, "a.scenario"}, context.temp_allocator)
+	if os.write_entire_file(path, transmute([]u8)source) != nil {return}
+	loaded := load_directories({folder}, context.allocator)
+	defer destroy_loaded(&loaded)
+	found, found_ok := cli.lookup(loaded.scenarios, "1major-slam-try")
+	testing.expect(t, found_ok, "the former name finds the scenario")
+	testing.expect_value(t, found.name, "1hs_slam-try")
+	testing.expect_value(t, found.label, "1♥/♠ – ? : slam try")
 }
 
 // A deal only an alternative kept carries the alternative's name on its card; a deal the scenario's own lines
@@ -1290,5 +1350,287 @@ test_a_meaning_from_another_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(loaded.systems.defs), 1)
 	if len(loaded.systems.defs) == 1 {
 		testing.expect_value(t, loaded.systems.defs[0].description, "2/1")
+	}
+}
+
+// A `deal:` line names a hand for each part of its condition, which is what lets one condition OR across seats:
+// held to the same thing written in Odin over random deals, printed back as written, with a meaning made of
+// groups and a side's `opc`.
+@(test)
+test_a_deal_line_names_its_hands :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	source := `system s
+  meaning major-fit: north(spades >= 5) and south(spades >= 4) or north(hearts >= 5) and south(hearts >= 4)
+
+scenario fit "a major fit, or a big side"
+  system: s
+  north: hcp >= 11
+  deal: major-fit or north-south(opc >= 30 and hcp >= 26)
+`
+	programs, diagnostics := parse(source, "d.scenario", context.temp_allocator)
+	defer for &program in programs {
+		destroy_program(&program)
+	}
+	testing.expectf(t, len(diagnostics) == 0, "unexpected %v", diagnostics)
+	if !testing.expect_value(t, len(programs), 1) {return}
+	written := write_program(&programs[0], context.temp_allocator)
+	testing.expect(t, strings.contains(written, "  deal: major-fit or north-south(opc >= 30 and hcp >= 26)\n"), written)
+
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 20261107)
+	wrong, kept := 0, 0
+	for _ in 0 ..< 40_000 {
+		summary := norn.summarize_deal(norn.deal_hands())
+		n, s := summary[.North], summary[.South]
+		fit :=
+			norn.spade_length(n) >= 5 && norn.spade_length(s) >= 4 ||
+			norn.heart_length(n) >= 5 && norn.heart_length(s) >= 4
+		big := norn.combined_opc(n, s, nil) >= 30 && norn.hcp(n) + norn.hcp(s) >= 26
+		want := norn.hcp(n) >= 11 && (fit || big)
+		got := evaluate(summary, {}, &programs[0])
+		if got != want {
+			wrong += 1
+		}
+		kept += int(got)
+	}
+	testing.expectf(t, wrong == 0, "%d deals where the deal line and its Odin disagree", wrong)
+	testing.expect(t, kept > 0, "nothing kept")
+
+	cases := []struct {
+		line: string,
+		says: string,
+	} {
+		{"  deal: hcp >= 12", "names its hand"},
+		{"  deal: north(hcp >= 12) and spades >= 4", "names its hand"},
+		{"  north: south(hcp >= 12)", "belongs on a `deal:` line"},
+		{"  deal: north(south(hcp >= 12))", "cannot hold another"},
+		{"  deal: north(hcp >= 12", "expected `)`"},
+		{"  deal: north-south(balanced)", "one hand"},
+		{"  north: opc >= 30", "`opc` is a side's"},
+		{"  deal: north(opc >= 30)", "`opc` is a side's"},
+		{"  north-south: opc >= 30", ""},
+		{"  deal: east-west(hcp < 15) and (west(spades >= 7) or east(spades >= 7))", ""},
+	}
+	for c in cases {
+		text := strings.concatenate({"scenario x\n", c.line, "\n"}, context.temp_allocator)
+		parsed, problems := parse(text, "f.scenario", context.temp_allocator)
+		if c.says == "" {
+			testing.expectf(t, len(problems) == 0 && len(parsed) == 1, "%q: unexpected %v", c.line, problems)
+		} else {
+			testing.expectf(
+				t,
+				len(problems) >= 1 && strings.contains(problems[0].message, c.says),
+				"%q: %v",
+				c.line,
+				problems,
+			)
+		}
+		for &program in parsed {
+			destroy_program(&program)
+		}
+	}
+}
+
+// A MEANING INSIDE A MEANING, and a vocabulary name inside one, own their strings like any other node: the
+// program frees them, so they must be the program's. They were cloned into scratch while the outer meaning
+// expanded, and `destroy_program` then freed memory it never owned (a heap-corruption exit from `sim` once the
+// built-in file nested its meanings). Parsed with the context's own allocator, which the test runner tracks.
+@(test)
+test_a_nested_meaning_belongs_to_its_program :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	source := `system s
+  meaning strong: is_big
+  meaning strong-spades: strong and is_five_spades
+scenario x
+  system: s
+  north: strong-spades or strong
+`
+	// The runner's own tracking only LISTS a bad free; this one is asserted.
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	context.allocator = mem.tracking_allocator(&track)
+
+	programs, diagnostics := parse(source, "n.scenario")
+	testing.expectf(t, len(diagnostics) == 0, "unexpected %v", diagnostics)
+	delete(diagnostics)
+	for &program in programs {
+		destroy_program(&program)
+	}
+	delete(programs)
+	testing.expectf(t, len(track.bad_free_array) == 0, "%d frees of memory the program did not own", len(track.bad_free_array))
+	testing.expectf(t, len(track.allocation_map) == 0, "%d allocations not freed", len(track.allocation_map))
+}
+
+// A HAND'S NUMBERS AGAINST EACH OTHER: a suit against a suit, and a sum against a number or a sum. Held to the same
+// conditions in Odin over random deals, printed back as written, and the mistakes one diagnostic each.
+@(test)
+test_a_hands_numbers_compare_with_each_other :: proc(t: ^testing.T) {
+	source := "scenario x\n  north: spades > hearts and spades + hearts >= 9 and clubs + diamonds in 3..5\n  south: hearts >= spades + diamonds or longest = hcp\n"
+	program, ok := parse_one(t, source)
+	if !ok {return}
+	defer destroy_program(&program)
+	testing.expect_value(t, write_program(&program, context.temp_allocator), source)
+
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 20261108)
+	wrong, kept := 0, 0
+	for _ in 0 ..< 40_000 {
+		summary := norn.summarize_deal(norn.deal_hands())
+		n, s := summary[.North], summary[.South]
+		ns, nh := norn.spade_length(n), norn.heart_length(n)
+		minors := norn.club_length(n) + norn.diamond_length(n)
+		longest := max(norn.spade_length(s), norn.heart_length(s), norn.diamond_length(s), norn.club_length(s))
+		want :=
+			ns > nh && ns + nh >= 9 && minors >= 3 && minors <= 5 &&
+			(norn.heart_length(s) >= norn.spade_length(s) + norn.diamond_length(s) || longest == norn.hcp(s))
+		got := evaluate(summary, {}, &program)
+		wrong += int(got != want)
+		kept += int(got)
+	}
+	testing.expectf(t, wrong == 0, "%d deals where the comparison and its Odin disagree", wrong)
+	testing.expect(t, kept > 0, "nothing kept")
+
+	cases := []struct {
+		line: string,
+		says: string,
+	} {
+		{"  north: spades + 3 >= 9", "after `+`"},
+		{"  north: spades + seat >= 9", "`seat` and `opc`"},
+		{"  north: seat > hearts", "`seat` and `opc`"},
+		{"  north: spades > is_big", "a number of the hand"},
+		{"  north: spades + hearts", "expected a comparison"},
+		{"  north: spades + hearts in 9..", "high end"},
+		{"  north: spades + hearts + diamonds + clubs + hcp >= 9", "at most four"},
+		{"  north: spades + hearts in 11..9", "wrong way round"},
+	}
+	for c in cases {
+		text := strings.concatenate({"scenario x\n", c.line, "\n"}, context.temp_allocator)
+		parsed, problems := parse(text, "f.scenario", context.temp_allocator)
+		testing.expectf(
+			t,
+			len(problems) >= 1 && strings.contains(problems[0].message, c.says),
+			"%q: %v",
+			c.line,
+			problems,
+		)
+		for &each in parsed {
+			destroy_program(&each)
+		}
+	}
+}
+
+MEANING_ALTERNATIVES_SOURCE :: `system 2over1
+  meaning nt-opening: hcp in 15..17 and balanced
+    also "14, five-card minor": hcp = 14 and balanced and longest = 5
+    also "4441": hcp in 15..17 and longest = 4 and (spades = 1 or hearts = 1 or diamonds = 1 or clubs = 1)
+
+system ours extends 2over1
+  meaning nt-opening
+    without "14, five-card minor"
+    also "a six-card minor": hcp in 15..17 and longest = 6 and spades <= 3 and hearts <= 3
+
+scenario nt "1NT"
+  system: 2over1
+  north: nt-opening
+`
+
+// A MEANING'S NAMED ALTERNATIVES: the meaning holds through its core or any alternative in force; a deal kept
+// only through one is labelled with its name; and a system that extends another switches inherited ones off
+// (`without`) and adds its own (`also`) without restating the core. Held to the same thing in Odin, read in each
+// system.
+@(test)
+test_a_meanings_alternatives_widen_it_and_name_themselves :: proc(t: ^testing.T) {
+	install_test_vocabulary()
+	Hand :: norn.Hand_Summary
+	core := proc(h: Hand) -> bool {return norn.hcp(h) >= 15 && norn.hcp(h) <= 17 && norn.is_balanced(h)}
+	longest := proc(h: Hand) -> int {
+		return max(norn.spade_length(h), norn.heart_length(h), norn.diamond_length(h), norn.club_length(h))
+	}
+	five_minor := proc(h: Hand) -> bool {
+		longest := max(norn.spade_length(h), norn.heart_length(h), norn.diamond_length(h), norn.club_length(h))
+		return norn.hcp(h) == 14 && norn.is_balanced(h) && longest == 5
+	}
+	shortest := proc(h: Hand) -> int {
+		return min(norn.spade_length(h), norn.heart_length(h), norn.diamond_length(h), norn.club_length(h))
+	}
+	for active in ([]string{"", "ours"}) {
+		programs, diagnostics := parse(MEANING_ALTERNATIVES_SOURCE, "m.scenario", context.temp_allocator, active = active)
+		defer for &program in programs {
+			destroy_program(&program)
+		}
+		testing.expectf(t, len(diagnostics) == 0, "%q: unexpected %v", active, diagnostics)
+		if len(programs) != 1 {
+			testing.expectf(t, false, "%q: parsed %d scenarios", active, len(programs))
+			continue
+		}
+		program := &programs[0]
+		if active == "" {
+			testing.expect_value(t, len(program.meaning_alternatives), 2)
+		} else {
+			testing.expect_value(t, len(program.meaning_alternatives), 2)
+			testing.expect_value(t, program.meaning_alternatives[0], "4441")
+			testing.expect_value(t, program.meaning_alternatives[1], "a six-card minor")
+		}
+		testing.expect(t, strings.contains(write_program(program, context.temp_allocator), "north: nt-opening\n"))
+
+		state: rand.Xoshiro256_Random_State
+		context.random_generator = norn.seeded_xoshiro(&state, 20261109)
+		wrong, labelled, kept := 0, 0, 0
+		for _ in 0 ..< 60_000 {
+			summary := norn.summarize_deal(norn.deal_hands())
+			n := summary[.North]
+			hcp := norn.hcp(n)
+			four441 := hcp >= 15 && hcp <= 17 && longest(n) == 4 && shortest(n) == 1
+			six := hcp >= 15 && hcp <= 17 && longest(n) == 6 && norn.spade_length(n) <= 3 && norn.heart_length(n) <= 3
+			want := core(n) || four441 || (five_minor(n) if active == "" else six)
+			label := ""
+			switch {
+			case core(n):
+			case active == "" && five_minor(n):
+				label = "14, five-card minor"
+			case four441:
+				label = "4441"
+			case active == "ours" && six:
+				label = "a six-card minor"
+			}
+			got := evaluate(summary, {}, program)
+			wrong += int(got != want)
+			if got {
+				kept += 1
+				if explain(summary, {}, program) != label {
+					labelled += 1
+				}
+			}
+		}
+		testing.expectf(t, wrong == 0, "%q: %d deals where the meaning and its Odin disagree", active, wrong)
+		testing.expectf(t, labelled == 0, "%q: %d kept deals labelled wrongly", active, labelled)
+		testing.expect(t, kept > 0, "nothing kept")
+	}
+
+	cases := []struct {
+		text: string,
+		says: string,
+	} {
+		{"system s\n  also \"x\": hcp >= 1\n", "belongs under a `meaning` line"},
+		{"system s\n  meaning m: hcp >= 1\n    without \"x\"\n", "inherited alternative"},
+		{"system s\n  meaning m: hcp >= 1\n    also x: hcp >= 2\n", "expected `also"},
+		{"system s\n  meaning m: hcp >= 1\n    also \"x\": hcp >= 2\n    also \"x\": hcp >= 3\n", "already has an alternative"},
+		{"system s\n  meaning m: hcp >= 1\n    also \"x\": hcp >=\n", "expected a number"},
+		{"system s\nsystem t extends s\n  meaning m\n", "nothing `t` extends defines it"},
+		{"system s\n  meaning m: hcp >= 1\nsystem t extends s\n  meaning m\n    without \"nope\"\n", "no alternative \"nope\""},
+	}
+	for c in cases {
+		parsed, problems := parse(c.text, "f.scenario", context.temp_allocator)
+		testing.expectf(
+			t,
+			len(problems) == 1 && strings.contains(problems[0].message, c.says),
+			"%q: %v",
+			c.text,
+			problems,
+		)
+		for &each in parsed {
+			destroy_program(&each)
+		}
 	}
 }

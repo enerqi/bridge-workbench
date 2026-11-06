@@ -378,6 +378,10 @@ draw_share_qr :: proc(app: ^App) -> bool {
 	if element := find(app, "#qr-notes"); element != nil {
 		sa.set_attribute(element, "class", "about-line qr-warn" if local || code.size == 0 else "about-line")
 	}
+	// As big as the panel allows (`wbFitQr`), measured LAST, once the lines under the code have their text; the
+	// panel's own `sizechange` re-fits it after a resize, a zoom or being shown.
+	fitted, _ := sa.eval(app.window, "wbFitQr()")
+	sa.value_clear(&fitted)
 	return true
 }
 

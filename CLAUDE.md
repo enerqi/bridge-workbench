@@ -120,7 +120,13 @@ selected means all of them"; saving a guide file picks it. A file may hold `syst
 `meaning <name>: <condition>` lines (`scenario_dsl/systems.odin`); a scenario uses a meaning by name, and is read
 in the picker's system when that system extends its own - so choosing `ours` (extending 2over1) re-reads every
 2over1 scenario with ours' meanings (`choose_system`, `sim --system`). Text scenarios cost the same per deal as
-compiled ones (measured: dealing is ~450ns, the condition a few percent). Plan in
+compiled ones (measured: dealing is ~450ns, the condition a few percent), so THE BUILT-IN SCENARIOS ARE TEXT
+(2026-11-06): `bidding/swedish-club.scenario` (`bidding.builtin_files`), read by `load_directories(..., builtins)`
+before any folder - first in the list, so they win a shared name, and their `swedish-club` system is there to
+extend. `sim` and the workbench run only the loaded list; the compiled `registry` stays as the oracle
+`test_the_text_swedish_club_is_the_compiled_one` holds every text scenario to (300k deals, 8 threads). The
+scenario editor shows the built-in file read only (`BUILTIN_DIR`). A `deal:` line with hand groups (`north(...)`,
+`east-west(...)`) says what crosses hands; `opc` is a side's combined OPC; a hand's numbers compare and add (`spades > hearts`, `spades + hearts >= 9`). A meaning has named ALTERNATIVES (`also "<name>": ...` under it; a deal kept through one is labelled with it), and a system extending another AMENDS a meaning by naming it with no condition, then `without "<name>"` / `also` (`resolve_meaning`). Plan in
 `TODO-scenario-create-select-filter.md` ("scenarios belong to a SYSTEM").
 
 Local packages:

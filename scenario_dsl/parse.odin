@@ -42,6 +42,17 @@ Parser :: struct {
 	active:      string,
 	reading:     string,
 	expanding:   [dynamic]string,
+	// WHERE A DIAGNOSTIC'S STRINGS GO, when not where the program's do (`allocator`). Two allocators because the
+	// two outlive different things: a meaning's quiet diagnostics are scratch while the nodes it adds are the
+	// program's, and a meaning checked where it is written keeps its diagnostics while its nodes are scratch. One
+	// allocator for both freed nested meanings' names as though the program owned them (a bad free in `sim`).
+	// nil: `allocator`.
+	diagnostic_allocator: Maybe(runtime.Allocator),
+	// HAND GROUPS (`north(...)`): the line is a `deal:` line, where every atom must be inside one; how deep in a
+	// group the cursor is; and a meaning being checked where it is written, which is judged where it is used.
+	deal_line:   bool,
+	group_depth: int,
+	defining:    bool,
 }
 
 /*
@@ -135,6 +146,13 @@ strip_comment :: proc(line: string) -> string {
 }
 
 @(private)
+diagnostic_allocator :: proc(p: ^Parser) -> runtime.Allocator {
+	if allocator, set := p.diagnostic_allocator.?; set {
+		return allocator
+	}
+	return p.allocator
+}
+
 report :: proc(p: ^Parser, line_index: int, col: int, message: string) {
 	append(
 		p.diagnostics,
@@ -144,8 +162,8 @@ report :: proc(p: ^Parser, line_index: int, col: int, message: string) {
 			// free of memory this package never owned. It showed up as a HEAP CORRUPTION exit
 			// (0xC0000374) on the first run that produced a diagnostic at all, which is exactly the sort
 			// of bug a happy path never finds.
-			pos = {file = strings.clone(p.file, p.allocator), line = line_index + 1, col = col},
-			message = strings.clone(message, p.allocator),
+			pos = {file = strings.clone(p.file, diagnostic_allocator(p)), line = line_index + 1, col = col},
+			message = strings.clone(message, diagnostic_allocator(p)),
 		},
 	)
 }
@@ -182,6 +200,8 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 	rules := make([dynamic]Seat_Rule, 0, 4, p.allocator)
 	tags := make([dynamic]string, 0, 4, p.allocator)
 	system := ""
+	label := ""
+	formerly := ""
 	alternatives := make([dynamic]string, 0, 0, p.allocator)
 	double_dummy: Maybe(Double_Dummy)
 	dealer: Maybe(norn.Seat)
@@ -210,7 +230,7 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 
 		colon := strings.index_byte(line, ':')
 		if colon < 0 {
-			report(p, p.line_index, 1, "expected `key: value` — a seat, a partnership, `dealer:`, `vulnerability:`, `double-dummy:`, `system:` or `tags:`")
+			report(p, p.line_index, 1, "expected `key: value` — a seat, a partnership, `deal:`, `dealer:`, `vulnerability:`, `double-dummy:`, `system:`, `label:`, `formerly:` or `tags:`")
 			p.line_index += 1
 			continue
 		}
@@ -269,6 +289,34 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			} else {
 				system = value
 			}
+		case key == "label":
+			// THE AUCTION AS A PLAYER WRITES IT (`1♥/♠ – ? : slam try`), shown on the list's row with the name dim
+			// after it. Free text, so it may hold colons; quotes round it are dropped.
+			unquoted := value
+			if len(unquoted) >= 2 && unquoted[0] == '"' && unquoted[len(unquoted) - 1] == '"' {
+				unquoted = unquoted[1:len(unquoted) - 1]
+			}
+			if label != "" {
+				report(p, p.line_index, 1, "a scenario has one `label:` line")
+			} else if unquoted == "" {
+				report(p, p.line_index, value_col, "expected `label: <the auction as you would write it>`")
+			} else {
+				label = unquoted
+			}
+		case key == "formerly":
+			// THE NAME IT HAD BEFORE A RENAME, which `sim -S` and the list's filter still answer to. One word, as
+			// the scenario's own name is.
+			if formerly != "" {
+				report(p, p.line_index, 1, "a scenario has one `formerly:` line")
+			} else if value == "" || strings.index_any(value, " \t") >= 0 {
+				report(p, p.line_index, value_col, "expected `formerly: <the scenario's old name>` - one word")
+			} else {
+				formerly = value
+			}
+		case key == "deal":
+			if root, line_ok := parse_deal_condition(p, value, value_col); line_ok {
+				append(&rules, Seat_Rule{deal = true, root = root})
+			}
 		case key == "tags":
 			for tag in strings.split(value, ",", context.temp_allocator) {
 				trimmed := strings.trim_space(tag)
@@ -287,7 +335,7 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 					p,
 					p.line_index,
 					1,
-					"unknown key — expected a seat (north/east/south/west), a partnership (north-south/east-west), `dealer`, `vulnerability`, `double-dummy`, `system` or `tags`",
+					"unknown key — expected a seat (north/east/south/west), a partnership (north-south/east-west), `deal`, `dealer`, `vulnerability`, `double-dummy`, `system`, `label`, `formerly` or `tags`",
 				)
 				p.line_index += 1
 				continue
@@ -314,10 +362,30 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 		return {}, false
 	}
 
+	// The meanings' alternatives, each name once: what `explain` labels a deal with.
+	meaning_alternatives := make([dynamic]string, 0, 0, p.allocator)
+	for node in p.nodes {
+		meaning, is := node.(Meaning_Node)
+		if !is {
+			continue
+		}
+		for alternative in meaning.alternatives {
+			seen := false
+			for known in meaning_alternatives {
+				seen ||= known == alternative.name
+			}
+			if !seen {
+				append(&meaning_alternatives, strings.clone(alternative.name, p.allocator))
+			}
+		}
+	}
+
 	return Program {
 			name = strings.clone(name, p.allocator),
 			description = strings.clone(description, p.allocator),
 			system = strings.clone(system, p.allocator),
+			label = strings.clone(label, p.allocator),
+			formerly = strings.clone(formerly, p.allocator),
 			tags = tags[:],
 			rules = rules[:],
 			nodes = p.nodes[:],
@@ -326,6 +394,7 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			vulnerability = vulnerability,
 			reads_table = p.reads_table || dealer != nil || vulnerability != nil,
 			alternatives = alternatives[:],
+			meaning_alternatives = meaning_alternatives[:],
 			source = strings.clone(p.file, p.allocator),
 			allocator = p.allocator,
 		},
@@ -343,6 +412,20 @@ parse_seat_condition :: proc(p: ^Parser, value: string, value_col: int, pair: bo
 	p.col = value_col
 	p.pair = pair
 	defer p.pair = false
+	return parse_whole_condition(p)
+}
+
+// The condition of a `deal:` line: every atom in a hand's group (`north(...)`, `east-west(...)`).
+@(private)
+parse_deal_condition :: proc(p: ^Parser, value: string, value_col: int) -> (root: int, ok: bool) {
+	if value == "" {
+		report(p, p.line_index, value_col, "this line has no condition")
+		return 0, false
+	}
+	p.text = value
+	p.col = value_col
+	p.deal_line = true
+	defer p.deal_line = false
 	return parse_whole_condition(p)
 }
 
@@ -418,23 +501,24 @@ parse_also_line :: proc(p: ^Parser, raw, line: string, rules: ^[dynamic]Seat_Rul
 		return
 	}
 	key := folded(strings.trim_space(body[:colon]))
+	deal := key == "deal"
 	seat, is_seat := seat_of(key)
 	pair := false
 	if !is_seat {
 		seat, pair = pair_of(key)
 	}
-	if !is_seat && !pair {
+	if !is_seat && !pair && !deal {
 		report(
 			p,
 			p.line_index,
 			column(raw, body),
-			"an `also` line is a seat or partnership line: north/east/south/west or north-south/east-west",
+			"an `also` line is a seat, partnership or deal line: north/east/south/west, north-south/east-west or deal",
 		)
 		return
 	}
 	has_own := false
 	for rule in rules {
-		if rule.also == 0 && rule.seat == seat && rule.pair == pair {
+		if rule.also == 0 && rule.deal == deal && (deal || rule.seat == seat && rule.pair == pair) {
 			has_own = true
 		}
 	}
@@ -453,7 +537,13 @@ parse_also_line :: proc(p: ^Parser, raw, line: string, rules: ^[dynamic]Seat_Rul
 	}
 	value := strings.trim_space(body[colon + 1:])
 	value_col := column(raw, value) if value != "" else column(raw, body) + colon + 1
-	root, ok := parse_seat_condition(p, value, value_col, pair)
+	root: int
+	ok: bool
+	if deal {
+		root, ok = parse_deal_condition(p, value, value_col)
+	} else {
+		root, ok = parse_seat_condition(p, value, value_col, pair)
+	}
 	if !ok {
 		return
 	}
@@ -467,7 +557,7 @@ parse_also_line :: proc(p: ^Parser, raw, line: string, rules: ^[dynamic]Seat_Rul
 		append(alternatives, strings.clone(name, p.allocator))
 		also = len(alternatives)
 	}
-	append(rules, Seat_Rule{seat = seat, pair = pair, root = root, also = also})
+	append(rules, Seat_Rule{seat = seat, pair = pair, deal = deal, root = root, also = also})
 }
 
 // `north-south make slam`: a side, `make` (or `makes`), and game / slam / grand. `small slam` and
@@ -629,6 +719,33 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	}
 	lowered := folded(word)
 
+	// A HAND'S GROUP: `north(...)`, `east-west(...)`.
+	{
+		save, save_col := p.text, p.col
+		skip_spaces(p)
+		if strings.has_prefix(p.text, "(") {
+			if seat, is_seat := seat_of(lowered); is_seat {
+				return parse_hand_group(p, seat, false, word, start_col)
+			}
+			if seat, is_pair := pair_of(lowered); is_pair {
+				return parse_hand_group(p, seat, true, word, start_col)
+			}
+		}
+		p.text, p.col = save, save_col
+	}
+
+	// ON A `deal:` LINE an atom outside a group would have no hand to read. A meaning may be all groups, so it is
+	// let through and its own atoms are judged as it expands.
+	if p.deal_line && p.group_depth == 0 && !is_meaning_here(p, word) {
+		report(
+			p,
+			p.line_index,
+			start_col,
+			fmt_message(p, "on a `deal:` line every condition names its hand: `north(%s ...)`, `east-west(...)`", word),
+		)
+		return 0, false
+	}
+
 	// ONE-HAND WORDS ON A PARTNERSHIP LINE are refused here rather than evaluated: a side's 26 cards are
 	// never "balanced", and a named helper asked about them would answer with something that reads like a
 	// verdict and means nothing. A seat line is where they belong, and the message says so.
@@ -657,13 +774,22 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 		if quantity == .Seat {
 			p.reads_table = true
 		}
+		if quantity == .Opc && !p.pair && !p.defining {
+			report(
+				p,
+				p.line_index,
+				start_col,
+				"`opc` is a side's - put it on a partnership line or in a side's group: `north-south(opc >= 32)`",
+			)
+			return 0, false
+		}
 		return parse_comparison(p, quantity, start_col)
 	}
 
 	// A MEANING of the system this scenario is read in, expanded here (systems.odin).
 	if p.systems != nil && p.reading != "" {
-		if meaning, defined_in, overrides, found := find_meaning(p.systems, p.reading, word); found {
-			return expand_meaning(p, meaning, defined_in, overrides, start_col)
+		if resolved := resolve_meaning(p.systems, p.reading, word); resolved.ok {
+			return expand_meaning(p, &resolved, start_col)
 		}
 	}
 
@@ -680,37 +806,94 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	return 0, false
 }
 
+// `north(...)`: the condition inside, read as that hand's (or with `pair` that side's) - see `Hand_Node`.
+@(private)
+parse_hand_group :: proc(p: ^Parser, seat: norn.Seat, pair: bool, word: string, start_col: int) -> (root: int, ok: bool) {
+	if !p.deal_line && !p.defining {
+		report(
+			p,
+			p.line_index,
+			start_col,
+			fmt_message(p, "`%s(...)` names a hand - it belongs on a `deal:` line; on this line the hand is already named", word),
+		)
+		return 0, false
+	}
+	if p.group_depth > 0 {
+		report(p, p.line_index, start_col, "a hand's group cannot hold another - close the first one before naming the next hand")
+		return 0, false
+	}
+	advance(p, 1) // the `(`
+	saved_pair := p.pair
+	p.pair = pair
+	p.group_depth += 1
+	inner, inner_ok := parse_expression(p)
+	p.group_depth -= 1
+	p.pair = saved_pair
+	if !inner_ok {
+		return 0, false
+	}
+	skip_spaces(p)
+	if !strings.has_prefix(p.text, ")") {
+		report(p, p.line_index, p.col, "expected `)` to close the hand's group")
+		return 0, false
+	}
+	advance(p, 1)
+	return add_node(p, Hand_Node{seat = seat, pair = pair, child = inner}), true
+}
+
+// Is `word` a meaning of the system this scenario is read in?
+@(private)
+is_meaning_here :: proc(p: ^Parser, word: string) -> bool {
+	if p.systems == nil || p.reading == "" {
+		return false
+	}
+	_, _, _, found := find_meaning(p.systems, p.reading, word)
+	return found
+}
+
 /*
 Expand a meaning where it is used: its condition parsed into this scenario's tree under a `Meaning_Node` that
 keeps the name. Its own mistakes were reported where it is written (`check_systems`), so here they are
 collected quietly and the use gets one diagnostic naming the meaning.
 */
 @(private)
-expand_meaning :: proc(p: ^Parser, meaning: ^Meaning_Def, defined_in, overrides: string, start_col: int) -> (root: int, ok: bool) {
+expand_meaning :: proc(p: ^Parser, resolved: ^Resolved_Meaning, start_col: int) -> (root: int, ok: bool) {
+	meaning := resolved.core
 	for name in p.expanding {
 		if name == meaning.name {
 			report(p, p.line_index, start_col, fmt_message(p, "`%s` uses itself, through the meanings it uses", meaning.name))
 			return 0, false
 		}
 	}
-	saved_text, saved_col, saved_line := p.text, p.col, p.line_index
-	saved_diagnostics, saved_allocator := p.diagnostics, p.allocator
-	quiet := make([dynamic]Diagnostic, 0, 2, context.temp_allocator)
-	p.diagnostics, p.allocator = &quiet, context.temp_allocator
-	p.text, p.col, p.line_index = meaning.text, meaning.col, meaning.line
 	append(&p.expanding, meaning.name)
-	inner, inner_ok := parse_whole_condition(p)
-	pop(&p.expanding)
-	p.text, p.col, p.line_index = saved_text, saved_col, saved_line
-	p.diagnostics, p.allocator = saved_diagnostics, saved_allocator
+	defer pop(&p.expanding)
 
+	// The core, then each alternative in force, parsed quietly where each is written.
+	inner, why, inner_ok := parse_meaning_text(p, meaning.text, meaning.line, meaning.col)
+	alternatives := make([]Meaning_Alternative, len(resolved.alternatives), p.allocator)
+	built := 0
+	for alternative in resolved.alternatives {
+		if !inner_ok {
+			break
+		}
+		alt_root, alt_why, alt_ok := parse_meaning_text(p, alternative.text, alternative.line, alternative.col)
+		if !alt_ok {
+			inner_ok, why = false, strings.concatenate({"its alternative \"", alternative.name, "\": ", alt_why}, context.temp_allocator)
+			break
+		}
+		alternatives[built] = Meaning_Alternative{name = strings.clone(alternative.name, p.allocator), root = alt_root}
+		built += 1
+	}
 	if !inner_ok {
-		why := quiet[0].message if len(quiet) > 0 else "it does not read"
+		for alternative in alternatives[:built] {
+			delete(alternative.name, p.allocator)
+		}
+		delete(alternatives, p.allocator)
 		report(
 			p,
 			p.line_index,
 			start_col,
-			strings.concatenate({"the meaning `", meaning.name, "` (", defined_in, ") does not fit here: ", why}, context.temp_allocator),
+			strings.concatenate({"the meaning `", meaning.name, "` (", resolved.defined_in, ") does not fit here: ", why}, context.temp_allocator),
 		)
 		return 0, false
 	}
@@ -718,12 +901,32 @@ expand_meaning :: proc(p: ^Parser, meaning: ^Meaning_Def, defined_in, overrides:
 			p,
 			Meaning_Node {
 				name = strings.clone(meaning.name, p.allocator),
-				system = strings.clone(defined_in, p.allocator),
-				overrides = strings.clone(overrides, p.allocator),
+				system = strings.clone(resolved.defined_in, p.allocator),
+				overrides = strings.clone(resolved.overrides, p.allocator),
+				amended_by = strings.clone(resolved.amended_by, p.allocator),
 				root = inner,
+				alternatives = alternatives,
 			},
 		),
 		true
+}
+
+// One of a meaning's conditions parsed into this scenario's tree, its own diagnostics collected quietly (they
+// were reported where it is written) and the first handed back as `why`.
+@(private)
+parse_meaning_text :: proc(p: ^Parser, text: string, line, col: int) -> (root: int, why: string, ok: bool) {
+	saved_text, saved_col, saved_line := p.text, p.col, p.line_index
+	saved_diagnostics, saved_allocator := p.diagnostics, p.diagnostic_allocator
+	quiet := make([dynamic]Diagnostic, 0, 2, context.temp_allocator)
+	p.diagnostics, p.diagnostic_allocator = &quiet, context.temp_allocator
+	p.text, p.col, p.line_index = text, col, line
+	root, ok = parse_whole_condition(p)
+	p.text, p.col, p.line_index = saved_text, saved_col, saved_line
+	p.diagnostics, p.diagnostic_allocator = saved_diagnostics, saved_allocator
+	if !ok {
+		why = quiet[0].message if len(quiet) > 0 else "it does not read"
+	}
+	return
 }
 
 // The value of this scenario's `system:` line, looked ahead for from its header: "" when it has none.
@@ -788,6 +991,21 @@ parse_holds :: proc(p: ^Parser, start_col: int) -> (root: int, ok: bool) {
 parse_comparison :: proc(p: ^Parser, quantity: Quantity, start_col: int) -> (root: int, ok: bool) {
 	skip_spaces(p)
 
+	// A SUM on the left (`spades + hearts`), or another number on the right (`spades > hearts`): a
+	// `Sum_Compare_Node`. Anything else is the plain `Compare_Node` below, as it always was.
+	left := Sum{count = 1}
+	left.terms[0] = quantity
+	if strings.has_prefix(p.text, "+") {
+		read_sum_tail(p, &left) or_return
+		skip_spaces(p)
+	}
+	if left.count > 1 {
+		return parse_sum_comparison(p, left, start_col)
+	}
+	if quantity_after_comparison(p) {
+		return parse_sum_comparison(p, left, start_col)
+	}
+
 	// `hcp in 15..17`
 	if word, has_word := peek_word(p); has_word && folded(word) == "in" {
 		take_word(p)
@@ -821,10 +1039,130 @@ parse_comparison :: proc(p: ^Parser, quantity: Quantity, start_col: int) -> (roo
 	}
 	value, value_ok := take_int(p)
 	if !value_ok {
-		report(p, p.line_index, p.col, "expected a number after the comparison")
+		report(p, p.line_index, p.col, "expected a number after the comparison, or a number of the hand - hcp, controls, a suit or longest")
 		return 0, false
 	}
 	return add_node(p, Compare_Node{quantity = quantity, op = op, value = value}), true
+}
+
+// Is what follows a comparison and then a number OF THE HAND (`> hearts`), rather than a plain number? The cursor
+// is left where it was.
+@(private)
+quantity_after_comparison :: proc(p: ^Parser) -> bool {
+	save, save_col := p.text, p.col
+	defer p.text, p.col = save, save_col
+	if _, has_op := take_comparison(p); !has_op {
+		return false
+	}
+	word, has_word := peek_word(p)
+	if !has_word || is_number_start(word[0]) {
+		return false
+	}
+	_, is_quantity := quantity_of(folded(word))
+	return is_quantity
+}
+
+@(private)
+is_number_start :: proc(c: byte) -> bool {
+	return (c >= '0' && c <= '9') || c == '-' || c == '+'
+}
+
+// The rest of a sum after its first number: `+ hearts + diamonds`. Each term a hand's number, and not `seat` or
+// `opc` (see `Sum_Compare_Node`).
+@(private)
+read_sum_tail :: proc(p: ^Parser, sum: ^Sum) -> (ok: bool) {
+	for {
+		skip_spaces(p)
+		if !strings.has_prefix(p.text, "+") {
+			return true
+		}
+		advance(p, 1)
+		skip_spaces(p)
+		term_col := p.col
+		word, has_word := take_word(p)
+		quantity: Quantity
+		is_quantity := false
+		if has_word {
+			quantity, is_quantity = quantity_of(folded(word))
+		}
+		if !is_quantity {
+			report(p, p.line_index, term_col, "expected a number of the hand after `+` - hcp, controls, a suit or longest")
+			return false
+		}
+		append_term(p, sum, quantity, term_col) or_return
+	}
+}
+
+// One term of a sum, refused when it is not a number a hand can add up.
+@(private)
+append_term :: proc(p: ^Parser, sum: ^Sum, quantity: Quantity, col: int) -> (ok: bool) {
+	if quantity == .Seat || quantity == .Opc || sum.terms[0] == .Seat || sum.terms[0] == .Opc {
+		report(p, p.line_index, col, "`seat` and `opc` are not added to or compared with the hand's other numbers")
+		return false
+	}
+	if sum.count >= SUM_TERMS_MAX {
+		report(p, p.line_index, col, "a sum adds up at most four numbers")
+		return false
+	}
+	sum.terms[sum.count] = quantity
+	sum.count += 1
+	return true
+}
+
+// `<sum> <op> <number or sum>`, or `<sum> in <low>..<high>`, the left already read.
+@(private)
+parse_sum_comparison :: proc(p: ^Parser, left: Sum, start_col: int) -> (root: int, ok: bool) {
+	if left.terms[0] == .Seat || left.terms[0] == .Opc {
+		report(p, p.line_index, start_col, "`seat` and `opc` are not added to or compared with the hand's other numbers")
+		return 0, false
+	}
+	skip_spaces(p)
+	if word, has_word := peek_word(p); has_word && folded(word) == "in" {
+		take_word(p)
+		low, low_ok := take_int(p)
+		skip_spaces(p)
+		if !low_ok || !strings.has_prefix(p.text, "..") {
+			report(p, p.line_index, p.col, "expected a range: `in <low>..<high>`")
+			return 0, false
+		}
+		advance(p, 2)
+		high, high_ok := take_int(p)
+		if !high_ok {
+			report(p, p.line_index, p.col, "expected the high end of the range")
+			return 0, false
+		}
+		if low > high {
+			report(p, p.line_index, start_col, "the range is the wrong way round — the low end must come first")
+			return 0, false
+		}
+		return add_node(p, Sum_Compare_Node{left = left, is_range = true, value = low, high = high}), true
+	}
+	op, has_op := take_comparison(p)
+	if !has_op {
+		report(p, p.line_index, p.col, "expected a comparison (`>= 9`, `> hearts`) or a range (`in 9..11`)")
+		return 0, false
+	}
+	skip_spaces(p)
+	right_col := p.col
+	// A WORD here is a number of the hand; digits are word characters too, so a plain number is told apart first.
+	if word, has_word := peek_word(p); has_word && !is_number_start(word[0]) {
+		quantity, is_quantity := quantity_of(folded(word))
+		if !is_quantity {
+			report(p, p.line_index, right_col, "expected a number, or a number of the hand - hcp, controls, a suit or longest")
+			return 0, false
+		}
+		take_word(p)
+		right := Sum{}
+		append_term(p, &right, quantity, right_col) or_return
+		read_sum_tail(p, &right) or_return
+		return add_node(p, Sum_Compare_Node{left = left, op = op, right = right}), true
+	}
+	value, value_ok := take_int(p)
+	if !value_ok {
+		report(p, p.line_index, p.col, "expected a number after the comparison")
+		return 0, false
+	}
+	return add_node(p, Sum_Compare_Node{left = left, op = op, value = value}), true
 }
 
 // ---------------------------------------------------------------------------------------------------

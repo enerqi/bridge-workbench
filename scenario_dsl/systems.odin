@@ -30,6 +30,22 @@ package scenario_dsl
 	written), which is why the evaluator needed nothing new beyond one node. On a partnership line it reads the
 	side's two hands like everything else there, so a meaning with `balanced` in it is refused on one.
 
+	A MEANING HAS NAMED ALTERNATIVES, the hands some players count and others do not, each on an `also` line under
+	it; a deal kept only through one carries its name on the card, as a scenario's own alternatives do. A system
+	that extends another AMENDS an inherited meaning by naming it with no condition, then switching alternatives
+	off (`without`) or adding its own (`also`):
+
+			system 2over1
+			  meaning nt-opening: hcp in 15..17 and balanced
+			    also "14, five-card suit": hcp = 14 and balanced and longest = 5
+
+			system ours extends 2over1
+			  meaning nt-opening
+			    without "14, five-card suit"
+			    also "a six-card minor": hcp in 15..17 and longest = 6 and spades <= 3 and hearts <= 3
+
+	A meaning WITH a condition in an extending system replaces the inherited one whole, alternatives and all.
+
 	TWO PASSES, because a meaning can be defined in another file from the scenarios that use it: the loader reads
 	every file's system blocks first (`read_systems`), checks them as a whole (`check_systems`), and only then
 	parses the scenarios against them (`parse(..., systems)`).
@@ -38,14 +54,32 @@ package scenario_dsl
 import "base:runtime"
 import "core:strings"
 
-// One `meaning <name>: <condition>` line. `text` is the condition's source; `line`/`col` where it starts in
-// `file`, for diagnostics.
+// One `meaning <name>: <condition>` line, and the `also` / `without` lines under it. `text` is the condition's
+// source; `line`/`col` where it starts in `file`, for diagnostics. AMENDS: a `meaning <name>` line with no
+// condition, which takes the inherited meaning and changes its alternatives.
 Meaning_Def :: struct {
+	name:         string,
+	text:         string,
+	file:         string,
+	line:         int, // 0-based line index
+	col:          int, // 1-based column of `text`
+	amends:       bool,
+	alternatives: [dynamic]Meaning_Alt_Def,
+	without:      [dynamic]Meaning_Without,
+}
+
+// `also "<name>": <condition>` under a meaning.
+Meaning_Alt_Def :: struct {
 	name: string,
 	text: string,
-	file: string,
-	line: int, // 0-based line index
-	col:  int, // 1-based column of `text`
+	line: int,
+	col:  int,
+}
+
+// `without "<name>"` under an amending meaning: an inherited alternative switched off.
+Meaning_Without :: struct {
+	name: string,
+	line: int,
 }
 
 // One `system <name> [extends <parent>] ["<description>"]` block.
@@ -81,6 +115,15 @@ destroy_systems :: proc(systems: ^Systems) {
 			delete(meaning.name, systems.allocator)
 			delete(meaning.text, systems.allocator)
 			delete(meaning.file, systems.allocator)
+			for alternative in meaning.alternatives {
+				delete(alternative.name, systems.allocator)
+				delete(alternative.text, systems.allocator)
+			}
+			delete(meaning.alternatives)
+			for off in meaning.without {
+				delete(off.name, systems.allocator)
+			}
+			delete(meaning.without)
 		}
 		delete(def.meanings)
 	}
@@ -131,9 +174,83 @@ reading_system :: proc(systems: ^Systems, own, active: string) -> string {
 }
 
 /*
-A meaning looked up from `system` up through what it extends: the nearest definition, the system it is in,
-and the next system further up that defines it too ("" if none) - what this one OVERRIDES.
+A meaning as it stands in `system`: looked up from there through what it extends. The CORE is the nearest
+definition with a condition (`defined_in`; `overrides` the next one further up, "" if none); the ALTERNATIVES in
+force are the core's, then each amendment nearer than it applied in turn - its `without`s taken out, its `also`s
+added (one of the same name replacing the inherited one). `amended_by` is the nearest amending system. Not found
+(`ok` false) when no system on the way defines it with a condition.
 */
+Resolved_Meaning :: struct {
+	core:         ^Meaning_Def,
+	defined_in:   string,
+	overrides:    string,
+	amended_by:   string,
+	alternatives: [dynamic]^Meaning_Alt_Def,
+	ok:           bool,
+}
+
+resolve_meaning :: proc(systems: ^Systems, system: string, name: string, allocator := context.temp_allocator) -> (r: Resolved_Meaning) {
+	Found :: struct {
+		meaning: ^Meaning_Def,
+		system:  string,
+	}
+	chain := make([dynamic]Found, 0, 4, context.temp_allocator)
+	at := find_system(systems, system)
+	for steps := 0; at != nil && steps <= len(systems.defs); steps += 1 {
+		for &m in at.meanings {
+			if m.name == name {
+				append(&chain, Found{&m, at.name})
+				break
+			}
+		}
+		at = find_system(systems, at.parent)
+	}
+	core := -1
+	for found, i in chain {
+		if !found.meaning.amends {
+			if core < 0 {
+				core = i
+				r.core, r.defined_in, r.ok = found.meaning, found.system, true
+			} else {
+				r.overrides = found.system
+				break
+			}
+		}
+	}
+	if core < 0 {
+		return
+	}
+	r.alternatives = make([dynamic]^Meaning_Alt_Def, 0, len(r.core.alternatives) + 2, allocator)
+	for &alternative in r.core.alternatives {
+		append(&r.alternatives, &alternative)
+	}
+	for i := core - 1; i >= 0; i -= 1 {
+		amendment := chain[i].meaning
+		r.amended_by = chain[i].system
+		for off in amendment.without {
+			for k := 0; k < len(r.alternatives); k += 1 {
+				if r.alternatives[k].name == off.name {
+					ordered_remove(&r.alternatives, k)
+					break
+				}
+			}
+		}
+		for &added in amendment.alternatives {
+			replaced := false
+			for k in 0 ..< len(r.alternatives) {
+				if r.alternatives[k].name == added.name {
+					r.alternatives[k], replaced = &added, true
+				}
+			}
+			if !replaced {
+				append(&r.alternatives, &added)
+			}
+		}
+	}
+	return
+}
+
+// The core of a meaning as it stands in `system` - `resolve_meaning` without the alternatives.
 find_meaning :: proc(
 	systems: ^Systems,
 	system: string,
@@ -144,21 +261,8 @@ find_meaning :: proc(
 	overrides: string,
 	ok: bool,
 ) {
-	at := find_system(systems, system)
-	for steps := 0; at != nil && steps <= len(systems.defs); steps += 1 {
-		for &m in at.meanings {
-			if m.name == name {
-				if !ok {
-					meaning, defined_in, ok = &m, at.name, true
-				} else {
-					overrides = at.name
-					return
-				}
-			}
-		}
-		at = find_system(systems, at.parent)
-	}
-	return
+	r := resolve_meaning(systems, system, name)
+	return r.core, r.defined_in, r.overrides, r.ok
 }
 
 // Is this line a system block's header (`system 2over1 ...`), rather than a scenario's `system:` line?
@@ -245,6 +349,7 @@ read_system_block :: proc(p: ^Parser, systems: ^Systems) {
 		broken      = !usable,
 	}
 
+	last := -1 // the meaning an `also` or `without` line belongs under
 	for p.line_index < len(p.lines) {
 		raw := strip_comment(p.lines[p.line_index])
 		line := strings.trim_space(raw)
@@ -255,46 +360,132 @@ read_system_block :: proc(p: ^Parser, systems: ^Systems) {
 		if is_block_header(line) {
 			break
 		}
-		read_meaning_line(p, raw, line, &def, systems.allocator)
+		lowered := folded(line)
+		switch {
+		case strings.has_prefix(lowered, "also ") || strings.has_prefix(lowered, "also\""):
+			read_meaning_alternative(p, raw, line, &def, last, systems.allocator)
+		case strings.has_prefix(lowered, "without ") || strings.has_prefix(lowered, "without\""):
+			read_meaning_without(p, line, &def, last, systems.allocator)
+		case:
+			last = read_meaning_line(p, raw, line, &def, systems.allocator)
+		}
 		p.line_index += 1
 	}
 	append(&systems.defs, def)
 }
 
-// `meaning <name>: <condition>`, the one kind of line a system block holds.
+// The quoted name at the start of `rest`, and what follows it; ok false when there is no closed quote.
 @(private)
-read_meaning_line :: proc(p: ^Parser, raw, line: string, def: ^System_Def, allocator: runtime.Allocator) {
-	if !strings.has_prefix(folded(line), "meaning ") {
-		report(p, p.line_index, 1, "a system holds `meaning <name>: <condition>` lines")
+quoted_name :: proc(text: string) -> (name: string, after: string, ok: bool) {
+	rest := strings.trim_left_space(text)
+	if !strings.has_prefix(rest, `"`) {
+		return "", "", false
+	}
+	close := strings.index_byte(rest[1:], '"')
+	if close < 0 {
+		return "", "", false
+	}
+	return strings.trim_space(rest[1:close + 1]), rest[close + 2:], true
+}
+
+// `also "<name>": <condition>` under the meaning at `last` (an index into `def.meanings`, -1 for none).
+@(private)
+read_meaning_alternative :: proc(p: ^Parser, raw, line: string, def: ^System_Def, last: int, allocator: runtime.Allocator) {
+	SHAPE :: "expected `also \"<name>\": <condition>` under a meaning - the name is what a deal's card shows"
+	if last < 0 {
+		report(p, p.line_index, 1, "an `also` line in a system belongs under a `meaning` line")
 		return
+	}
+	name, after, ok := quoted_name(line[len("also"):])
+	colon := strings.index_byte(after, ':')
+	if !ok || name == "" || colon < 0 || strings.trim_space(after[:colon]) != "" {
+		report(p, p.line_index, 1, SHAPE)
+		return
+	}
+	if len(name) > ALTERNATIVE_NAME_MAX {
+		report(p, p.line_index, 1, "keep an alternative's name to 40 characters - it is drawn on the board")
+		return
+	}
+	text := strings.trim_space(after[colon + 1:])
+	if text == "" {
+		report(p, p.line_index, 1, "an alternative needs a condition after its colon")
+		return
+	}
+	meaning := &def.meanings[last]
+	for existing in meaning.alternatives {
+		if existing.name == name {
+			report(p, p.line_index, 1, fmt_message(p, "`%s` already has an alternative of that name", meaning.name))
+			return
+		}
+	}
+	append(
+		&meaning.alternatives,
+		Meaning_Alt_Def {
+			name = strings.clone(name, allocator),
+			text = strings.clone(text, allocator),
+			line = p.line_index,
+			col = strings.index(raw, text) + 1,
+		},
+	)
+}
+
+// `without "<name>"` under an amending meaning.
+@(private)
+read_meaning_without :: proc(p: ^Parser, line: string, def: ^System_Def, last: int, allocator: runtime.Allocator) {
+	if last < 0 || !def.meanings[last].amends {
+		report(
+			p,
+			p.line_index,
+			1,
+			"`without` switches off an inherited alternative: it goes under `meaning <name>` with no condition, in a system that extends another",
+		)
+		return
+	}
+	name, after, ok := quoted_name(line[len("without"):])
+	if !ok || name == "" || strings.trim_space(after) != "" {
+		report(p, p.line_index, 1, "expected `without \"<name>\"` - the name of an alternative the meaning inherits")
+		return
+	}
+	append(&def.meanings[last].without, Meaning_Without{name = strings.clone(name, allocator), line = p.line_index})
+}
+
+// `meaning <name>: <condition>`, or `meaning <name>` alone to amend an inherited one. The index of the meaning
+// read, -1 when the line was wrong (so `also` / `without` lines under it have nothing to belong to).
+@(private)
+read_meaning_line :: proc(p: ^Parser, raw, line: string, def: ^System_Def, allocator: runtime.Allocator) -> int {
+	if !strings.has_prefix(folded(line), "meaning ") {
+		report(p, p.line_index, 1, "a system holds `meaning <name>: <condition>` lines, and `also` / `without` lines under them")
+		return -1
 	}
 	rest := line[len("meaning "):]
 	colon := strings.index_byte(rest, ':')
-	if colon < 0 {
-		report(p, p.line_index, 1, "expected `meaning <name>: <condition>`")
-		return
-	}
-	name := strings.trim_space(rest[:colon])
-	text := strings.trim_space(rest[colon + 1:])
+	amends := colon < 0
+	name := strings.trim_space(rest if amends else rest[:colon])
+	text := "" if amends else strings.trim_space(rest[colon + 1:])
 	if !is_meaning_name(name) {
-		report(p, p.line_index, 1, "a meaning's name is one word of letters, digits, dashes and underscores")
-		return
+		report(
+			p,
+			p.line_index,
+			1,
+			"expected `meaning <name>: <condition>` (or `meaning <name>` alone, to amend an inherited one) - a name is one word of letters, digits, dashes and underscores",
+		)
+		return -1
 	}
 	if is_reserved_word(name) {
 		report(p, p.line_index, 1, fmt_message(p, "`%s` is already a word of the language - name the meaning something else", name))
-		return
+		return -1
 	}
-	if text == "" {
+	if !amends && text == "" {
 		report(p, p.line_index, 1, "a meaning needs a condition after its colon")
-		return
+		return -1
 	}
 	for existing in def.meanings {
 		if existing.name == name {
 			report(p, p.line_index, 1, fmt_message(p, "`%s` is already a meaning of this system", name))
-			return
+			return -1
 		}
 	}
-	col := strings.index(raw, text) + 1
+	col := strings.index(raw, text) + 1 if !amends else 1
 	append(
 		&def.meanings,
 		Meaning_Def {
@@ -303,8 +494,12 @@ read_meaning_line :: proc(p: ^Parser, raw, line: string, def: ^System_Def, alloc
 			file = strings.clone(p.file, allocator),
 			line = p.line_index,
 			col = col,
+			amends = amends,
+			alternatives = make([dynamic]Meaning_Alt_Def, 0, 0, allocator),
+			without = make([dynamic]Meaning_Without, 0, 0, allocator),
 		},
 	)
+	return len(def.meanings) - 1
 }
 
 @(private)
@@ -407,16 +602,57 @@ check_systems :: proc(systems: ^Systems, diagnostics: ^[dynamic]Diagnostic, only
 			continue
 		}
 		for meaning in def.meanings {
+			// AN AMENDMENT needs something to amend, and each `without` an alternative it inherits.
+			if meaning.amends {
+				inherited := resolve_meaning(systems, def.parent, meaning.name)
+				if !inherited.ok {
+					say(
+						systems,
+						diagnostics,
+						meaning.file,
+						meaning.line,
+						1,
+						strings.concatenate({"`", meaning.name, "` amends a meaning, and nothing `", def.name, "` extends defines it"}, context.temp_allocator),
+					)
+					continue
+				}
+				for off in meaning.without {
+					known := false
+					for alternative in inherited.alternatives {
+						known ||= alternative.name == off.name
+					}
+					if !known {
+						say(
+							systems,
+							diagnostics,
+							meaning.file,
+							off.line,
+							1,
+							strings.concatenate({"`", meaning.name, "` has no alternative \"", off.name, "\" to leave out"}, context.temp_allocator),
+						)
+					}
+				}
+			}
+			for alternative in meaning.alternatives {
+				check_meaning_text(systems, diagnostics, def.name, meaning, alternative.text, alternative.line, alternative.col)
+			}
+			if meaning.amends {
+				continue
+			}
 			scratch := make([dynamic]Node, 0, 8, context.temp_allocator)
 			p := Parser {
 				file        = meaning.file,
 				lines       = {},
 				diagnostics = diagnostics,
-				allocator   = systems.allocator,
+				// The tree is scratch, thrown away once it parses; the diagnostics are kept with the systems'.
+				allocator   = context.temp_allocator,
+				diagnostic_allocator = systems.allocator,
 				nodes       = scratch,
 				systems     = systems,
 				reading     = def.name,
 				expanding   = make([dynamic]string, 0, 4, context.temp_allocator),
+				// Where a meaning is WRITTEN it has no place yet: hand groups and `opc` are judged where it is used.
+				defining    = true,
 			}
 			p.line_index = meaning.line
 			p.text = meaning.text
@@ -427,6 +663,32 @@ check_systems :: proc(systems: ^Systems, diagnostics: ^[dynamic]Diagnostic, only
 			}
 		}
 	}
+}
+
+// One condition of a meaning (an alternative's) parsed where it is written, for its diagnostics.
+@(private)
+check_meaning_text :: proc(
+	systems: ^Systems,
+	diagnostics: ^[dynamic]Diagnostic,
+	system: string,
+	meaning: Meaning_Def,
+	text: string,
+	line, col: int,
+) {
+	p := Parser {
+		file                 = meaning.file,
+		diagnostics          = diagnostics,
+		allocator            = context.temp_allocator,
+		diagnostic_allocator = systems.allocator,
+		nodes                = make([dynamic]Node, 0, 8, context.temp_allocator),
+		systems              = systems,
+		reading              = system,
+		expanding            = make([dynamic]string, 0, 4, context.temp_allocator),
+		defining             = true,
+	}
+	p.line_index, p.text, p.col = line, text, col
+	append(&p.expanding, meaning.name)
+	_, _ = parse_whole_condition(&p)
 }
 
 // Does walking up from `name` ever come back round? (`extends_system` stops after as many steps as there are

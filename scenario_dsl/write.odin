@@ -46,6 +46,16 @@ write_program_into :: proc(b: ^strings.Builder, program: ^Program) {
 	}
 	strings.write_byte(b, '\n')
 
+	if program.label != "" {
+		strings.write_string(b, "  label: ")
+		strings.write_string(b, program.label)
+		strings.write_byte(b, '\n')
+	}
+	if program.formerly != "" {
+		strings.write_string(b, "  formerly: ")
+		strings.write_string(b, program.formerly)
+		strings.write_byte(b, '\n')
+	}
 	if program.system != "" {
 		strings.write_string(b, "  system: ")
 		strings.write_string(b, program.system)
@@ -100,7 +110,11 @@ write_program_into :: proc(b: ^strings.Builder, program: ^Program) {
 				strings.write_string(b, program.alternatives[also - 1])
 				strings.write_string(b, `" `)
 			}
-			strings.write_string(b, pair_word(rule.seat) if rule.pair else seat_word(rule.seat))
+			if rule.deal {
+				strings.write_string(b, "deal")
+			} else {
+				strings.write_string(b, pair_word(rule.seat) if rule.pair else seat_word(rule.seat))
+			}
 			strings.write_string(b, ": ")
 			write_node(b, program, rule.root, .Top)
 			strings.write_byte(b, '\n')
@@ -130,6 +144,24 @@ write_node :: proc(b: ^strings.Builder, program: ^Program, index: int, level: Le
 	case Compare_Node:
 		write_compare(b, node)
 
+	case Sum_Compare_Node:
+		write_sum(b, node.left)
+		if node.is_range {
+			strings.write_string(b, " in ")
+			strings.write_int(b, node.value)
+			strings.write_string(b, "..")
+			strings.write_int(b, node.high)
+		} else {
+			strings.write_byte(b, ' ')
+			strings.write_string(b, comparison_word(node.op))
+			strings.write_byte(b, ' ')
+			if node.right.count > 0 {
+				write_sum(b, node.right)
+			} else {
+				strings.write_int(b, node.value)
+			}
+		}
+
 	case Named_Node:
 		strings.write_string(b, node.name)
 
@@ -155,6 +187,12 @@ write_node :: proc(b: ^strings.Builder, program: ^Program, index: int, level: Le
 		case .Unfavourable:
 			strings.write_string(b, "unfavourable")
 		}
+
+	case Hand_Node:
+		strings.write_string(b, pair_word(node.seat) if node.pair else seat_word(node.seat))
+		strings.write_byte(b, '(')
+		write_node(b, program, node.child, .Top)
+		strings.write_byte(b, ')')
 
 	case Not_Node:
 		strings.write_string(b, "not ")
@@ -183,6 +221,17 @@ write_node :: proc(b: ^strings.Builder, program: ^Program, index: int, level: Le
 		if bracket {
 			strings.write_byte(b, ')')
 		}
+	}
+}
+
+@(private)
+write_sum :: proc(b: ^strings.Builder, sum: Sum) {
+	for i in 0 ..< sum.count {
+		term := sum.terms[i]
+		if i > 0 {
+			strings.write_string(b, " + ")
+		}
+		strings.write_string(b, quantity_word(term))
 	}
 }
 
@@ -228,6 +277,8 @@ quantity_word :: proc(quantity: Quantity) -> string {
 		return "longest"
 	case .Seat:
 		return "seat"
+	case .Opc:
+		return "opc"
 	}
 	return "hcp"
 }

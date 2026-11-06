@@ -14,6 +14,7 @@
 #
 #   quantities   hcp  controls  spades  hearts  diamonds  clubs  longest  seat
 #   comparisons  <  <=  =  !=  >=  >        or a range:  hcp in 15..17
+#   against each other, and added up:       spades > hearts    spades + hearts >= 9
 #   other atoms  balanced   holds(spades, ace)   vulnerable  favourable  unfavourable
 #   operators    and  or  not  ( )
 
@@ -22,43 +23,50 @@
 # A meaning is a condition with a name, written once in a system and used by name in its scenarios
 # (`north: nt-opening`). A meaning may use others (`major-opening` below).
 #
-# YOUR OWN VERSION OF A SYSTEM extends it and overrides only what you play differently. In a file of your
+# A MEANING'S ALTERNATIVES are the hands some players count and others do not, each an `also` line under it.
+# A deal kept only through one carries its name on the board, so the debatable hands are marked as such.
+#
+# YOUR OWN VERSION OF A SYSTEM extends it and changes only what you play differently. In a file of your
 # own (not this one, so a restore never touches it), write for instance:
 #
 #     system ours extends 2over1 "2/1 as we play it"
-#       meaning nt-opening: hcp in 14..16 and balanced
+#       meaning nt-opening
+#         without "4441, singleton honour"
+#       meaning major-opening: spade-opening or heart-opening or hcp = 11 and longest >= 6 and (spades >= 6 or hearts >= 6)
 #
-# then set the deals list's system to `ours`: every 2over1 scenario below is listed under it, and the ones
-# that open 1NT now use your notrump. The scenario editor's check says where each meaning came from
-# ("nt-opening from ours (over 2over1)").
+# A meaning named with NO condition keeps the inherited one and switches its alternatives: `without` turns one
+# off, `also` adds your own. A meaning WITH a condition replaces it whole. Then set the deals list's system to
+# `ours`: every 2over1 scenario below is listed under it and reads your meanings. The scenario editor's check
+# says where each meaning came from ("nt-opening from 2over1, amended by ours").
 system 2over1 "2/1 game forcing: a 15-17 notrump, five-card majors, a strong 2C"
+  # A 2/1 notrump is 15-17; many players also open some hands that are not quite that.
   meaning nt-opening: hcp in 15..17 and balanced
-  # The longer major first, the higher with five of each. A count cannot be compared with another count
-  # (`spades >= hearts`), so the 5-6 case is spelled out.
-  meaning spade-opening: spades >= 5 and (hearts <= 5 or spades >= 6) and hcp in 12..21
-  meaning heart-opening: hearts >= 5 and (spades <= 4 or (spades = 5 and hearts >= 6)) and hcp in 12..21
+    also "14, five-card suit": hcp = 14 and balanced and longest = 5
+    also "4441, singleton honour": hcp in 15..17 and longest = 4 and ((spades = 1 and (holds(spades, ace) or holds(spades, king))) or (hearts = 1 and (holds(hearts, ace) or holds(hearts, king))) or (diamonds = 1 and (holds(diamonds, ace) or holds(diamonds, king))) or (clubs = 1 and (holds(clubs, ace) or holds(clubs, king))))
+  # The longer major first, the higher with five of each: one suit's length against another's.
+  meaning spade-opening: spades >= 5 and spades >= hearts and hcp in 12..21
+  meaning heart-opening: hearts >= 5 and hearts > spades and hcp in 12..21
   meaning major-opening: spade-opening or heart-opening
   meaning strong-2c: hcp >= 22
 
 
-# 1. THE BASIC SHAPE, and NAMED ALTERNATIVES.
-# The built-in `1n` is a 16-18 notrump. A 2/1 notrump is 15-17, and many players also open some hands
-# that are not quite that. Each `also` line names one such kind of hand: it REPLACES the north lines
-# above it, and a deal only it lets in shows its name on the board, so you can see which hands are the
-# debatable ones. Press check in the scenario editor to see how many deals each one adds.
+# 1. THE BASIC SHAPE, through a MEANING WITH ALTERNATIVES.
+# The built-in `1n` is a 16-18 notrump. This one uses the system's `nt-opening`, 15-17 plus the two kinds of
+# hand above that some players open 1NT anyway; a deal only one of them lets in shows its name on the board, so
+# you can see which hands are the debatable ones. Press check in the scenario editor to see how many deals each
+# one adds. Every scenario that opens 1NT gets the same alternatives, from the one meaning.
 scenario guide-1nt "2/1: North opens 1NT, 15-17 - and the hands some open 1NT anyway"
   system: 2over1
   tags: guide
   north: nt-opening
-  also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
-  also "4441, singleton honour" north: hcp in 15..17 and longest = 4 and ((spades = 1 and (holds(spades, ace) or holds(spades, king))) or (hearts = 1 and (holds(hearts, ace) or holds(hearts, king))) or (diamonds = 1 and (holds(diamonds, ace) or holds(diamonds, king))) or (clubs = 1 and (holds(clubs, ace) or holds(clubs, king))))
 
 
-# 2. A MEANING THAT USES OTHERS, and an alternative for a shape.
+# 2. A MEANING THAT USES OTHERS, and a SCENARIO'S OWN alternative.
 # The built-in `1hs` is a limited 11-15 opening (a stronger hand opens 1C). A 2/1 major is 12-21 with a
 # five-card suit, and `major-opening` is the system's two major openings together. (No notrump hand is
-# caught here: `balanced` never includes a five-card major.) A light opening with a six-card suit is the
-# alternative.
+# caught here: `balanced` never includes a five-card major.) An `also` line in a SCENARIO names one more kind
+# of hand for that scenario alone: it REPLACES the north lines above it, here a light opening with a six-card
+# suit.
 scenario guide-1m "2/1: North opens one of a major, 12-21"
   system: 2over1
   tags: guide

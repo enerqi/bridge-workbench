@@ -398,10 +398,10 @@ work :: proc(app: ^App) {
 }
 
 work_generate :: proc(app: ^App) {
-	// The double-dummy hooks, shared with sim.odin (see the `sim_hooks` package): the compiled scenarios'
+	// The double-dummy hooks, shared with sim.odin (see the `sim_hooks` package): the built-in scenarios'
 	// and those the scenario files ask for. Built once per job: `cli` borrows the maps for the length of
 	// each run.
-	hooks := sim_hooks.make_hooks(app.loaded.programs, bidding.registry)
+	hooks := sim_hooks.make_hooks(app.loaded.programs, app.loaded.scenarios[:app.loaded.builtin_count])
 	defer sim_hooks.free_hooks(&hooks)
 	gen_hooks := sim_hooks.gen_hooks(&hooks)
 
@@ -6605,7 +6605,7 @@ find `1c-2h-or-2n`: the registry spells its auctions with dashes and nobody type
 was written for the notes (`1h 1s` against `1H-1S`, `1H--1S` and `1H/1S`, which the corpus spells all three
 ways) and the problem here is the same one, so it is the same code and not a second dialect of it.
 
-THE INDICES STAY REGISTRY INDICES. `app.selected` indexes `bidding.registry` and a row carries that number
+THE INDICES STAY REGISTRY INDICES. `app.selected` indexes `app.scenarios` and a row carries that number
 in `data-index`, filtered or not - so the click handler, the chips, `selected_output` and the generate job
 all go on meaning what they meant, and the filter is a projection of the list and nothing more. Making
 `selected` an index into the VISIBLE rows instead is the obvious shortcut and it silently re-points every
@@ -6723,12 +6723,13 @@ remembered in the host prefs. Nothing here invents a default directory: a scenar
 somebody chose to write somewhere, and guessing at `~/.bridge/scenarios` would be this program having an
 opinion about a person's filesystem.
 
-COMPILED FIRST, LOADED SECOND, the same order `sim` uses and for the same reason: `cli.lookup` takes the
-first exact match, so a compiled scenario wins a name clash and a user file cannot silently redefine
-`1c` out from under the recipes and the pages already on `w:/deals/`.
+BUILT-IN FIRST, FILES SECOND, the same order `sim` uses and for the same reason: the built-in scenarios are
+text too (`bidding.builtin_files`), read before any folder, and `cli.lookup` takes the first exact match, so a
+built-in scenario wins a name clash and a user file cannot silently redefine `1c` out from under the recipes
+and the pages already on `w:/deals/`. A user file may still extend the built-in system.
 
-SAFE WITH NOTHING CONFIGURED, which is the normal case: no directories means no files, an empty `Loaded`,
-and a registry that is exactly `bidding.registry` — the window behaves as it did before any of this.
+SAFE WITH NOTHING CONFIGURED, which is the normal case: no directories means no files, and a registry that is
+exactly the built-in scenarios.
 */
 load_user_scenarios :: proc(app: ^App) {
 	scenario_dsl.set_vocabulary(bidding.vocabulary)
@@ -6764,10 +6765,9 @@ load_user_scenarios :: proc(app: ^App) {
 	if active == "" && app.prefs.values != nil {
 		active, _ = prefs.get(&app.prefs, SCENARIO_SYSTEM_PREF)
 	}
-	app.loaded = scenario_dsl.load_directories(app.scenario_dirs, app.allocator, active)
+	app.loaded = scenario_dsl.load_directories(app.scenario_dirs, app.allocator, active, bidding.builtin_files)
 
-	registry := make([dynamic]cli.Scenario, 0, len(bidding.registry) + len(app.loaded.scenarios), app.allocator)
-	append(&registry, ..bidding.registry)
+	registry := make([dynamic]cli.Scenario, 0, len(app.loaded.scenarios), app.allocator)
 	append(&registry, ..app.loaded.scenarios)
 	app.scenarios = registry[:]
 
@@ -6903,23 +6903,14 @@ build_groups :: proc(app: ^App) {
 /*
 The groups a scenario belongs to, BY INDEX into `app.scenarios`.
 
-By index rather than by name, and that is the whole reason this proc exists instead of a call to
-`bidding.tags_for`: the registry is a concatenation, and a loaded scenario may share a name with a
-compiled one. An index says which of the two is being asked about; a name cannot.
+By index rather than by name: a user's scenario may share a name with a built-in one, and an index says which
+of the two is being asked about; a name cannot.
 */
 scenario_groups :: proc(app: ^App, index: int) -> []string {
-	compiled := len(bidding.registry)
-	if index >= compiled {
-		loaded_at := index - compiled
-		if loaded_at < len(app.loaded.tags) {
-			return app.loaded.tags[loaded_at]
-		}
+	if index < 0 || index >= len(app.loaded.tags) {
 		return nil
 	}
-	if index < 0 || index >= len(app.scenarios) {
-		return nil
-	}
-	return bidding.tags_for(app.scenarios[index].name)
+	return app.loaded.tags[index]
 }
 
 // Does this scenario carry any of the selected groups? The OR in "the groups widen": an empty selection
@@ -7072,21 +7063,12 @@ set_system_name :: proc(app: ^App, name: string) {
 	app.system = strings.clone(name, app.allocator) if name != "" else ""
 }
 
-// The system a scenario belongs to, BY INDEX into `app.scenarios` (a loaded scenario may share a name with
-// a compiled one; see `scenario_groups`). "" for none.
+// The system a scenario belongs to, BY INDEX into `app.scenarios` (see `scenario_groups`). "" for none.
 scenario_system :: proc(app: ^App, index: int) -> string {
-	compiled := len(bidding.registry)
-	if index >= compiled {
-		loaded_at := index - compiled
-		if loaded_at < len(app.loaded.programs) {
-			return app.loaded.programs[loaded_at].system
-		}
+	if index < 0 || index >= len(app.loaded.programs) {
 		return ""
 	}
-	if index < 0 || index >= len(app.scenarios) {
-		return ""
-	}
-	return bidding.system_for(app.scenarios[index].name)
+	return app.loaded.programs[index].system
 }
 
 // Is this scenario in the list's system? Always, for a scenario of no system or a list set to every system.
@@ -8254,14 +8236,19 @@ draw_scenarios :: proc(app: ^App) {
 				fmt.sbprintf(&marks, `<span class="tag">%s</span>`, tags[format])
 			}
 		}
-		// A scenario from one of YOUR files says so, and the mark is the way to that file (`edit_scenario`).
+		// A scenario from one of YOUR files says so, and the mark is the way to that file (`edit_scenario`). A
+		// built-in one's mark opens its text, read only.
 		edit := ""
-		if program, from_file := scenario_program(app, i); from_file {
-			edit = fmt.tprintf(
-				`<span class="edit" data-edit="%d" title="Edit this scenario: %s">✎</span>`,
-				i,
-				escape_html(program.source, context.temp_allocator),
-			)
+		if program, found := scenario_program(app, i); found {
+			if scenario_dsl.is_builtin_source(program.source) {
+				edit = fmt.tprintf(`<span class="edit builtin" data-edit="%d" title="See this scenario's text (built in, read only)">✎</span>`, i)
+			} else {
+				edit = fmt.tprintf(
+					`<span class="edit" data-edit="%d" title="Edit this scenario: %s">✎</span>`,
+					i,
+					escape_html(program.source, context.temp_allocator),
+				)
+			}
 		}
 		// THE LABEL HEADS THE ROW, the id follows it dim: the label is the auction as a player writes it
 		// (`1♥/♠ – ? : slam try`), the id is the file name the run writes and what `-S` takes.

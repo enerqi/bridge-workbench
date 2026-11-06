@@ -141,6 +141,9 @@ Quantity :: enum {
 	Clubs,
 	Longest, // the length of the longest suit — the one shape question people ask most
 	Seat, // the hand's place in the auction: 1 for the dealer, 2 for the dealer's left, ... (a TABLE word)
+	// A partnership's combined OPC total (norn's `combined_opc`, no trump suit named): only on a partnership line
+	// or in a side's group, since it is a judgement of two hands together and not a sum of two numbers.
+	Opc,
 }
 
 Comparison :: enum {
@@ -163,6 +166,27 @@ Compare_Node :: struct {
 	high:     int,
 }
 
+// HAND NUMBERS AGAINST EACH OTHER: `spades > hearts`, `spades + hearts >= 9`, `clubs + diamonds in 9..11`. A side
+// is a SUM of one or more of a hand's numbers; the right is a number or another sum. What a rule like "the
+// longer major first" or "nine cards in the majors" needs, and the one thing a range of fixed numbers cannot say.
+// `seat` and `opc` are not summed: one is a place at the table, the other a judgement of two hands. (A single
+// number against a plain number stays a `Compare_Node`.)
+SUM_TERMS_MAX :: 4
+
+Sum :: struct {
+	terms: [SUM_TERMS_MAX]Quantity,
+	count: int,
+}
+
+Sum_Compare_Node :: struct {
+	left:      Sum,
+	op:        Comparison,
+	right:     Sum, // count 0: compare with `value`
+	value:     int,
+	is_range:  bool, // `left in value..high`
+	high:      int,
+}
+
 // `is_strong_1c` — a name from the consumer's vocabulary, resolved at PARSE time so an unknown one is a
 // diagnostic with a position rather than a silent false in a million-iteration generate loop.
 Named_Node :: struct {
@@ -174,10 +198,19 @@ Named_Node :: struct {
 // program's own nodes; `system` is the system whose definition was used, `overrides` the next one up that
 // defines it too ("" if none). See systems.odin.
 Meaning_Node :: struct {
-	name:      string,
-	system:    string,
-	overrides: string,
-	root:      int,
+	name:         string,
+	system:       string,
+	overrides:    string,
+	amended_by:   string, // the nearest system that amends it (`meaning x` with no condition), "" if none
+	root:         int, // the core
+	// The NAMED ALTERNATIVES in force (systems.odin): the meaning holds when its core does or any of these does,
+	// and a deal kept only through one carries its name.
+	alternatives: []Meaning_Alternative,
+}
+
+Meaning_Alternative :: struct {
+	name: string,
+	root: int,
 }
 
 // `holds(spades, ace)`
@@ -200,6 +233,16 @@ Vulnerability_Node :: struct {
 	word: Vulnerability_Word,
 }
 
+// `north(spades >= 5)`, `east-west(hcp < 15)`: a condition about ONE hand or side, inside a `deal:` line (or a
+// meaning used there), which names the hand for every atom it holds. What lets one condition OR across seats:
+// `north(spades >= 5) and south(spades >= 4) or north(hearts >= 5) and south(hearts >= 4)`. With `pair` set the
+// group is a side, read as one combined hand like a partnership line.
+Hand_Node :: struct {
+	seat:  norn.Seat,
+	pair:  bool,
+	child: int,
+}
+
 // The operators index back into the same array. `-1` is "no child"; only a malformed tree has one, and
 // `eval` treats it as false rather than indexing out of bounds.
 Not_Node :: struct {
@@ -218,11 +261,13 @@ Or_Node :: struct {
 
 Node :: union {
 	Compare_Node,
+	Sum_Compare_Node,
 	Named_Node,
 	Meaning_Node,
 	Holds_Node,
 	Balanced_Node,
 	Vulnerability_Node,
+	Hand_Node,
 	Not_Node,
 	And_Node,
 	Or_Node,
@@ -249,9 +294,13 @@ Double_Dummy :: struct {
 // `seat` and its partner read as one combined hand — and `seat` is then North or East, the first word of
 // `north-south` / `east-west`. `also` is 0 for the scenario's own lines and k for a line of its k-th
 // ALTERNATIVE (`Program.alternatives[k - 1]`).
+//
+// A `deal:` line (`deal` set) belongs to no one seat: every atom in it is inside a hand's group (`Hand_Node`),
+// and `seat`/`pair` are unused.
 Seat_Rule :: struct {
 	seat: norn.Seat,
 	pair: bool,
+	deal: bool,
 	root: int,
 	also: int,
 }
@@ -270,6 +319,10 @@ Program :: struct {
 	// partnership total that any system shares. The workbench's system picker shows a scenario under its
 	// own system and, with "" here, under every one.
 	system:       string,
+	// The auction as a player writes it (`label:`), shown on the list's row; "" shows the name. And the name
+	// before a rename (`formerly:`), which a lookup by name still answers.
+	label:        string,
+	formerly:     string,
 	tags:         []string,
 	rules:        []Seat_Rule,
 	nodes:        []Node,
@@ -281,6 +334,9 @@ Program :: struct {
 	reads_table:   bool,
 	// The names of the scenario's ALTERNATIVES (`also "<name>" <seat>: ...`), in the order they first appear.
 	alternatives:  []string,
+	// The names of the alternatives of the MEANINGS it uses, each once, in the order they first appear: what a
+	// deal kept through one of them is labelled with (`explain`).
+	meaning_alternatives: []string,
 	source:       string, // the file it came from, for diagnostics and for the UI to show
 	allocator:    runtime.Allocator,
 }
@@ -289,6 +345,8 @@ destroy_program :: proc(program: ^Program) {
 	delete(program.name, program.allocator)
 	delete(program.description, program.allocator)
 	delete(program.system, program.allocator)
+	delete(program.label, program.allocator)
+	delete(program.formerly, program.allocator)
 	for tag in program.tags {
 		delete(tag, program.allocator)
 	}
@@ -302,6 +360,11 @@ destroy_program :: proc(program: ^Program) {
 			delete(n.name, program.allocator)
 			delete(n.system, program.allocator)
 			delete(n.overrides, program.allocator)
+			delete(n.amended_by, program.allocator)
+			for alternative in n.alternatives {
+				delete(alternative.name, program.allocator)
+			}
+			delete(n.alternatives, program.allocator)
 		}
 	}
 	delete(program.nodes, program.allocator)
@@ -310,6 +373,10 @@ destroy_program :: proc(program: ^Program) {
 		delete(name, program.allocator)
 	}
 	delete(program.alternatives, program.allocator)
+	for name in program.meaning_alternatives {
+		delete(name, program.allocator)
+	}
+	delete(program.meaning_alternatives, program.allocator)
 	delete(program.source, program.allocator)
 	program^ = {}
 }
@@ -378,6 +445,8 @@ quantity_of :: proc(word: string) -> (quantity: Quantity, ok: bool) {
 		return .Longest, true
 	case "seat":
 		return .Seat, true
+	case "opc":
+		return .Opc, true
 	}
 	return {}, false
 }

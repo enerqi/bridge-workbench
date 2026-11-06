@@ -60,29 +60,29 @@ run_sim :: proc() -> int {
 	// generator, and where THIS user's scenario files live is not a generic question.
 	scenario_dsl.set_vocabulary(bidding.vocabulary)
 	directories, arguments, system := scenario_arguments(context.temp_allocator)
-	loaded := scenario_dsl.load_directories(directories, active = system)
+	// The BUILT-IN scenarios are text too (`bidding.builtin_files`), read first: they come first in the list and
+	// a user's file may extend their system.
+	loaded := scenario_dsl.load_directories(directories, active = system, builtins = bidding.builtin_files)
 	defer scenario_dsl.destroy_loaded(&loaded)
 
 	// Diagnostics go to STDERR and do not stop the run: a typo in one scenario file should cost that
-	// scenario, not the 110 compiled ones and not the run somebody asked for.
+	// scenario, not the 110 built-in ones and not the run somebody asked for.
 	for diagnostic in loaded.diagnostics {
 		fmt.eprintfln("%s", scenario_dsl.diagnostic_text(diagnostic, context.temp_allocator))
 	}
 
-	// COMPILED FIRST, LOADED SECOND. `cli.lookup` takes the first exact match, so a compiled scenario
-	// wins a name clash — a user file cannot silently redefine `1c` out from under the recipes,
+	// BUILT-IN FIRST, FILES SECOND - the load's own order. `cli.lookup` takes the first exact match, so a built-in
+	// scenario wins a name clash: a user file cannot silently redefine `1c` out from under the recipes,
 	// `page-check` and the filenames already on `w:/deals/` that name it.
-	registry := make([dynamic]cli.Scenario, 0, len(bidding.registry) + len(loaded.scenarios), context.temp_allocator)
-	append(&registry, ..bidding.registry)
-	append(&registry, ..loaded.scenarios)
+	registry := loaded.scenarios
 
-	// The per-scenario double-dummy filters and annotators - the compiled ones, and those the scenario files
-	// ask for with a `double-dummy:` line. In their own package because the workbench generates deals too,
-	// and a second copy of the table is one a new scenario gets added to once.
-	hooks := sim_hooks.make_hooks(loaded.programs, bidding.registry)
+	// The per-scenario double-dummy filters and annotators - the built-in ones (keyed by name), and those the
+	// scenario files ask for with a `double-dummy:` line. In their own package because the workbench generates
+	// deals too, and a second copy of the table is one a new scenario gets added to once.
+	hooks := sim_hooks.make_hooks(loaded.programs, loaded.scenarios[:loaded.builtin_count])
 	defer sim_hooks.free_hooks(&hooks)
 
-	return cli.main_program(registry[:], sim_hooks.gen_hooks(&hooks), arguments)
+	return cli.main_program(registry, sim_hooks.gen_hooks(&hooks), arguments)
 }
 
 /*

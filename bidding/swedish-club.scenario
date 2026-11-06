@@ -1,0 +1,946 @@
+# The Swedish Club as text: the system's meanings, and the built-in scenarios written with them.
+#
+# These are the scenarios `sim` and Bridge Workbench ship: read before any folder of yours, shown read only in the
+# scenario editor. Each was a compiled scenario of the same name (`scenarios.odin`), and
+# `test_the_text_swedish_club_is_the_compiled_one` still holds every one to it deal for deal (and its label, former
+# name, description, system and tags).
+#
+# YOUR OWN VERSION of the system extends this one and overrides only the meanings you play differently:
+#
+#     system ours extends swedish-club "WSC as we play it"
+#       meaning nt-opening: hcp in 15..17 and nt-shape
+#
+# A meaning may name a compiled predicate (`is_3n_opener`) where the language cannot say the thing itself. The
+# scenarios with no system (hand types, partnership totals, the opponents' auctions) cannot use the system's
+# meanings, so they name the predicates directly.
+
+system swedish-club "the Swedish Club played here: 1NT 16-18, a 1M of 11-15, 2C a club one-suiter"
+  # This system's notrump shape: 4333, 4432 or 5332 with the five in ANY suit (`deal`'s 5CM_nt, the vocabulary's
+  # `is_nt5cM_shape`). The language's `balanced` never includes a five-card major, so the shape is spelled out: no
+  # suit shorter than two or longer than five, and not 5422 (the one other shape those bounds allow).
+  meaning nt-shape: spades >= 2 and hearts >= 2 and diamonds >= 2 and clubs >= 2 and longest <= 5 and not (longest = 5 and (spades = 4 or hearts = 4 or diamonds = 4 or clubs = 4))
+  meaning nt-opening: hcp in 16..18 and nt-shape
+  meaning 2nt-opening: hcp in 19..20 and nt-shape
+  # 1C: the 13-15 notrump hand, or a strong hand (21+, or 16-20 that is not flat).
+  meaning weak-1c: hcp in 13..15 and nt-shape
+  meaning strong-1c: hcp >= 21 or hcp >= 16 and not is_flattish
+  meaning 1c-opening: weak-1c or strong-1c
+  # A limited major: 11-15 with a five-card major, not the 13-15 notrump hand (that opens 1C), not a hand
+  # with a longer minor, not a gambling 3NT. The light one is the same at 9-11.
+  meaning major-opening: hcp in 11..15 and (spades >= 5 or hearts >= 5) and not weak-1c and not longer-minor and not is_3n_opener
+  meaning light-major-opening: hcp in 9..11 and (spades >= 5 or hearts >= 5) and not weak-1c and not longer-minor and not is_3n_opener
+  meaning longer-minor: clubs > spades and clubs > hearts or diamonds > spades and diamonds > hearts
+  # Support for the major North opened, of 3 or 4 cards: a deal line's meaning, naming both hands.
+  meaning major-support-3: north(spades >= 5) and south(spades >= 3) or north(hearts >= 5) and south(hearts >= 3)
+  meaning major-support-4: north(spades >= 5) and south(spades >= 4) or north(hearts >= 5) and south(hearts >= 4)
+  # 1D: an unbalanced 11-15 with diamonds the longest suit (four or more) that is not a 2C or 2D hand - or a
+  # balanced 11-13 that is not a major opening.
+  meaning 1d-unbal: not is_flattish and hcp in 11..15 and not 2c-opening and not 2d-intermediate and diamonds >= 4 and diamonds > spades and diamonds > hearts
+  meaning 1d-opening: 1d-unbal or not major-opening and hcp in 11..13 and nt-shape
+  # 2C: six or more clubs, 11-15 (or exactly 10 with seven), and no other suit of six.
+  meaning 2c-opening: hcp <= 15 and spades <= 5 and hearts <= 5 and diamonds <= 5 and ((clubs >= 6 and hcp >= 11) or (clubs = 7 and hcp = 10))
+  # Precision 2D: 4-4-1-4 with 12-16, or 4-4-0-5 / 4-3-1-5 / 3-4-1-5 with 11-15.
+  meaning 2d-precision: spades = 4 and hearts = 4 and diamonds = 1 and clubs = 4 and hcp in 12..16 or clubs = 5 and (spades = 4 and hearts = 4 and diamonds = 0 or spades = 4 and hearts = 3 and diamonds = 1 or spades = 3 and hearts = 4 and diamonds = 1) and hcp in 11..15
+  # The intermediate 2D: six or more diamonds, the longest suit, no five-card major, 9-15 - a 9 or 10 needs a
+  # second suit (the two-suiter shapes are named, the language has no word for a hand's shape).
+  meaning 2d-intermediate: hcp in 9..15 and diamonds >= 6 and diamonds >= clubs and hearts <= 4 and spades <= 4 and (hcp >= 11 or hcp = 10 and (is_6_plus_other_10_card_two_suiter or is_6_plus_other_11_or_more_card_two_suiter) or hcp = 9 and is_6_plus_other_11_or_more_card_two_suiter)
+  meaning weak-two: is_weak2_major
+  meaning gambling-3nt: is_3n_opener
+
+
+scenario 1c "North opens 1C (any strength)"
+  label: 1♣
+  formerly: 1c-any
+  system: swedish-club
+  north: 1c-opening
+
+
+scenario 1c-1n "1C opener; South makes any 1NT response"
+  label: 1♣ – 1NT
+  formerly: 1c-any-1n
+  system: swedish-club
+  north: 1c-opening
+  south: is_any_1n_swedish_club_response
+
+
+scenario 1c-1n_unbal "1C opener; South responds 1NT on an unbalanced-minor or Marmic hand"
+  label: 1♣ – 1NT : unbalanced minor or 4441
+  formerly: 1c-any-1n-unbal
+  system: swedish-club
+  north: 1c-opening
+  south: is_1n_unbal_minor_swedish_club_resp or is_1n_marmic_swedish_club_resp
+
+
+scenario 1c-2cd "1C opener; South responds 2C/2D"
+  label: 1♣ – 2♣/♦
+  formerly: 1c-any-2cd
+  system: swedish-club
+  north: 1c-opening
+  south: is_2cd_swedish_club_resp
+
+
+scenario 1c-2h-or-2n "1C opener; South responds 2H/2NT"
+  label: 1♣ – 2♥/2NT
+  formerly: 1c-any-2h-or-2n
+  system: swedish-club
+  north: 1c-opening
+  south: is_2h_or_2n_swedish_club_resp
+
+
+scenario 1c-2h_candidates "1C opener; South holds one of the 2H-zone positive shapes"
+  label: 1♣ – 2♥ : the 2♥-zone shapes
+  formerly: 1c-any-2h-candidates
+  system: swedish-club
+  north: 1c-opening
+  south: is_semi_positive_weak_two_hearts or is_semi_positive_majors_two_suiter or is_gf_hearts_minor_two_suiter or is_gf_majors_two_suiter
+
+
+scenario 1c-2s "1C opener; South responds 2S (both minors)"
+  label: 1♣ – 2♠ (minors)
+  formerly: 1c-any-2s
+  system: swedish-club
+  north: 1c-opening
+  south: is_2s_swedish_club_resp
+
+
+scenario 1c-3n-plus "1C opener; South makes a solid-suit 3NT / 4-of-a-suit slam-try response"
+  label: 1♣ – 3NT+ : solid suit
+  formerly: 1c-any-3n-plus
+  system: swedish-club
+  north: 1c-opening
+  south: is_3n_swedish_club_resp or is_4cd_swedish_club_response or is_4hs_swedish_club_response
+
+
+scenario 1c-3x "1C opener; South makes a 3-level preempt response"
+  label: 1♣ – 3x : preempt
+  formerly: 1c-any-3x-response
+  system: swedish-club
+  north: 1c-opening
+  south: is_3x_preempt_swedish_club_response
+
+
+scenario 1c-opp-preempt "1C opener; East preempts (any weak 6+ or weak/min 7+ suit); South has 4+ hcp"
+  label: 1♣ – (preempt)
+  formerly: 1c-any-preempted
+  system: swedish-club
+  tags: competitive, preempt
+  north: 1c-opening
+  east: is_any_weak_6_plus_carder or is_any_weak_or_min_7_plus_carder
+  south: hcp >= 4
+
+
+scenario 1c-opp-preempt-7 "1C opener; East preempts a long (weak/min 7+) suit; South has 4+ hcp"
+  label: 1♣ – (preempt, 7+ suit)
+  formerly: 1c-any-long-suit-preempted
+  system: swedish-club
+  tags: competitive, preempt
+  north: 1c-opening
+  east: is_any_weak_or_min_7_plus_carder
+  south: hcp >= 4
+
+
+scenario 1c-strong "North opens a strong 1C"
+  label: 1♣ (16+)
+  system: swedish-club
+  north: strong-1c
+
+
+scenario 1c-19plus-or-4441 "Strong 1C that is either Marmic or 19+ hcp"
+  label: 1♣ (19+ or 4441)
+  formerly: 1c-19plus-or-marmic
+  system: swedish-club
+  north: strong-1c and (is_marmic or hcp >= 19)
+
+
+scenario 1c-19plus-unbal "Strong 1C, 19+ and unbalanced"
+  label: 1♣ (19+ unbalanced)
+  formerly: 1c-strong-19plus-unbal
+  system: swedish-club
+  north: strong-1c and hcp >= 19 and not is_flattish
+
+
+scenario 1c-19plus-two-suiter "Strong 1C, 19+ with an asymmetric 10+ card two-suiter"
+  label: 1♣ (19+ two-suiter, 10+ cards)
+  formerly: 1c-strong-19plus-asymmetric-10plus-card-two-suiter
+  system: swedish-club
+  north: strong-1c and hcp >= 19 and is_asymmetric_10_plus_two_suiter
+
+
+scenario 1c-21plus-unbal "Strong 1C, 21+ and unbalanced"
+  label: 1♣ (21+ unbalanced)
+  formerly: 1c-strong-21plus-unbal
+  system: swedish-club
+  north: strong-1c and hcp >= 21 and not is_flattish
+
+
+scenario 1c-strong-opp-overcall "Strong 1C with East able to overcall (8+ hcp, not flat)"
+  label: 1♣ (16+) – (overcall)
+  formerly: 1c-strong-(overcall)
+  system: swedish-club
+  tags: competitive
+  north: strong-1c
+  east: hcp >= 8 and not is_flattish
+
+
+scenario 1c-strong-opp-preempt "Strong 1C; East preempts (weak/min 7+ or weak 6+); South has 4+ hcp"
+  label: 1♣ (16+) – (preempt)
+  formerly: 1c-strong-preempted
+  system: swedish-club
+  tags: competitive, preempt
+  north: strong-1c
+  east: is_any_weak_or_min_7_plus_carder or is_any_weak_6_plus_carder
+  south: hcp >= 4
+
+
+scenario 1c-18plus-minor_positive "Strong 1C, 18+ unbalanced minor; South has a 8+ hcp positive"
+  label: 1♣ (18+ minor) – ? : positive
+  formerly: 1c-strong-minor-opening-positive
+  system: swedish-club
+  north: strong-1c and hcp >= 18 and is_unbalanced_minor
+  south: hcp >= 8
+
+
+scenario 1c-strong-1d "Strong 1C; South gives the 1D negative"
+  label: 1♣ (16+) – 1♦
+  system: swedish-club
+  north: strong-1c
+  south: is_1d_swedish_club_resp
+
+
+scenario 1c-strong-1d_major-fit "Strong 1C; South 1D negative with both sides holding a likely major fit"
+  label: 1♣ (16+) – 1♦ : major fit likely
+  formerly: 1c-strong-1d-1h-1s-likely
+  system: swedish-club
+  north: strong-1c and spades >= 4
+  south: hearts >= 4 and is_1d_swedish_club_resp
+
+
+scenario 1c-strong-1n "Strong 1C; South makes any 1NT response"
+  label: 1♣ (16+) – 1NT
+  system: swedish-club
+  north: strong-1c
+  south: is_any_1n_swedish_club_response
+
+
+scenario 1c-strong-1n_unbal "Strong 1C; South 1NT on an unbalanced-minor or Marmic hand"
+  label: 1♣ (16+) – 1NT : unbalanced minor or 4441
+  formerly: 1c-strong-1n-unbal
+  system: swedish-club
+  north: strong-1c
+  south: is_1n_unbal_minor_swedish_club_resp or is_1n_marmic_swedish_club_resp
+
+
+scenario 1c-strong_minor-positive "Strong 1C; South makes a minor-suit positive (2S or 11+ minor)"
+  label: 1♣ (16+) – ? : minor positive
+  formerly: 1c-strong-1n-2c-2s-minor-response
+  system: swedish-club
+  north: strong-1c
+  south: is_minor_swedish_club_positive_response
+
+
+scenario 1c-strong-2cd "Strong 1C; South responds 2C/2D"
+  label: 1♣ (16+) – 2♣/♦
+  system: swedish-club
+  north: strong-1c
+  south: is_2cd_swedish_club_resp
+
+
+scenario 1c-20plus-2cd "Strong 1C, 20+; South responds 2C/2D"
+  label: 1♣ (20+) – 2♣/♦
+  formerly: 1c-strong-extras-2cd
+  system: swedish-club
+  north: strong-1c and hcp >= 20
+  south: is_2cd_swedish_club_resp
+
+
+scenario 1c-strong-2h-or-2n "Strong 1C; South responds 2H/2NT"
+  label: 1♣ (16+) – 2♥/2NT
+  system: swedish-club
+  north: strong-1c
+  south: is_2h_or_2n_swedish_club_resp
+
+
+scenario 1c-strong-2s "Strong 1C; South responds 2S (both minors)"
+  label: 1♣ (16+) – 2♠ (minors)
+  system: swedish-club
+  north: strong-1c
+  south: is_2s_swedish_club_resp
+
+
+scenario 1c-strong-1n_bal-12plus "Strong 1C; South gives the old balanced 12+ 1NT response"
+  label: 1♣ (16+) – 1NT : balanced 12+ (old style)
+  formerly: 1c-strong-responder-bal-gf
+  system: swedish-club
+  north: strong-1c
+  south: is_old_1n_bal_swedish_club_response
+
+
+scenario 1c-strong-1n_bal-14plus "Strong 1C; South balanced 1NT response with 14+ hcp"
+  label: 1♣ (16+) – 1NT : balanced 14+
+  formerly: 1c-strong-responder-14plus-bal-gf
+  system: swedish-club
+  north: strong-1c
+  south: is_old_1n_bal_swedish_club_response and hcp >= 14
+
+
+scenario 1c-strong-1hs_major-fit "Strong 1C; South has 8+ with a side major and a likely major fit (not NT/solid-suit)"
+  label: 1♣ (16+) – 1♥/♠ : 8+, major fit likely
+  formerly: 1c-strong-1hs-support
+  system: swedish-club
+  north: strong-1c
+  # Not a hand for a notrump or solid-suit response.
+  south: hcp >= 8 and (spades >= 4 or hearts >= 4) and not (is_any_1n_swedish_club_response or is_4cd_swedish_club_response or is_4hs_swedish_club_response)
+  deal: north(spades >= 3) and south(spades >= 4) or north(hearts >= 3) and south(hearts >= 4)
+
+
+scenario 1c-strong-1hs_major-fit-unbal "Strong 1C; South has 8+ with a side major and a likely major fit, non-flat"
+  label: 1♣ (16+) – 1♥/♠ : 8+, major fit likely, unbalanced
+  formerly: 1c-strong-1hs-support-unbal
+  system: swedish-club
+  north: strong-1c
+  south: hcp >= 8 and (spades >= 4 or hearts >= 4) and not is_flattish and not (is_any_1n_swedish_club_response or is_4cd_swedish_club_response or is_4hs_swedish_club_response)
+  deal: north(spades >= 3) and south(spades >= 4) or north(hearts >= 3) and south(hearts >= 4)
+
+
+scenario 1d-unbal "North opens an unbalanced 1D"
+  label: 1♦ (unbalanced)
+  formerly: 1d-unbalanced-opener
+  system: swedish-club
+  north: 1d-unbal
+
+
+scenario 1d-unbal_two-suiter-gf "Unbalanced 1D; South a 13+ two-suiter (game force)"
+  label: 1♦ (unbalanced) – ? : two-suiter, game force
+  formerly: 1d-unbalanced-opener-gf-two-suiter
+  system: swedish-club
+  north: 1d-unbal
+  south: two_suiter and hcp >= 13
+
+
+scenario 1d-unbal_two-suiter-slam-try "Unbalanced 1D; South a two-suiter, North-South 29+ (slam try)"
+  label: 1♦ (unbalanced) – ? : two-suiter, slam try
+  formerly: 1d-unbalanced-opener-slam-try-two-suiter
+  system: swedish-club
+  tags: slam
+  north: 1d-unbal
+  south: two_suiter
+  north-south: hcp >= 29
+
+
+scenario 1d_invite-or-inverted "1D opener (11+); South flat invitational or a possible inverted raise"
+  label: 1♦ – ? : flat invite or inverted raise
+  formerly: 1d-any-invitish-no-major-or-inverted
+  system: swedish-club
+  north: 1d-opening and hcp >= 11
+  south: is_flattish and (hcp in 10..12 or is_possible_inverted_diamond_raise)
+
+
+scenario 1d-jump "1D opener; South makes a WJS, splinter, or diamond-preempt response"
+  label: 1♦ – jump : weak jump shift, splinter or preempt
+  formerly: 1d-any-splinter-preempt-wjs
+  system: swedish-club
+  tags: preempt
+  north: 1d-opening
+  south: is_possible_wjs_1d_response or is_possible_splinter_1d_response or is_possible_diamond_preempt_1d_response
+
+
+scenario 1d_weak-no-major "1D opener; South a weak (5-9) no-major non-flat hand, East not a real opener"
+  label: 1♦ – ? : weak, no major
+  formerly: 1d-weak-minor-minors
+  system: swedish-club
+  north: 1d-opening
+  south: hcp in 5..9 and spades <= 3 and hearts <= 3 and not is_flattish
+  east: hcp < 8 or (hearts < 5 and spades < 5)
+
+
+scenario 1d-opp-1x_major-fit "1D opener; East overcalls; South has 6+ hcp with a major and the side has a major fit"
+  label: 1♦ – (1x) – ? : major fit
+  formerly: 1d-then-1x-interference
+  system: swedish-club
+  tags: competitive
+  north: 1d-opening
+  east: is_1major_overcall or is_1d_takeout
+  south: hcp >= 6 and (spades >= 4 or hearts >= 4)
+  east-west: spades >= 8 or hearts >= 8
+
+
+scenario 1d-opp-1x_6-card-major "1D opener; East overcalls; South has 6+ hcp with a 6-card major and the side has a major fit"
+  label: 1♦ – (1x) – ? : 6-card major
+  formerly: 1d-then-1x-interference-6major
+  system: swedish-club
+  tags: competitive
+  north: 1d-opening
+  east: is_1major_overcall or is_1d_takeout
+  south: hcp >= 6 and (spades >= 6 or hearts >= 6)
+  east-west: spades >= 8 or hearts >= 8
+
+
+scenario 1cd-opp-1s "1C/1D opener; East overcalls 1S (5+ spades); South has 5+ hcp"
+  label: 1♣/♦ – (1♠)
+  formerly: 1minor-(1s)
+  system: swedish-club
+  tags: competitive
+  north: 1d-opening or 1c-opening
+  east: spades >= 5 and is_1major_overcall
+  south: hcp >= 5
+
+
+scenario 1cd-opp-overcall "1C/1D opener; East able to overcall (8+ hcp, not flat)"
+  label: 1♣/♦ – (overcall)
+  formerly: 1minor-(overcall)
+  system: swedish-club
+  tags: competitive
+  north: 1d-opening or 1c-opening
+  east: hcp >= 8 and not is_flattish
+
+
+scenario 1hs "North opens 1 of a major"
+  label: 1♥/♠
+  formerly: 1major-any
+  system: swedish-club
+  north: major-opening
+
+
+scenario 1hs-light "North opens a light 1 of a major"
+  label: 1♥/♠ (light)
+  formerly: 1major-light-any
+  system: swedish-club
+  north: light-major-opening
+
+
+scenario 1hs_invite "1 major opener; South invitational (9-12)"
+  label: 1♥/♠ – ? : invitational
+  formerly: 1major-inviteish
+  system: swedish-club
+  north: major-opening
+  south: hcp in 9..12
+
+
+scenario 1hs_game-force "1 major opener; South 13+ (game force)"
+  label: 1♥/♠ – ? : game force
+  formerly: 1major-game-force
+  system: swedish-club
+  north: major-opening
+  south: hcp >= 13
+
+
+scenario 1hs_game-force-3-support "1 major opener; South 13+ with 3+ card support"
+  label: 1♥/♠ – ? : game force, 3+ support
+  formerly: 1major-gf-3plus-card-support
+  system: swedish-club
+  north: major-opening
+  south: hcp >= 13
+  deal: major-support-3
+
+
+scenario 1hs_10plus-4-support "1 major opener; South 10+ with 4+ card support"
+  label: 1♥/♠ – ? : 10+, 4+ support
+  formerly: 1major-invite-4plus-card-support
+  system: swedish-club
+  north: major-opening
+  south: hcp >= 10
+  deal: major-support-4
+
+
+scenario 1hs_splinter "1 major opener; South 10+ with 4+ support and a shortage (splinter)"
+  label: 1♥/♠ – ? : splinter
+  formerly: 1major-10plus-splinterable
+  system: swedish-club
+  north: major-opening
+  south: hcp >= 10 and (spades <= 1 or hearts <= 1 or diamonds <= 1 or clubs <= 1)
+  deal: major-support-4
+
+
+scenario 1hs_mini-splinter-or-invite "1 major opener; South a 7-11 4-card-support splinter or a 9-12 good-suit invite"
+  label: 1♥/♠ – ? : mini-splinter or good-suit invite
+  formerly: 1major-minisplinter-or-single-suit-invite
+  system: swedish-club
+  north: major-opening
+  deal: south(hcp in 7..11 and (spades <= 1 or hearts <= 1 or diamonds <= 1 or clubs <= 1)) and major-support-4 or south(hcp in 9..12 and any_good_6_plus_carder)
+
+
+scenario 1hs_slam-try "1 major opener; North-South 29+ (slam try)"
+  label: 1♥/♠ – ? : slam try
+  formerly: 1major-slam-try
+  system: swedish-club
+  tags: slam
+  north: major-opening
+  north-south: hcp >= 29
+
+
+scenario 1hs-1n_opener-14plus-six "Maximum (14+) 1 major opener on a 6-bagger opposite a South hand that might pass 1NT"
+  label: 1♥/♠ – 1NT : opener 14+ with six
+  formerly: 1major-max-6-carder-maybe-1nt
+  system: swedish-club
+  north: major-opening and hcp >= 14 and (hearts = 6 or spades = 6)
+  # South might pass a 1NT rebid: no raise, limit raise or (in hearts) weak 2S, and no jump shift.
+  deal: not (north(hearts = 6) and south(hearts > 3 or (hearts = 3 and hcp in 10..12) or (hcp < 9 and spades >= 7))) and not (north(spades = 6) and south(spades > 3 or (spades = 3 and hcp in 10..12)))
+  south: not (hcp >= 10 and (clubs >= 6 or diamonds >= 6 or hearts >= 6))
+
+
+scenario 1n "North opens 1NT"
+  label: 1NT
+  formerly: 1n-opener
+  system: swedish-club
+  north: nt-opening
+
+
+scenario 1n_slam-try "1NT opener; North-South 29+ (slam try)"
+  label: 1NT – ? : slam try
+  formerly: 1n-slam-try
+  system: swedish-club
+  tags: slam
+  north: nt-opening
+  north-south: hcp >= 29
+
+
+scenario 1n_two-suiter "1NT opener; South a two-suiter"
+  label: 1NT – ? : two-suiter
+  formerly: 1n-two-suiter
+  system: swedish-club
+  north: nt-opening
+  south: two_suiter
+
+
+scenario 1n_unbal "1NT opener; South unbalanced"
+  label: 1NT – ? : unbalanced
+  formerly: 1n-unbalanced
+  system: swedish-club
+  north: nt-opening
+  south: not is_flattish
+
+
+scenario 2c "North opens 2C"
+  label: 2♣ (6+ clubs)
+  formerly: 2c-opener
+  system: swedish-club
+  north: 2c-opening
+
+
+scenario 2c_slam-try "2C opener; North-South 28+ (slam try)"
+  label: 2♣ – ? : slam try
+  formerly: 2c-any-slam-try
+  system: swedish-club
+  tags: slam
+  north: 2c-opening
+  north-south: hcp >= 28
+
+
+scenario 2c_two-suiter-slam-try "2C opener; South a two-suiter, North-South 27+ (slam try)"
+  label: 2♣ – ? : two-suiter, slam try
+  formerly: 2c-any-two-suiter-slam-try
+  system: swedish-club
+  tags: slam
+  north: 2c-opening
+  south: two_suiter
+  north-south: hcp >= 27
+
+
+scenario 2c_unbal "2C opener; South unbalanced"
+  label: 2♣ – ? : unbalanced
+  formerly: 2c-any-unbalanced
+  system: swedish-club
+  north: 2c-opening
+  south: not is_flattish
+
+
+scenario 2c_positive-9-major-cards "2C opener; South 8+ with 9+ cards in the majors"
+  label: 2♣ – ? : positive, 9+ major cards
+  formerly: 2c-positive-nine-plus-major-cards
+  system: swedish-club
+  north: 2c-opening
+  south: spades + hearts >= 9 and hcp >= 8
+
+
+scenario 2c_positive-two-suiter "2C opener; South an 8+ two-suiter"
+  label: 2♣ – ? : positive two-suiter
+  formerly: 2c-positive-two-suiter
+  system: swedish-club
+  north: 2c-opening
+  south: two_suiter and hcp >= 8
+
+
+scenario 2c_positive-unbal "2C opener; South 8+ unbalanced"
+  label: 2♣ – ? : positive, unbalanced
+  formerly: 2c-positive-unbalanced
+  system: swedish-club
+  north: 2c-opening
+  south: not is_flattish and hcp >= 8
+
+
+scenario 2c_unbal-slam-try "2C opener; South unbalanced, North-South 26+ (slam try)"
+  label: 2♣ – ? : unbalanced, slam try
+  formerly: 2c-unbal-slam-try
+  system: swedish-club
+  tags: slam
+  north: 2c-opening
+  south: not is_flattish
+  north-south: hcp >= 26
+
+
+scenario 2d-precision "North opens a Precision 2D"
+  label: 2♦ (Precision)
+  formerly: 2d-precision-any
+  system: swedish-club
+  north: 2d-precision
+
+
+scenario 2d-precision_10plus "Precision 2D; South 10+"
+  label: 2♦ (Precision) – ? : 10+
+  formerly: 2d-precision-any-10-plus
+  system: swedish-club
+  north: 2d-precision
+  south: hcp >= 10
+
+
+scenario 2d-precision_18plus "Precision 2D; South 18+"
+  label: 2♦ (Precision) – ? : 18+
+  formerly: 2d-precision-any-18-plus
+  system: swedish-club
+  north: 2d-precision
+  south: hcp >= 18
+
+
+scenario 2d-intermediate "North opens an intermediate 2D"
+  label: 2♦ (intermediate)
+  formerly: 2d-intermediate-any
+  system: swedish-club
+  north: 2d-intermediate
+
+
+scenario 2d-intermediate_below-invite "Intermediate 2D; South sub-invitational (<=9)"
+  label: 2♦ (intermediate) – ? : below invite
+  formerly: 2d-intermediate-under-invite
+  system: swedish-club
+  north: 2d-intermediate
+  south: hcp <= 9
+
+
+scenario 2d-intermediate-side-major "Intermediate 2D with a side 4-card major; South 6+"
+  label: 2♦ (intermediate, side 4-card major)
+  formerly: 2d-intermediate-with-4cM
+  system: swedish-club
+  north: 2d-intermediate and (hearts = 4 or spades = 4)
+  south: hcp >= 6
+
+
+scenario 2d-intermediate_16plus "Intermediate 2D; South 16+"
+  label: 2♦ (intermediate) – ? : 16+
+  formerly: 2d-intermediate-strong
+  system: swedish-club
+  north: 2d-intermediate
+  south: hcp >= 16
+
+
+scenario 2d-intermediate_good-suit-gf "Intermediate 2D; South 13+ with a good 6+ suit (game force)"
+  label: 2♦ (intermediate) – ? : good 6+ suit, game force
+  formerly: 2d-intermediate-good-6carder-GF
+  system: swedish-club
+  north: 2d-intermediate
+  south: hcp >= 13 and any_good_6_plus_carder
+
+
+scenario 2d-intermediate_two-suiter-gf "Intermediate 2D; South 13+ with a 6-plus-other two-suiter (game force)"
+  label: 2♦ (intermediate) – ? : two-suiter, game force
+  formerly: 2d-intermediate-twoish-suiters-GF
+  system: swedish-club
+  north: 2d-intermediate
+  south: hcp >= 13 and (is_6_plus_other_10_card_two_suiter or is_6_plus_other_11_or_more_card_two_suiter)
+
+
+scenario 2d-intermediate_unbal-slam-try "Intermediate 2D; South unbalanced, North-South 25+ (slam try)"
+  label: 2♦ (intermediate) – ? : unbalanced, slam try
+  formerly: 2d-intermediate-unbal-slam-try
+  system: swedish-club
+  tags: slam
+  north: 2d-intermediate
+  south: not is_flattish
+  north-south: hcp >= 25
+
+
+scenario 2hs-weak "North opens a weak 2 in a major"
+  label: 2♥/♠ (weak)
+  formerly: 2hs-opener
+  system: swedish-club
+  tags: preempt
+  north: weak-two
+
+
+scenario 2hs-weak-5 "North opens a 5-card weak two in a major"
+  label: 2♥/♠ (weak, 5 cards)
+  formerly: 2hs-5card-opener
+  system: swedish-club
+  tags: preempt
+  north: is_weak2_5card_major
+
+
+scenario 2hs-weak-5-or-6 "North opens a weak 5-or-6-card major"
+  label: 2♥/♠ (weak, 5 or 6 cards)
+  formerly: 2hs-5-or-6-card-opener
+  system: swedish-club
+  tags: preempt
+  north: weak-two or is_weak2_5card_major
+
+
+scenario 2hs-weak_12plus "Weak 2 major; South 12+"
+  label: 2♥/♠ (weak) – ? : 12+
+  formerly: 2hs-any-12-plus
+  system: swedish-club
+  tags: preempt
+  north: weak-two
+  south: hcp >= 12
+
+
+scenario 2hs-weak_20plus "Weak 2 major; South 20+"
+  label: 2♥/♠ (weak) – ? : 20+
+  formerly: 2hs-any-20-plus
+  system: swedish-club
+  tags: preempt
+  north: weak-two
+  south: hcp >= 20
+
+
+scenario 2hs-weak_16plus-unbal "Weak 2 major; South 16+ unbalanced"
+  label: 2♥/♠ (weak) – ? : 16+ unbalanced
+  formerly: 2hs-unbalanced-16-plus
+  system: swedish-club
+  tags: preempt
+  north: weak-two
+  south: hcp >= 16 and not is_flattish
+
+
+scenario 2n "North opens 2NT"
+  label: 2NT
+  formerly: 2n-opener
+  system: swedish-club
+  north: 2nt-opening
+
+
+scenario 2n_slam-try "2NT opener; North-South 30+ (slam try)"
+  label: 2NT – ? : slam try
+  formerly: 2n-slam-try
+  system: swedish-club
+  tags: slam
+  north: 2nt-opening
+  north-south: hcp >= 30
+
+
+scenario 2n_two-suiter "2NT opener; South a two-suiter"
+  label: 2NT – ? : two-suiter
+  formerly: 2n-two-suiter
+  system: swedish-club
+  north: 2nt-opening
+  south: two_suiter
+
+
+scenario 2n_unbal "2NT opener; South unbalanced"
+  label: 2NT – ? : unbalanced
+  formerly: 2n-unbalanced
+  system: swedish-club
+  north: 2nt-opening
+  south: not is_flattish
+
+
+scenario 3n-gambling "North opens a gambling 3NT"
+  label: 3NT (gambling)
+  formerly: 3n-opener
+  system: swedish-club
+  tags: preempt
+  north: gambling-3nt
+
+
+scenario weak-7-card-suit "North opens a 3-level preempt (minor 7-bagger or likely 3-major)"
+  label: weak, 7-card suit
+  formerly: 3x-preempt
+  tags: preempt
+  north: is_3cd_opener_1st2nd or is_likely_3major_preempt
+
+
+scenario weak-7-tricks "North opens a 4-level preempt"
+  label: weak, 7 offensive tricks
+  formerly: 4x-preempt
+  tags: preempt
+  north: is_likely_4level_preempt
+
+
+scenario 4n "North opens a potential 4NT (two-suited slam invitation)"
+  label: 4NT (3 losers or fewer)
+  formerly: 4n-opener
+  system: swedish-club
+  north: is_potential_4n_opener
+
+
+scenario weak-8-tricks-7-minor "North opens an insane offensive preempt with a 7+ minor"
+  label: weak, 8+ offensive tricks, 7+ minor
+  formerly: 5m-opener
+  tags: preempt
+  north: is_insane_offensive_preempt and (diamonds >= 7 or clubs >= 7)
+
+
+scenario weak-8-tricks "North holds an insane offensive preempt"
+  label: weak, 8+ offensive tricks
+  formerly: extreme-offensive-opener
+  tags: preempt
+  north: is_insane_offensive_preempt
+
+
+scenario 8-playing-tricks "North holds 8+ playing tricks"
+  label: 8+ playing tricks
+  formerly: 8plus-pt-mixed
+  tags: preempt
+  north: is_8_plus_tricks
+
+
+scenario ns-32plus-opc "North-South combined opc >= 32"
+  label: N-S 32+ OPC
+  formerly: slam-makes-dd
+  tags: slam
+  north-south: opc >= 32
+
+
+scenario ns-32plus-hcp "North-South hold a combined 32+ hcp"
+  label: N-S 32+ hcp
+  formerly: slam-hands-32-plus-hcp
+  tags: slam
+  north-south: hcp >= 32
+
+
+scenario ns-35plus-hcp "North-South hold a combined 35+ hcp"
+  label: N-S 35+ hcp
+  formerly: slam-hands-35-plus-hcp
+  tags: slam
+  north-south: hcp >= 35
+
+
+scenario both-balanced "Both N and S flat; North 11+, South 5+ (balanced teaching hands)"
+  label: both balanced : N 11+, S 5+
+  formerly: acol-lessons-balanced
+  north: is_flattish and hcp >= 11
+  south: is_flattish and hcp >= 5
+
+
+scenario 2c-or-2d-or-1d_not-bal-11-13 "North opens 2C / intermediate 2D / 1D but is NOT an 11-13 balanced hand"
+  label: 2♣ / 2♦ / 1♦ : not 11-13 balanced
+  formerly: roman-2c-related
+  system: swedish-club
+  north: not (hcp in 11..13 and nt-shape) and (2c-opening or 2d-intermediate or 1d-opening)
+
+
+scenario opp-3s-or-4s "E or W holds a 7+ spade preempt, limited combined E/W hcp"
+  label: (3♠/4♠) – ?
+  formerly: defence-vs-3s-or-4s-preempt
+  tags: competitive, preempt
+  east-west: hcp < 15
+  deal: (west(spades >= 7) or east(spades >= 7)) and (west(is_likely_3major_preempt or is_likely_4level_preempt) or east(is_likely_3major_preempt or is_likely_4level_preempt))
+
+
+scenario opp-3-level-preempt "E or W opens any high (2NT-minors / 3-level) preempt"
+  label: (3-level preempt) – ?
+  formerly: defence-vs-high-preempts
+  tags: competitive, preempt
+  deal: west(is_minors_2n_preempt or is_shapely_minor_preempt or is_standard_3cd_7carder or is_likely_3major_preempt or is_likely_4level_preempt) or east(is_minors_2n_preempt or is_shapely_minor_preempt or is_standard_3cd_7carder or is_likely_3major_preempt or is_likely_4level_preempt)
+
+
+scenario opp-any-preempt "E or W opens any preempt (weak twos through 4-level)"
+  label: (any preempt) – ?
+  formerly: defense-vs-all-preempts
+  tags: competitive, preempt
+  deal: west(is_minors_2n_preempt or is_shapely_minor_preempt or is_standard_3cd_7carder or is_weak2_major or is_generic_5card_unbal_weak2 or is_generic_weak2d or is_likely_3major_preempt or is_likely_4level_preempt) or east(is_minors_2n_preempt or is_shapely_minor_preempt or is_standard_3cd_7carder or is_weak2_major or is_generic_5card_unbal_weak2 or is_generic_weak2d or is_likely_3major_preempt or is_likely_4level_preempt)
+
+
+scenario opp-1n-10-12 "East opens a 10-12 NT; N-S may overcall"
+  label: (1NT 10-12) – ?
+  formerly: defence-vs-mini-nt
+  tags: competitive
+  east: hcp in 10..12 and is_nt5cM_shape
+  # North-South may compete: not both flat and below the notrump's top, and South not flat or weak
+  # when East-West have game values.
+  deal: not (north(is_flattish and hcp < 12) and south(is_flattish and hcp < 12)) and not (south(is_flattish or hcp < 8) and east-west(hcp >= 24))
+
+
+scenario opp-1n-12-14 "East opens a 12-14 NT; N-S may overcall"
+  label: (1NT 12-14) – ?
+  formerly: defence-vs-weak-nt
+  tags: competitive
+  east: hcp in 12..14 and is_nt5cM_shape
+  # North-South may compete: not both flat and below the notrump's top, and South not flat or weak
+  # when East-West have game values.
+  deal: not (north(is_flattish and hcp < 14) and south(is_flattish and hcp < 14)) and not (south(is_flattish or hcp < 8) and east-west(hcp >= 24))
+
+
+scenario opp-1n-12-14_partner-invite "East opens a 12-14 NT; South may overcall opposite an invitational North"
+  label: (1NT 12-14) – ? : partner invitational
+  formerly: defence-vs-weak-nt-invitational
+  tags: competitive
+  east: hcp in 12..14 and is_nt5cM_shape
+  south: not is_flattish and hcp in 9..13
+  north: hcp in 9..13
+  east-west: hcp < 18
+
+
+scenario opp-1n-14-16 "East opens a 14-16 NT; N-S may overcall"
+  label: (1NT 14-16) – ?
+  formerly: defence-vs-intermediate-nt
+  tags: competitive
+  east: hcp in 14..16 and is_nt5cM_shape
+  # North-South may compete: not both flat and below the notrump's top, and South not flat or weak
+  # when East-West have game values.
+  deal: not (north(is_flattish and hcp < 15) and south(is_flattish and hcp < 15)) and not (south(is_flattish or hcp < 8) and east-west(hcp >= 24))
+
+
+scenario opp-1n-15-17 "East opens a 15-17 NT; N-S may overcall"
+  label: (1NT 15-17) – ?
+  formerly: defence-vs-strong-nt
+  tags: competitive
+  east: hcp in 15..17 and is_nt5cM_shape
+  # North-South may compete: not both flat and below the notrump's top, and South not flat or weak
+  # when East-West have game values.
+  deal: not (north(is_flattish and hcp < 16) and south(is_flattish and hcp < 16)) and not (south(is_flattish or hcp < 8) and east-west(hcp >= 24))
+
+
+scenario opp-1cd-prepared "East opens a prepared minor; South has both majors or a red weak-two shape"
+  label: (1♣/♦ prepared) – ? : both majors or red weak-two shape
+  formerly: defence-vs-prepared-minor
+  tags: competitive
+  east: opens_std_1minor_prepared
+  south: (hcp in 5..15 and hearts >= 5 and spades >= 5) or (hcp in 5..11 and (hearts >= 6 or diamonds >= 6))
+
+
+scenario opp-1cd-prepared_majors "East opens a prepared minor; South has both majors (Michaels)"
+  label: (1♣/♦ prepared) – ? : both majors
+  formerly: defence-vs-prepared-minor-with-majors
+  tags: competitive
+  east: opens_std_1minor_prepared
+  south: hcp in 5..15 and hearts >= 5 and spades >= 5
+
+
+scenario opp-1c-strong-or-1n-17-19 "East opens a strong club / 17-19 NT; South has a shapely takeout"
+  label: (1♣ strong / 1NT 17-19) – ? : shapely takeout
+  formerly: defence-vs-strong-club-unbal-or-major
+  tags: competitive
+  east: hcp in 17..19 and is_nt5cM_shape or is_strong_1c
+  south: hcp >= 10 and spades = 4 and hearts = 4 or hcp > 8 and not is_flattish or hcp > 8 and spades + hearts >= 9 or hcp > 5 and two_suiter
+
+
+scenario opp-1x-unbal "East opens 12-19 unbalanced; South 7+ and not flat"
+  label: (1x unbalanced) – ? : 7+, not flat
+  formerly: unbalanced-overcalls
+  tags: competitive
+  east: not is_flattish and hcp in 12..19
+  south: hcp >= 7 and not is_flattish
+
+
+scenario opp-1x-unbal_two-suiter "East opens 12-19 unbalanced; South 7+, not flat, two-suiter"
+  label: (1x unbalanced) – ? : two-suiter
+  formerly: unbalanced-two-suiter-overcalls
+  tags: competitive
+  east: not is_flattish and hcp in 12..19
+  south: hcp >= 7 and not is_flattish and two_suiter
+
+
+scenario opp-1x-unbal_two-suiter-11-15 "East opens 12-19 unbalanced; South 11-15 two-suiter"
+  label: (1x unbalanced) – ? : 11-15 two-suiter
+  formerly: unbalanced-intermediate-two-suiter-overcall
+  tags: competitive
+  east: not is_flattish and hcp in 12..19
+  south: hcp in 11..15 and two_suiter

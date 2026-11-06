@@ -26,9 +26,29 @@ import "norn:cli"
 // What a scenario file is called. One extension, so a directory can hold notes and data beside them.
 SCENARIO_EXTENSION :: ".scenario"
 
+/*
+A BUILT-IN FILE: scenario text compiled into the program (`#load`), read before any folder. Its scenarios come
+first in the list, so `cli.lookup`'s first match gives a built-in a name a user's file shares, and its systems are
+there for a user's file to extend (`system ours extends swedish-club`). Its programs' `source` is
+`BUILTIN_PREFIX` + its name, which is no path on disk.
+*/
+Builtin_File :: struct {
+	name: string,
+	text: string,
+}
+
+BUILTIN_PREFIX :: "built-in:"
+
+// Did this scenario (or diagnostic) come from a built-in file rather than a folder?
+is_builtin_source :: proc(source: string) -> bool {
+	return strings.has_prefix(source, BUILTIN_PREFIX)
+}
+
 // A loaded set: the scenarios to append to the registry, the programs they point into (to be freed
-// together), and everything that was wrong with the files.
+// together), and everything that was wrong with the files. The first `builtin_count` scenarios and programs
+// are the built-in files'.
 Loaded :: struct {
+	builtin_count: int,
 	scenarios:   []cli.Scenario,
 	programs:    []^Program,
 	// Every system block the files define (systems.odin): the meanings the scenarios were read with, and what
@@ -70,7 +90,14 @@ list of places to look, and failing the whole load because one is missing would 
 // TWO PASSES: every file's system blocks first, checked as a whole, then the scenarios against them - a meaning
 // may be defined in another file from the scenarios that use it. `active` is the system the list is set to: a
 // scenario of a system it extends reads its meanings there (`reading_system`).
-load_directories :: proc(directories: []string, allocator := context.allocator, active := "") -> (loaded: Loaded) {
+load_directories :: proc(
+	directories: []string,
+	allocator := context.allocator,
+	active := "",
+	builtins: []Builtin_File = nil,
+) -> (
+	loaded: Loaded,
+) {
 	scenarios := make([dynamic]cli.Scenario, 0, 8, allocator)
 	programs := make([dynamic]^Program, 0, 8, allocator)
 	tags := make([dynamic][]string, 0, 8, allocator)
@@ -80,6 +107,12 @@ load_directories :: proc(directories: []string, allocator := context.allocator, 
 		path, text: string,
 	}
 	files := make([dynamic]Read, 0, 8, context.temp_allocator)
+
+	for builtin in builtins {
+		path := strings.concatenate({BUILTIN_PREFIX, builtin.name}, context.temp_allocator)
+		append(&files, Read{path = path, text = builtin.text})
+		read_systems(builtin.text, path, &systems, &problems)
+	}
 
 	for directory in directories {
 		if directory == "" || !os.is_dir(directory) {
@@ -124,7 +157,11 @@ load_directories :: proc(directories: []string, allocator := context.allocator, 
 	}
 	check_systems(&systems, &problems)
 
-	for file in files {
+	builtin_count := 0
+	for file, i in files {
+		if i == len(builtins) {
+			builtin_count = len(scenarios)
+		}
 		path := file.path
 		file_programs, file_problems := parse(file.text, path, allocator, &systems, active)
 		for diagnostic in file_problems {
@@ -143,6 +180,8 @@ load_directories :: proc(directories: []string, allocator := context.allocator, 
 				&scenarios,
 				cli.Scenario {
 					name = held.name,
+					label = held.label,
+					formerly = held.formerly,
 					description = held.description,
 					predicate = condition(held),
 				},
@@ -151,7 +190,11 @@ load_directories :: proc(directories: []string, allocator := context.allocator, 
 		delete(file_programs, allocator)
 	}
 
+	if len(files) == len(builtins) {
+		builtin_count = len(scenarios)
+	}
 	return Loaded {
+		builtin_count = builtin_count,
 		scenarios = scenarios[:],
 		programs = programs[:],
 		systems = systems,

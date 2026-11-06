@@ -59,13 +59,13 @@ dd_and_combo_annotate :: proc(builder: ^strings.Builder, deal: norn.Deal, format
 // dealt in rounds whose survivors are solved 40 at a time, and every deal is then solved in one batch before
 // the pages are written on the pool. `--par` captions the rest.
 //
-// `programs` are the scenarios loaded from FILES: each one with a `double-dummy:` line gets the matching
-// `deal_solve.makes_filter` and the caption, keyed by its name. A file scenario named like a COMPILED one
-// (`compiled`) is skipped: the compiled scenario wins the name in the registry (`cli.lookup`, first match),
-// so the hooks under that name must stay the compiled scenario's.
+// `programs` are the loaded scenarios: each one with a `double-dummy:` line gets the matching
+// `deal_solve.makes_filter` and the caption, keyed by its name. One named like a BUILT-IN scenario (`builtin`,
+// the load's first `builtin_count`) is skipped: the built-in wins the name in the registry (`cli.lookup`, first
+// match), so the hooks under that name must stay the built-in's - the ones written above.
 make_hooks :: proc(
 	programs: []^scenario_dsl.Program = nil,
-	compiled: []cli.Scenario = nil,
+	builtin: []cli.Scenario = nil,
 	allocator := context.allocator,
 ) -> Hooks {
 	h := Hooks {
@@ -91,7 +91,7 @@ make_hooks :: proc(
 		if !has {
 			continue
 		}
-		if _, clash := cli.lookup(compiled, program.name); clash {
+		if _, clash := cli.lookup(builtin, program.name); clash {
 			continue
 		}
 		sides, goals := MAKES_SIDE, MAKES_GOAL

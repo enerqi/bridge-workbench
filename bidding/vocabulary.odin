@@ -22,11 +22,18 @@ package bidding
 */
 
 import "../scenario_dsl"
+import "norn:norn"
 
 // Handed to `scenario_dsl.set_vocabulary` once at startup by whichever program is wiring things up
 // (`sim`, the workbench). Not installed here: a package should not have opinions about global state it
 // does not own.
 vocabulary := []scenario_dsl.Vocabulary_Entry {
+	// norn's, not this package's: the 4333 / 4432 / 5332 shape (the five in any suit) that `deal` calls 5CM_nt.
+	{name = "is_nt5cM_shape", description = "", call = norn.is_nt5cM_shape},
+	{name = "two_suiter", description = "", call = two_suiter},
+	{name = "opens_std_1minor_prepared", description = "", call = opens_std_1minor_prepared},
+	{name = "has_9_plus_majors", description = "", call = has_9_plus_majors},
+	{name = "any_good_6_plus_carder", description = "", call = any_good_6_plus_carder},
 	{name = "is_1d_opener", description = "", call = is_1d_opener},
 	{name = "is_1d_swedish_club_resp", description = "", call = is_1d_swedish_club_resp},
 	{name = "is_1d_takeout", description = "", call = is_1d_takeout},
