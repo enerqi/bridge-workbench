@@ -176,7 +176,34 @@ write_node :: proc(b: ^strings.Builder, program: ^Program, index: int, level: Le
 		strings.write_byte(b, ')')
 
 	case Balanced_Node:
-		strings.write_string(b, "balanced")
+		strings.write_string(b, "semibalanced" if node.semi else "balanced")
+
+	case Shape_Node:
+		strings.write_string(b, "shape(")
+		for k in 0 ..< node.count {
+			if k > 0 {
+				strings.write_string(b, ", ")
+			}
+			pattern := node.patterns[k]
+			if pattern.any {
+				strings.write_string(b, "any ")
+			}
+			long := false
+			for length in pattern.lengths {
+				long = long || length > 9
+			}
+			for length, i in pattern.lengths {
+				if long && i > 0 {
+					strings.write_byte(b, '-')
+				}
+				if length < 0 {
+					strings.write_byte(b, 'x')
+				} else {
+					strings.write_int(b, int(length))
+				}
+			}
+		}
+		strings.write_byte(b, ')')
 
 	case Vulnerability_Node:
 		switch node.word {

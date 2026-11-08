@@ -1259,6 +1259,92 @@ scenario uses-nt "1NT"
 	testing.expect_value(t, scenario_badge(&app, index), "2over1")
 }
 
+// A MEANING'S ALTERNATIVES ARE TICKS under the system picker, in a system of your own that extends another: one
+// per inherited alternative, on as the system resolves it; a click writes `without "<name>"` into the system's
+// block in its file and the scenarios are read again (the scenario loses those deals), and a second click takes
+// the line out - the file back as it was. A system that extends nothing has no ticks.
+@(test)
+test_a_tick_switches_an_alternative_in_the_systems_file :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+
+	temp, temp_err := os.temp_directory(context.temp_allocator)
+	if temp_err != nil {return}
+	folder, _ := filepath.join({temp, "workbench-switches"}, context.temp_allocator)
+	_ = os.make_directory(folder)
+	defer os.remove_all(folder)
+	path, _ := filepath.join({folder, "mine.scenario"}, context.temp_allocator)
+	source := `system 2over1 "2/1"
+  meaning nt-opening: hcp in 15..17 and balanced
+    also "14, five-card suit": hcp = 14 and balanced and longest = 5
+    also "4441": hcp in 15..17 and longest = 4 and (spades = 1 or hearts = 1 or diamonds = 1 or clubs = 1)
+
+system ours extends 2over1 "ours"
+  meaning major-opening: hcp >= 12 and (spades >= 5 or hearts >= 5)
+
+scenario uses-nt "1NT"
+  system: 2over1
+  north: nt-opening
+`
+	if os.write_entire_file(path, transmute([]u8)source) != nil {return}
+	app.prefs = prefs.load("", context.temp_allocator)
+	defer prefs.destroy(&app.prefs)
+	prefs.set(&app.prefs, SCENARIO_DIRS_PREF, folder)
+	free_user_scenarios(&app)
+	load_user_scenarios(&app)
+
+	rows := proc(app: ^App) -> (count: int, on: int) {
+		for i in 0 ..< 8 {
+			row := find(app, fmt.tprintf("#scenario-switches .swrow:nth-child(%d)", i + 1))
+			if row == nil {continue}
+			count += 1
+			class, _ := sa.attribute(row, "class", context.temp_allocator)
+			on += int(strings.contains(class, "on"))
+		}
+		return
+	}
+	// The labels a deal of the scenario can carry: what the condition it is run with names.
+	alternatives := proc(app: ^App) -> int {
+		return len(app.loaded.programs[app.loaded.builtin_count].meaning_alternatives)
+	}
+
+	choose_system(&app, "2over1")
+	count, _ := rows(&app)
+	testing.expect_value(t, count, 0) // extends nothing: nothing inherited to switch
+
+	choose_system(&app, "ours")
+	on: int
+	count, on = rows(&app)
+	testing.expect_value(t, count, 2)
+	testing.expect_value(t, on, 2)
+	testing.expect_value(t, alternatives(&app), 2)
+
+	pump(&app) // rows just drawn take clicks once styled (`behavior: button`)
+	first := find(&app, "#scenario-switches .swrow")
+	if !testing.expect(t, first != nil, "a tick row") {return}
+	sa.do_click(first)
+	pump(&app)
+	data, _ := os.read_entire_file_from_path(path, context.temp_allocator)
+	testing.expect(t, strings.contains(string(data), "  meaning nt-opening\n    without \"14, five-card suit\"\n"), string(data))
+	count, on = rows(&app)
+	testing.expect_value(t, count, 2)
+	testing.expect_value(t, on, 1)
+	testing.expect_value(t, alternatives(&app), 1) // the scenario was read again without it
+
+	pump(&app)
+	first = find(&app, "#scenario-switches .swrow")
+	if first == nil {return}
+	sa.do_click(first)
+	pump(&app)
+	data, _ = os.read_entire_file_from_path(path, context.temp_allocator)
+	testing.expect_value(t, string(data), source)
+	_, on = rows(&app)
+	testing.expect_value(t, on, 2)
+}
+
 // TWO GROUPS ARE A UNION, NOT AN INTERSECTION. The decision the whole control hangs off: intersected, two
 // groups would be a near-empty list nobody asked for.
 @(test)
@@ -13245,6 +13331,123 @@ test_ctrl_arrows_move_by_words_across_lines :: proc(t: ^testing.T) {
 	sa.value_clear(&r)
 }
 
+// STEPPING THROUGH MATCHES PAINTS ONLY THE MATCH. Moving one selection straight to the next was drawn from the
+// previous match's end to this one's start while the selection held just the match, so stepping through a long file
+// painted all of it as selected (reported 2026-11-08, real window; the snapshot showed it windowless too). Read off
+// the PAINT: a line between the two matches looks the same before the steps and after them.
+@(test)
+test_find_steps_paint_only_the_match :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	dir := scratch_scenario_dir(t, "wb-find-paint")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "a.bml", "* Openings\n1NT = 15-17\n    3N = to play, not shapely\n    2D = transfer\n    2H = transfer\n    3S = not shapely either\n") {return}
+	app.docs = dir
+	app.bml_names = list_bml_files(dir, context.temp_allocator)
+	show_editor(&app)
+	opened, _ := open_bml(&app, "a.bml")
+	if !testing.expect(t, opened) {return}
+	pump(&app)
+	js :: proc(app: ^App, script: string) -> string {
+		v, err := sa.eval(app.window, script)
+		defer sa.value_clear(&v)
+		if err != nil {return "error"}
+		s, _ := sa.value_to_string(&v, context.temp_allocator)
+		return s
+	}
+	// The pixels across the start of "2D = transfer" (row 3), between the two matches.
+	strip :: proc(app: ^App) -> (pixels: [16][3]u8, ok: bool) {
+		v, err := sa.eval(app.window, `(function(){var r=document.$("#bml-text").children[3].getBoundingClientRect(); return Math.round(r.left) + " " + Math.round(r.top + r.height / 2);})()`)
+		defer sa.value_clear(&v)
+		if err != nil {return}
+		text, _ := sa.value_to_string(&v, context.temp_allocator)
+		f := strings.fields(text, context.temp_allocator)
+		if len(f) != 2 {return}
+		x, _ := strconv.parse_int(f[0])
+		y, _ := strconv.parse_int(f[1])
+		for i in 0 ..< 16 {
+			r, g, b, _ := sa.windowless_pixel(&g_view, i32(x + 2 + i * 4), i32(y))
+			pixels[i] = {r, g, b}
+		}
+		return pixels, true
+	}
+	_ = goto_key(&app, u32(sciter.Sc_Kb_Codes.F), {.LCONTROL})
+	pump(&app)
+	input := find(&app, "#bml-find-input")
+	for c in "shape" {
+		_, _ = sa.send_key(input, .CHAR, u32(c), {})
+	}
+	pump(&app)
+	before, read_before := strip(&app)
+	for _ in 0 ..< 2 {
+		_, _ = sa.send_key(input, .DOWN, u32(sciter.Sc_Kb_Codes.ENTER), {})
+		_, _ = sa.send_key(input, .UP, u32(sciter.Sc_Kb_Codes.ENTER), {})
+		pump(&app)
+	}
+	pump(&app)
+	testing.expect_value(t, js(&app, `JSON.stringify(document.$("#bml-text").plaintext.selectionStart) + JSON.stringify(document.$("#bml-text").plaintext.selectionEnd)`), "[5,13][5,18]")
+	after, read_after := strip(&app)
+	if !testing.expect(t, read_before && read_after, "the line's place was read") {return}
+	testing.expectf(t, before == after, "the line between the matches was painted differently after the steps:\n%v\n%v", before, after)
+}
+
+// FIND AND REPLACE IN MY SCENARIOS: ctrl+f / ctrl+h there open the scenarios pane's own bar (the notes bar's twin,
+// `scn-`), which finds, steps, selects and replaces in `#scn-text` - and leaves the notes bar shut. The built-in
+// file is found in but never written: no replace row, and a replace changes nothing.
+@(test)
+test_find_and_replace_in_my_scenarios :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	dir := scratch_scenario_dir(t, "wb-scn-find")
+	if dir == "" {return}
+	if !write_scenario_file(dir, "a.scenario", "scenario one \"one\"\n  north: hcp >= 12 and shape(any 4333)\n\nscenario two \"two\"\n  north: shape(5xxx)\n") {return}
+	show_scenario_editor(&app)
+	adopt_scenario_dir(&app, dir)
+	opened, why := open_scenario_file(&app, "a.scenario")
+	if !testing.expectf(t, opened, "open: %s", why) {return}
+	pump(&app)
+	js :: proc(app: ^App, script: string) -> string {
+		v, err := sa.eval(app.window, script)
+		defer sa.value_clear(&v)
+		if err != nil {return "error"}
+		s, _ := sa.value_to_string(&v, context.temp_allocator)
+		return s
+	}
+
+	testing.expect(t, goto_key(&app, u32(sciter.Sc_Kb_Codes.F), {.LCONTROL}), "ctrl+f is the host's in my scenarios")
+	pump(&app)
+	testing.expect_value(t, js(&app, `document.$("#scn-find").style.display`), "block")
+	testing.expect_value(t, js(&app, `document.$("#bml-find").style.display`), "none")
+	testing.expect_value(t, js(&app, `document.$("#scn-find-input").value = "shape"; String(bmlFindScan())`), "2")
+	testing.expect_value(t, js(&app, `bmlFindStep(1); document.$("#scn-find-count").textContent`), "1 of 2")
+	testing.expect_value(t, js(&app, `document.$("#scn-text").plaintext.selectionText`), "shape")
+	testing.expect_value(t, js(&app, `JSON.stringify(document.$("#scn-text").plaintext.selectionStart)`), "[1,23]")
+
+	testing.expect(t, goto_key(&app, u32(sciter.Sc_Kb_Codes.H), {.LCONTROL}), "ctrl+h is the host's in my scenarios")
+	pump(&app)
+	testing.expect_value(t, js(&app, `document.$("#scn-replace-row").style.display`), "block")
+	_ = js(&app, `document.$("#scn-find-input").value = "5xxx"; document.$("#scn-replace-input").value = "x5xx"; bmlFindScan(); bmlFind.at = 0; String(bmlReplaceOne())`)
+	got, _ := scenario_source(&app, context.temp_allocator)
+	testing.expect(t, strings.contains(got, "north: shape(x5xx)"), got)
+	_ = js(&app, `bmlFindClose()`)
+	testing.expect_value(t, js(&app, `document.$("#scn-find").style.display`), "none")
+
+	// The built-in file: found in, never written.
+	adopt_scenario_dir(&app, BUILTIN_DIR)
+	if ok, _ := open_scenario_file(&app, "swedish-club.scenario"); !testing.expect(t, ok, "the built-in file opens") {return}
+	pump(&app)
+	_ = goto_key(&app, u32(sciter.Sc_Kb_Codes.H), {.LCONTROL})
+	pump(&app)
+	testing.expect_value(t, js(&app, `document.$("#scn-replace-row").style.display`), "none")
+	before, _ := scenario_source(&app, context.temp_allocator)
+	testing.expect(t, js(&app, `document.$("#scn-find-input").value = "two-suiter"; String(bmlFindScan())`) != "0", "the built-in file is searched")
+	testing.expect_value(t, js(&app, `document.$("#scn-replace-input").value = "X"; bmlFind.at = 0; String(bmlReplaceOne()) + String(bmlReplaceAll())`), "false0")
+	after, _ := scenario_source(&app, context.temp_allocator)
+	testing.expect(t, before == after, "the built-in file was written to")
+}
+
 // FIND AND REPLACE, and the LINE KEYS, in the notes source (the page script's). Find: every match counted and
 // stepped through, wrapping, `Aa` and `W` narrowing it; replace one then the rest, each undoable. The line keys
 // on the caret's line: move it down and back up, comment it out and in (`//` at column 0, BML's rule), delete it.
@@ -13840,5 +14043,3 @@ test_the_look_preview_follows_the_looks :: proc(t: ^testing.T) {
 	choose_notes_look(&app, NOTES_PAGE_PREF, "white")
 	testing.expect_value(t, app.look_tab, Look_Tab.Editor)
 }
-
-

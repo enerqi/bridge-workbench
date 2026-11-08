@@ -37,7 +37,8 @@
 # A meaning named with NO condition keeps the inherited one and switches its alternatives: `without` turns one
 # off, `also` adds your own. A meaning WITH a condition replaces it whole. Then set the deals list's system to
 # `ours`: every 2over1 scenario below is listed under it and reads your meanings. The scenario editor's check
-# says where each meaning came from ("nt-opening from 2over1, amended by ours").
+# says where each meaning came from ("nt-opening from 2over1, amended by ours"). With `ours` picked, the deals
+# list shows a tick for each alternative it inherits: unticking one writes its `without` line for you.
 system 2over1 "2/1 game forcing: a 15-17 notrump, five-card majors, a strong 2C"
   # A 2/1 notrump is 15-17; many players also open some hands that are not quite that.
   meaning nt-opening: hcp in 15..17 and balanced

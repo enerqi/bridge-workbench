@@ -16,6 +16,8 @@ package main
 	  * `Documents\Bridge scenarios\examples.scenario` - a few scenarios in the text language, using only
 	    the generic atoms (the named helpers belong to this repository's own system). Registered in
 	    `scenarios.dirs`, before the scenarios are loaded, so they are in the deals list from the start.
+	  * `Documents\Bridge scenarios\my-2over1.scenario` - `system ours extends 2over1`, empty: pick `ours` and the
+	    deals list shows a tick per alternative it inherits, which write `without` lines into this file.
 
 	ONCE, and only when nothing is set up: a kind is installed when its folders are empty (nothing found,
 	nothing remembered, nothing in the environment) and its `samples.*` pref is not yet set. The pref is set
@@ -47,6 +49,9 @@ sample_scenarios := [?]Sample_File {
 	// Worked examples of the language in 2/1 meanings, tagged `guide`: hidden in the deals list until that group
 	// is picked (`OPT_IN_GROUPS`).
 	{"guides.scenario", #load("../samples/scenarios/guides.scenario", string)},
+	// A system of the user's own extending the guides' 2over1: where the deals list's ticks for a meaning's
+	// alternatives appear (workbench/switches.odin), and what they write into.
+	{"my-2over1.scenario", #load("../samples/scenarios/my-2over1.scenario", string)},
 }
 
 SAMPLE_NOTES_DIR :: "Bridge notes"

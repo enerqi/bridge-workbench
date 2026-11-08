@@ -520,7 +520,7 @@ is_meaning_name :: proc(name: string) -> bool {
 is_reserved_word :: proc(name: string) -> bool {
 	lowered := folded(name)
 	switch lowered {
-	case "and", "or", "not", "in", "balanced", "holds":
+	case "and", "or", "not", "in", "balanced", "semibalanced", "holds", "shape":
 		return true
 	}
 	if _, is_quantity := quantity_of(lowered); is_quantity {

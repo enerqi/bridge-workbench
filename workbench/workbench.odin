@@ -5835,6 +5835,18 @@ Everything that is not one of these five keys is left to fall through and be typ
 */
 goto_key :: proc(app: ^App, key_code: u32, modifiers: sciter.Keyboard_States) -> bool {
 	if sciter.KEYBOARD_STATE_CONTROL & modifiers != {} {
+		// FIND (and REPLACE) in my scenarios' source too: the notes bar's twin, `scn-` (the page script's).
+		if current_view(app) == .Scenarios {
+			code := sciter.Sc_Kb_Codes(key_code)
+			if code != .F && code != .H {
+				return false
+			}
+			script := "bmlFindOpen(true, \"scn\")" if code == .H else "bmlFindOpen(false, \"scn\")"
+			if result, err := sa.eval(app.window, script); err == nil {
+				sa.value_clear(&result)
+			}
+			return true
+		}
 		// CTRL+R, the way in and the way out. Only in the notes view: everywhere else the key is nobody's.
 		if current_view(app) != .Editor {
 			return false
@@ -7115,6 +7127,7 @@ draw_system_picker :: proc(app: ^App) {
 	}
 	strings.write_string(&b, `</select>`)
 	sa.set_html(row, strings.to_string(b))
+	draw_system_switches(app) // the picked system's ticks, under it
 }
 
 // The picker's label and opening tag; the hint is the markup's, kept here because the row is redrawn whole.
@@ -9270,6 +9283,13 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 	}
 	if dir, is_dir := row_attribute(be.target, "data-ndir"); is_dir {
 		switch_notes_dir(app, dir)
+		return true
+	}
+	// A tick under the system picker: switch that alternative in the system's file (workbench/switches.odin).
+	if alternative, is_switch := row_attribute(be.target, "data-alt"); is_switch {
+		meaning, _ := row_attribute(be.target, "data-meaning")
+		_, why := toggle_switch(app, meaning, alternative)
+		set_note(app, why)
 		return true
 	}
 	// A folder in the scenario editor's folders list: edit that folder's files.

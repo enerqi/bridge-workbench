@@ -1,16 +1,16 @@
-package scenario_dsl
+﻿package scenario_dsl
 
 /*
-	dsl_test.odin — the language, without a window or a bidding system in the way.
+	dsl_test.odin â€” the language, without a window or a bidding system in the way.
 
 	The vocabulary is INJECTED, so these tests supply their own two-entry one rather than importing
 	`bidding`: what is under test is the language, and a test that needed this repository's bidding system
 	to run would be testing the wrong thing. The real vocabulary is wired at startup by the consumer.
 
-	★ THE ONE THAT MATTERS is `test_a_parsed_condition_agrees_with_the_compiled_one` at the bottom — the
+	â˜… THE ONE THAT MATTERS is `test_a_parsed_condition_agrees_with_the_compiled_one` at the bottom â€” the
 	parity oracle. Every other test here says the parser did what the grammar says; that one says the
 	INTERPRETED scenario accepts exactly the deals a hand-written Odin predicate accepts, over a seeded
-	run. It is the same trick that verified the whole deal.exe → norn port, and it is what turns "does my
+	run. It is the same trick that verified the whole deal.exe â†’ norn port, and it is what turns "does my
 	expression mean what I think" from an opinion into a test.
 */
 
@@ -75,7 +75,7 @@ test_a_scenario_parses_its_header_body_and_tags :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(program.tags), 2)
 	testing.expect_value(t, program.tags[0], "mine")
 	testing.expect_value(t, program.tags[1], "slam")
-	// TWO SEAT RULES, which AND together — the compiled registry's `&&`, said in the grammar.
+	// TWO SEAT RULES, which AND together â€” the compiled registry's `&&`, said in the grammar.
 	testing.expect_value(t, len(program.rules), 2)
 	testing.expect_value(t, program.rules[0].seat, norn.Seat.North)
 	testing.expect_value(t, program.rules[1].seat, norn.Seat.South)
@@ -131,7 +131,7 @@ test_the_operators_mean_what_they_say :: proc(t: ^testing.T) {
 }
 
 /*
-A hand with a chosen hcp AND a chosen spade length — the two things the cases above vary.
+A hand with a chosen hcp AND a chosen spade length â€” the two things the cases above vary.
 
 WRITTEN TWICE. The first version put the honours in SPADES, so "15 hcp with 3 spades" asked for more
 points than three spade cards can hold (A+K+Q is 9) and five cases failed against a language that was
@@ -163,7 +163,7 @@ hand_with :: proc(hcp: int, spades: int) -> norn.Hand_Summary {
 		for _ in 0 ..< counts[s] {
 			// THE BEST AFFORDABLE honour, not the next one in order. Taking them strictly A-K-Q-J meant a
 			// suit that could not afford a King stopped placing honours entirely, stranding the last two
-			// points and making several cases unbuildable — which read as the language being wrong.
+			// points and making several cases unbuildable â€” which read as the language being wrong.
 			best := -1
 			for value, h in values {
 				if !used[h] && value <= remaining && (best < 0 || value > values[best]) {
@@ -304,10 +304,10 @@ compiled :: proc(summary: norn.Deal_Summary) -> bool {
 }
 
 /*
-★ AN INTERPRETED SCENARIO ACCEPTS EXACTLY WHAT THE COMPILED ONE ACCEPTS.
+â˜… AN INTERPRETED SCENARIO ACCEPTS EXACTLY WHAT THE COMPILED ONE ACCEPTS.
 
 The point of the whole package, and the only test here that could catch the language MEANING something
-other than it reads. Both conditions see the same deals — one seeded stream, replayed — and every single
+other than it reads. Both conditions see the same deals â€” one seeded stream, replayed â€” and every single
 verdict has to match, not merely the totals: two conditions can accept the same NUMBER of deals while
 disagreeing about which.
 */
@@ -343,7 +343,7 @@ test_a_parsed_condition_agrees_with_the_compiled_one :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, interpreted_accepts, compiled_accepts)
 	// And it is not vacuously equal because neither ever fires.
-	testing.expect(t, compiled_accepts > 0, "the condition never accepted anything — the oracle proves nothing")
+	testing.expect(t, compiled_accepts > 0, "the condition never accepted anything â€” the oracle proves nothing")
 }
 
 // ---- loading from a directory --------------------------------------------------------------------
@@ -351,7 +351,7 @@ test_a_parsed_condition_agrees_with_the_compiled_one :: proc(t: ^testing.T) {
 /*
 A DIRECTORY OF FILES, END TO END: parse, own, and hand back `cli.Scenario` values.
 
-It also frees what it loaded, and that half is not ceremony — it is the regression test for a real crash.
+It also frees what it loaded, and that half is not ceremony â€” it is the regression test for a real crash.
 The diagnostics' file names were BORROWED from the loader's temp-allocated directory entries while
 `destroy_loaded` freed them, so the first run that produced a diagnostic at all exited with heap
 corruption (0xC0000374). A happy path never finds that; a test that loads a BROKEN file and then destroys
@@ -422,8 +422,8 @@ test_a_missing_directory_is_not_an_error :: proc(t: ^testing.T) {
 the precedence both ways round, `not` over a compound, a range, `holds`, `balanced` and a name.
 
 WHY THE SECOND PARSE rather than a string comparison against the source. The unparser prints what the
-tree MEANS, one way — a range where the file wrote two comparisons, brackets where the shape needs them
-rather than where they were typed — so the text is deliberately not the input. What must survive is the
+tree MEANS, one way â€” a range where the file wrote two comparisons, brackets where the shape needs them
+rather than where they were typed â€” so the text is deliberately not the input. What must survive is the
 MEANING, and the only honest way to ask that is to read the printed text back and compare the trees.
 
 The comparison is over the printed form of BOTH, which is a canonical form: two trees that print the
@@ -446,6 +446,9 @@ test_a_program_survives_being_written_out_and_read_back :: proc(t: ^testing.T) {
 		"longest >= 6 and controls in 2..4 and not balanced",
 		"seat = 3 and (favourable or not vulnerable)",
 		"seat in 1..2 and unfavourable",
+		"shape(any 4333, any 4432, any 5332) and hcp in 15..17",
+		"(balanced or semibalanced) and not semibalanced",
+		"not shape(5xxx, x5xx) or shape(any 55xx, 10-1-1-1, any 7-6-x-x)",
 	}
 	for expression in expressions {
 		source := strings.concatenate(
@@ -506,6 +509,9 @@ test_the_printer_spells_the_tree_the_short_way :: proc(t: ^testing.T) {
 		{"not (is_big or balanced)", "not (is_big or balanced)"},
 		{"hcp in 8..11", "hcp in 8..11"},
 		{"hcp != 10", "hcp != 10"},
+		// A shape's own spelling: lower-case `x`, hyphens only where a length is past 9, `any` before each.
+		{"shape( ANY 4-3-3-3 ,5XXX )", "shape(any 4333, 5xxx)"},
+		{"shape(10-x-x-x)", "shape(10-x-x-x)"},
 	}
 	for c in cases {
 		source := strings.concatenate({"scenario p\n  north: ", c.written, "\n"}, context.temp_allocator)
@@ -541,7 +547,7 @@ two_sides :: proc() -> (summary: norn.Deal_Summary) {
 A PARTNERSHIP LINE READS THE SIDE'S TWO HANDS AS ONE.
 
 Every case mixes the two hands on purpose: 21 hcp is neither hand's count, eight spades is neither hand's
-length, and the two aces in the `holds` case sit in different hands — so a line that read only its first
+length, and the two aces in the `holds` case sit in different hands â€” so a line that read only its first
 seat would fail them all.
 */
 @(test)
@@ -630,7 +636,7 @@ test_a_side_that_is_not_a_partnership_is_an_unknown_key :: proc(t: ^testing.T) {
 	}
 }
 
-// The compiled forms, written the way `bidding/scenarios.odin` writes them — the first is
+// The compiled forms, written the way `bidding/scenarios.odin` writes them â€” the first is
 // `slam-hands-32-plus-hcp` verbatim.
 @(private = "file")
 compiled_32_plus :: proc(b: norn.Deal_Summary) -> bool {
@@ -652,8 +658,8 @@ compiled_fit_and_stopper :: proc(b: norn.Deal_Summary) -> bool {
 }
 
 /*
-★ THE PARITY ORACLE, FOR PARTNERSHIP LINES. Same shape as the seat-line oracle above — one seeded stream,
-every verdict compared — over the scenario that motivated the feature (`slam-hands-32-plus-hcp`, which
+â˜… THE PARITY ORACLE, FOR PARTNERSHIP LINES. Same shape as the seat-line oracle above â€” one seeded stream,
+every verdict compared â€” over the scenario that motivated the feature (`slam-hands-32-plus-hcp`, which
 had no text form) and over one that mixes a seat line, a fit and the defending side's holdings.
 */
 @(test)
@@ -691,7 +697,7 @@ test_a_partnership_condition_agrees_with_the_compiled_one :: proc(t: ^testing.T)
 			program.name,
 			disagreements,
 		)
-		testing.expectf(t, accepted > 0, "%q never accepted anything — the oracle proves nothing", program.name)
+		testing.expectf(t, accepted > 0, "%q never accepted anything â€” the oracle proves nothing", program.name)
 	}
 }
 
@@ -877,7 +883,7 @@ test_dealer_and_vulnerability_lines_fix_the_table :: proc(t: ^testing.T) {
 	}
 }
 
-// ★ THE PARITY ORACLE FOR THE TABLE: a third-seat, not-unfavourable weak two as text against the same thing
+// â˜… THE PARITY ORACLE FOR THE TABLE: a third-seat, not-unfavourable weak two as text against the same thing
 // in Odin, over a seeded stream of deals EACH AT A DRAWN TABLE, every verdict compared.
 @(private = "file")
 compiled_third_seat_weak_two :: proc(b: norn.Deal_Summary, table: norn.Table) -> bool {
@@ -946,7 +952,7 @@ compiled_1nt_why :: proc(b: norn.Deal_Summary) -> (kept: bool, why: string) {
 }
 
 /*
-★ AN ALTERNATIVE REPLACES ITS SEAT'S LINES AND KEEPS THE REST, and the deal says which way it got in: every verdict
+â˜… AN ALTERNATIVE REPLACES ITS SEAT'S LINES AND KEEPS THE REST, and the deal says which way it got in: every verdict
 and every reason compared with the Odin above, over a seeded stream. The second alternative has two lines, so it
 replaces BOTH seats' lines.
 */
@@ -1087,11 +1093,11 @@ test_a_scenario_names_its_system :: proc(t: ^testing.T) {
 @(test)
 test_a_scenario_has_a_label_and_a_former_name :: proc(t: ^testing.T) {
 	install_test_vocabulary()
-	source := "scenario 1hs_slam-try \"slam try\"\n  label: 1♥/♠ – ? : slam try\n  formerly: 1major-slam-try\n  system: swedish-club\n  north: hcp in 11..15\n"
+	source := "scenario 1hs_slam-try \"slam try\"\n  label: 1â™¥/â™  â€“ ? : slam try\n  formerly: 1major-slam-try\n  system: swedish-club\n  north: hcp in 11..15\n"
 	program, ok := parse_one(t, source)
 	if !ok {return}
 	defer destroy_program(&program)
-	testing.expect_value(t, program.label, "1♥/♠ – ? : slam try")
+	testing.expect_value(t, program.label, "1â™¥/â™  â€“ ? : slam try")
 	testing.expect_value(t, program.formerly, "1major-slam-try")
 	testing.expect_value(t, write_program(&program, context.temp_allocator), source)
 
@@ -1138,7 +1144,7 @@ test_a_scenario_has_a_label_and_a_former_name :: proc(t: ^testing.T) {
 	found, found_ok := cli.lookup(loaded.scenarios, "1major-slam-try")
 	testing.expect(t, found_ok, "the former name finds the scenario")
 	testing.expect_value(t, found.name, "1hs_slam-try")
-	testing.expect_value(t, found.label, "1♥/♠ – ? : slam try")
+	testing.expect_value(t, found.label, "1â™¥/â™  â€“ ? : slam try")
 }
 
 // A deal only an alternative kept carries the alternative's name on its card; a deal the scenario's own lines
@@ -1573,6 +1579,10 @@ test_a_meanings_alternatives_widen_it_and_name_themselves :: proc(t: ^testing.T)
 			testing.expect_value(t, program.meaning_alternatives[1], "a six-card minor")
 		}
 		testing.expect(t, strings.contains(write_program(program, context.temp_allocator), "north: nt-opening\n"))
+		// And the condition the scenario is RUN with labels its deals (`explain` asked directly below would pass
+		// without it - which is how a meaning's alternatives once never reached a card or `--frequency`).
+		interpreted, is_interpreted := condition(program).(norn.Interpreted_Predicate)
+		testing.expectf(t, is_interpreted && interpreted.explain != nil, "%q: the run's condition does not name its alternatives", active)
 
 		state: rand.Xoshiro256_Random_State
 		context.random_generator = norn.seeded_xoshiro(&state, 20261109)
@@ -1633,4 +1643,154 @@ test_a_meanings_alternatives_widen_it_and_name_themselves :: proc(t: ^testing.T)
 			destroy_program(&each)
 		}
 	}
+}
+
+// ---- shape -----------------------------------------------------------------------------------------
+
+@(private = "file")
+fives :: proc(hand: norn.Hand_Summary) -> (n: int) {
+	for suit in norn.Suit {
+		if norn.suit_length(hand, suit) == 5 {n += 1}
+	}
+	return
+}
+
+/*
+`shape(...)` ACCEPTS WHAT THE SAME TEST WRITTEN IN ODIN ACCEPTS, verdict for verdict over seeded deals: norn's own
+`is_nt5cM_shape` (the helper the built-in file can now spell out), an `any` pattern with `x`s, and one in order.
+*/
+@(test)
+test_a_shape_is_the_lengths_it_names :: proc(t: ^testing.T) {
+	cases := []struct {
+		text: string,
+		code: proc(hand: norn.Hand_Summary) -> bool,
+	} {
+		{"shape(any 4333, any 4432, any 5332)", norn.is_nt5cM_shape},
+		{"semibalanced", norn.is_semibalanced},
+		{"shape(any 55xx)", proc(hand: norn.Hand_Summary) -> bool {return fives(hand) >= 2}},
+		{"shape(5xxx, x5xx)", proc(hand: norn.Hand_Summary) -> bool {
+				return norn.suit_length(hand, .Spades) == 5 || norn.suit_length(hand, .Hearts) == 5
+			}},
+		{"shape(any 6xxx) and not shape(any 6-4-x-x)", proc(hand: norn.Hand_Summary) -> bool {
+				six, four := 0, 0
+				for suit in norn.Suit {
+					switch norn.suit_length(hand, suit) {
+					case 6: six += 1
+					case 4: four += 1
+					}
+				}
+				return six >= 1 && four == 0
+			}},
+	}
+	for c in cases {
+		program, ok := parse_one(t, strings.concatenate({"scenario s\n  north: ", c.text, "\n"}, context.temp_allocator))
+		if !ok {continue}
+		defer destroy_program(&program)
+		state: rand.Xoshiro256_Random_State
+		context.random_generator = norn.seeded_xoshiro(&state, 20261108)
+		accepted, disagreed := 0, 0
+		for _ in 0 ..< 20_000 {
+			summary := norn.summarize_deal(norn.deal_hands())
+			from_text := evaluate(summary, {}, &program)
+			if from_text != c.code(summary[.North]) {disagreed += 1}
+			if from_text {accepted += 1}
+		}
+		testing.expectf(t, disagreed == 0, "%s: %d deals judged differently", c.text, disagreed)
+		testing.expectf(t, accepted > 0, "%s never accepted a deal - the oracle proves nothing", c.text)
+	}
+}
+
+@(test)
+test_a_bad_shape_is_reported_where_it_is_written :: proc(t: ^testing.T) {
+	cases := []struct {
+		line: string,
+		says: string,
+	} {
+		{"north: shape 4333", "takes patterns"},
+		{"north: shape(433)", "is not a shape"},
+		{"north: shape(4334)", "does not add up to 13"},
+		{"north: shape(9xx5)", "does not add up to 13"},
+		{"north: shape(any 4333 any 4432)", "expected `,`"},
+		{"north: shape(5x?x)", "is not a shape"},
+		{"north-south: shape(any 4333)", "describes one hand"},
+	}
+	for c in cases {
+		programs, diagnostics := parse(
+			strings.concatenate({"scenario s\n  ", c.line, "\n"}, context.temp_allocator),
+			"s.scenario",
+			context.temp_allocator,
+		)
+		testing.expectf(t, len(programs) == 0 && len(diagnostics) >= 1, "%q: %d programs, %v", c.line, len(programs), diagnostics[:])
+		if len(diagnostics) > 0 {
+			testing.expectf(t, strings.contains(diagnostics[0].message, c.says), "%q: %s", c.line, diagnostics[0].message)
+		}
+	}
+}
+
+// ---- switches ---------------------------------------------------------------------------------------
+
+// The alternatives of `meaning` in force in `system`, as the resolver reads `text`.
+@(private = "file")
+in_force :: proc(text, system, meaning: string) -> []string {
+	systems := make_systems(context.temp_allocator)
+	found := make([dynamic]Diagnostic, 0, 2, context.temp_allocator)
+	read_systems(text, "s.scenario", &systems, &found)
+	resolved := resolve_meaning(&systems, system, meaning)
+	names := make([dynamic]string, 0, 4, context.temp_allocator)
+	for alternative in resolved.alternatives {
+		append(&names, alternative.name)
+	}
+	return names[:]
+}
+
+/*
+A SWITCH IS A LINE OF THE FILE: switching an inherited alternative off writes `without "<name>"` under the
+system's amendment of that meaning (adding the amendment when there is none), switching it back on takes the
+line out (and an amendment left empty) - read back through the real resolver each time, and the text back to
+what it was. What the workbench's ticks under the system picker do.
+*/
+@(test)
+test_a_switch_writes_and_unwrites_a_without_line :: proc(t: ^testing.T) {
+	// A system with no amendment yet: one is added at the end of its block, before the next block.
+	base := "system 2over1\n  meaning nt-opening: hcp in 15..17 and balanced\n    also \"14\": hcp = 14 and balanced\n    also \"4441\": hcp in 15..17 and longest = 4\n\nsystem ours extends 2over1 \"mine\"\n  # a comment that stays\n  meaning major-opening: hcp >= 12 and spades >= 5\n\nscenario nt \"1NT\"\n  system: ours\n  north: nt-opening\n"
+	testing.expect_value(t, len(in_force(base, "ours", "nt-opening")), 2)
+
+	off, why, ok := set_alternative_switch(base, "ours", "nt-opening", "4441", false, context.temp_allocator)
+	testing.expectf(t, ok, "switching off: %s", why)
+	testing.expect(t, strings.contains(off, "  meaning major-opening: hcp >= 12 and spades >= 5\n  meaning nt-opening\n    without \"4441\"\n\nscenario nt"), off)
+	got := in_force(off, "ours", "nt-opening")
+	testing.expectf(t, len(got) == 1 && got[0] == "14", "after off: %v", got)
+	testing.expect_value(t, len(in_force(off, "2over1", "nt-opening")), 2) // the parent is untouched
+
+	// A second one goes under the same amendment; asking again for what holds changes nothing.
+	both, _, _ := set_alternative_switch(off, "ours", "nt-opening", "14", false, context.temp_allocator)
+	testing.expect_value(t, len(in_force(both, "ours", "nt-opening")), 0)
+	testing.expect_value(t, strings.count(both, "meaning nt-opening\n"), 1)
+	again, _, _ := set_alternative_switch(both, "ours", "nt-opening", "14", false, context.temp_allocator)
+	testing.expect_value(t, again, both)
+
+	// Back on, one at a time: the amendment goes with its last line, and the text is what it was.
+	one, _, _ := set_alternative_switch(both, "ours", "nt-opening", "4441", true, context.temp_allocator)
+	testing.expect_value(t, len(in_force(one, "ours", "nt-opening")), 1)
+	back, _, _ := set_alternative_switch(one, "ours", "nt-opening", "14", true, context.temp_allocator)
+	testing.expect_value(t, back, base)
+
+	// An amendment with an `also` of its own keeps it, and itself, when its last `without` goes.
+	added := strings.concatenate({base[:strings.index(base, "\n\nscenario")], "\n  meaning nt-opening\n    also \"18\": hcp = 18 and balanced", base[strings.index(base, "\n\nscenario"):]}, context.temp_allocator)
+	off_added, _, _ := set_alternative_switch(added, "ours", "nt-opening", "14", false, context.temp_allocator)
+	testing.expect(t, strings.contains(off_added, "  meaning nt-opening\n    without \"14\"\n    also \"18\""), off_added)
+	on_added, _, _ := set_alternative_switch(off_added, "ours", "nt-opening", "14", true, context.temp_allocator)
+	testing.expect_value(t, on_added, added)
+
+	// CRLF in, CRLF out.
+	crlf, _ := strings.replace_all(base, "\n", "\r\n", context.temp_allocator)
+	off_crlf, _, _ := set_alternative_switch(crlf, "ours", "nt-opening", "4441", false, context.temp_allocator)
+	stripped, _ := strings.replace_all(off_crlf, "\r\n", "", context.temp_allocator)
+	testing.expect(t, strings.contains(off_crlf, "without \"4441\"\r\n") && !strings.contains(stripped, "\n"), "a bare LF crept in")
+
+	// Refused: a meaning the system defines itself, and a system the file does not have.
+	_, why_own, own_ok := set_alternative_switch(base, "2over1", "nt-opening", "14", false, context.temp_allocator)
+	testing.expect(t, !own_ok && strings.contains(why_own, "defined in 2over1"), why_own)
+	_, _, none_ok := set_alternative_switch(base, "theirs", "nt-opening", "14", false, context.temp_allocator)
+	testing.expect(t, !none_ok, "a system the file does not have")
 }

@@ -234,7 +234,16 @@ eval_node :: proc(program: ^Program, index: int, at: ^At) -> bool {
 		return norn.holds(hand, node.suit, node.rank)
 
 	case Balanced_Node:
-		return norn.is_balanced(hand)
+		return norn.is_semibalanced(hand) if node.semi else norn.is_balanced(hand)
+
+	case Shape_Node:
+		lengths := norn.shape(hand)
+		for k in 0 ..< node.count {
+			if shape_matches(node.patterns[k], lengths) {
+				return true
+			}
+		}
+		return false
 
 	case Hand_Node:
 		inner := at_hand(at.summary, at.table, node.seat, node.pair)
@@ -251,6 +260,34 @@ eval_node :: proc(program: ^Program, index: int, at: ^At) -> bool {
 		return eval_node(program, node.left, at) || eval_node(program, node.right, at)
 	}
 	return false
+}
+
+// A pattern against a hand's lengths (S H D C). In order, position by position; with `any`, every length the
+// pattern gives must be one of the hand's, each hand suit used once - the `x`s take what is left.
+@(private)
+shape_matches :: proc(pattern: Shape_Pattern, lengths: [norn.SUIT_COUNT]int) -> bool {
+	if !pattern.any {
+		for want, i in pattern.lengths {
+			if want >= 0 && int(want) != lengths[i] {
+				return false
+			}
+		}
+		return true
+	}
+	have: [14]int
+	for length in lengths {
+		have[length] += 1
+	}
+	for want in pattern.lengths {
+		if want < 0 {
+			continue
+		}
+		if have[want] == 0 {
+			return false
+		}
+		have[want] -= 1
+	}
+	return true
 }
 
 @(private)

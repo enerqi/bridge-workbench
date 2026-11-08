@@ -1,0 +1,17 @@
+# YOUR OWN VERSION OF 2/1 - a system that extends the guides' `2over1` and changes only what you play
+# differently. This file is yours: a restore of the samples never touches it once it is here.
+#
+# Set the deals list's system to `ours`. Every 2over1 scenario in guides.scenario is listed under it and read
+# with these meanings, and under the picker there is a TICK for each alternative ours inherits - the hands some
+# players count and others do not, like a 14-count with a five-card suit for 1NT. Untick one and a line like
+#
+#   meaning nt-opening
+#     without "14, five-card suit"
+#
+# is written below for you; tick it again and the line goes. Or write the lines by hand: the ticks are read
+# from this file, never kept anywhere else.
+#
+# To change a meaning outright, give it a condition, which replaces 2over1's whole:
+#
+#   meaning nt-opening: hcp in 14..16 and balanced
+system ours extends 2over1 "2/1 as we play it"

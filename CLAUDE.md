@@ -126,7 +126,7 @@ before any folder - first in the list, so they win a shared name, and their `swe
 extend. `sim` and the workbench run only the loaded list; the compiled `registry` stays as the oracle
 `test_the_text_swedish_club_is_the_compiled_one` holds every text scenario to (300k deals, 8 threads). The
 scenario editor shows the built-in file read only (`BUILTIN_DIR`). A `deal:` line with hand groups (`north(...)`,
-`east-west(...)`) says what crosses hands; `opc` is a side's combined OPC; a hand's numbers compare and add (`spades > hearts`, `spades + hearts >= 9`). A meaning has named ALTERNATIVES (`also "<name>": ...` under it; a deal kept through one is labelled with it), and a system extending another AMENDS a meaning by naming it with no condition, then `without "<name>"` / `also` (`resolve_meaning`). Plan in
+`east-west(...)`) says what crosses hands; `opc` is a side's combined OPC; a hand's numbers compare and add (`spades > hearts`, `spades + hearts >= 9`). A meaning has named ALTERNATIVES (`also "<name>": ...` under it; a deal kept through one is labelled with it), and a system extending another AMENDS a meaning by naming it with no condition, then `without "<name>"` / `also` (`resolve_meaning`); picked in the deals list, a system of your own shows a TICK per inherited alternative under the picker, and a click writes or removes that `without` line in its file (`workbench/switches.odin`, `scenario_dsl.set_alternative_switch`). `shape(any 4333, 5xxx)` and `semibalanced` say a hand's shape; `sim --frequency` prints what each alternative adds. Plan in
 `TODO-scenario-create-select-filter.md` ("scenarios belong to a SYSTEM").
 
 Local packages:
@@ -375,7 +375,10 @@ window froze twice. `bmlDeleteWordBack` counts the word and does that many plain
 `plaintext.update` (one undo step). Two engine facts it rests on: a widget handles its keys AT THE ELEMENT, so
 a bubbling `document.on("keydown")` hears them too late - the handler is a CAPTURE listener on each editor;
 and `plaintext.selectRange` only moves the caret here (start and end both read back as the range's end), so
-select-then-delete removes one character. `WORKBENCH_KEY_LOG=1` prints every key the editors get, with the
+select-then-delete removes one character. And a selection set from script STRAIGHT OVER ANOTHER (`setBaseAndExtent`) is
+PAINTED from the old one's end to the new one's start while its state is right - the find bar stepping through a
+file drew the whole of it as selected (2026-11-08); collapse to the new start first (`bmlFindShow`, held by
+`test_find_steps_paint_only_the_match`, which reads the paint). `WORKBENCH_KEY_LOG=1` prints every key the editors get, with the
 caret either side; `WORKBENCH_CHECK_LOG=1` the scenario check's runs.
 
 **Typing pays for the lines that changed, not for the buffer.** The colorizer keeps each line's last-marked

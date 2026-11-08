@@ -431,6 +431,51 @@ aside .side-system > select {
 	width: *;
 }
 
+/* The picked system's switches (`draw_system_switches`): a small heading, each meaning's name, and a tick row
+   per alternative - `.tagrow`'s shape, smaller. A `fixed` row (a built-in system) takes no clicks and says so. */
+aside .side-switches {
+	margin-bottom: 0.35em;
+	font-size: var(--text-small);
+}
+aside .side-switches .sw-head {
+	color: var(--ink-dim);
+	margin-bottom: 0.15em;
+}
+aside .side-switches .sw-from {
+	color: var(--ink-soft);
+}
+aside .side-switches .sw-meaning {
+	color: var(--ink-dim);
+	margin: 0.2em 0 0 0.4em;
+}
+aside .side-switches .swrow {
+	behavior: button;
+	flow: horizontal;
+	padding: 0.1em 0.4em 0.1em 0.9em;
+	border-radius: 3px;
+	cursor: pointer;
+}
+aside .side-switches .swrow:hover {
+	background: var(--line-soft);
+}
+aside .side-switches .swrow.on {
+	color: var(--accent);
+}
+aside .side-switches .swrow.fixed {
+	cursor: default;
+	color: var(--ink-soft);
+}
+aside .side-switches .swrow.fixed:hover {
+	background: none;
+}
+aside .side-switches .swrow .tick {
+	display: inline-block;
+	width: 1.2em;
+}
+aside .side-switches .swrow .name {
+	width: *;
+}
+
 /* A scenario from one of your .scenario files: the way to its file (`edit_scenario`). A button of its own,
    like the sources' `×`, so the click is the mark's and not the row's. */
 #scenarios .row .edit {
@@ -2774,10 +2819,12 @@ span.tune-field button.tune-reset.unset {
 }
 
 /* The find bar's marks in the source: every match, and the current one stronger. */
-#bml-text > text::mark(bml-find) {
+#bml-text > text::mark(bml-find),
+#scn-text > text::mark(bml-find) {
 	background: rgba(255, 196, 0, 0.35);
 }
 
-#bml-text > text::mark(bml-find-at) {
+#bml-text > text::mark(bml-find-at),
+#scn-text > text::mark(bml-find-at) {
 	background: rgba(255, 140, 0, 0.75);
 }

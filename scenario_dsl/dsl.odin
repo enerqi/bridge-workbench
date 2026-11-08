@@ -27,7 +27,8 @@ package scenario_dsl
 	parentheses, over two kinds of atom:
 
 	  * GENERIC — `hcp`, `spades`/`hearts`/`diamonds`/`clubs`, `controls`, `longest` (and `seat`, below), compared with
-	    `< <= = != >= >` or a range (`hcp in 15..17`), plus `balanced` and `holds(spades, ace)`;
+	    `< <= = != >= >` or a range (`hcp in 15..17`), plus `balanced`, `semibalanced`, `holds(spades, ace)` and
+    `shape(any 4333, 5xxx)` (see `Shape_Node`);
 	  * NAMED — the bidding system's own vocabulary (`is_strong_1c`, `is_2cd_swedish_club_resp`, …),
 	    supplied by the CONSUMER through `set_vocabulary`. That is what lets a user compose THIS system
 	    without compiling it, and what a form of HCP-and-shape ranges fundamentally cannot express.
@@ -219,8 +220,32 @@ Holds_Node :: struct {
 	rank: norn.Rank,
 }
 
-// `balanced` — norn's own definition, so the language and the compiled helpers agree on the word.
-Balanced_Node :: struct {}
+// `balanced` — norn's own definition, so the language and the compiled helpers agree on the word — and with `semi`,
+// `semibalanced` (norn's too: every suit 2 to 6 cards, no major longer than 5).
+Balanced_Node :: struct {
+	semi: bool,
+}
+
+/*
+`shape(any 4333, any 4432, 5xxx)`: the hand's suit lengths against a list of PATTERNS, any one of which will do.
+A pattern is four lengths in spades-hearts-diamonds-clubs order, `x` for "any length" (`5xxx`: five spades), or
+with hyphens when a length runs past 9 (`10-1-1-1`). `any` in front lets the lengths fall in any suits (`any
+5422`: some five, some four, two doubletons); with an `x` in it, the lengths given must be there somewhere and the
+rest is free (`any 55xx`: two five-card suits). deal's `shape` command, and what the helpers that are only a
+shape (`is_nt5cM_shape` = `shape(any 4333, any 4432, any 5332)`) are written as in text. One hand's: a side has
+no shape.
+*/
+SHAPE_PATTERNS_MAX :: 12
+
+Shape_Pattern :: struct {
+	lengths: [4]i8, // S H D C; -1 is `x`
+	any:     bool,
+}
+
+Shape_Node :: struct {
+	patterns: [SHAPE_PATTERNS_MAX]Shape_Pattern,
+	count:    int,
+}
 
 // The vulnerability as the hand's own side sees it - the way a player says it ("I'm at favourable"). TABLE words.
 Vulnerability_Word :: enum {
@@ -266,6 +291,7 @@ Node :: union {
 	Meaning_Node,
 	Holds_Node,
 	Balanced_Node,
+	Shape_Node,
 	Vulnerability_Node,
 	Hand_Node,
 	Not_Node,
@@ -491,8 +517,10 @@ condition :: proc(program: ^Program) -> norn.Condition {
 		call = evaluate,
 		data = program,
 	}
-	if len(program.alternatives) > 0 {
-		predicate.explain = explain // a deal only an alternative kept is labelled with its name
+	// A deal only an alternative kept is labelled with its name - the scenario's own alternatives or its meanings'.
+	// (It once asked about the scenario's alone, so a meaning's alternative never reached the card or `--frequency`.)
+	if len(program.alternatives) > 0 || len(program.meaning_alternatives) > 0 {
+		predicate.explain = explain
 	}
 	if program.reads_table {
 		predicate.table = norn.Table_Draw {

@@ -865,6 +865,23 @@
           <button id="scn-save" class="ghost icon-text" title="Write the file, and put it in the deals list (ctrl+s)"
               data-hint="Overwrite the .scenario file on disk with the text in the editor, and rebuild the deals list from it. There is no undo for this beyond the editor's own."><svg class="ic" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>save</button>
         </div>
+        <!-- FIND AND REPLACE in this file (ctrl+f / ctrl+h): the notes bar's twin (`bmlFindOpen(..., "scn")`). -->
+        <div class="findbar" id="scn-find" style="display: none">
+          <div class="line">
+            <input type="text" id="scn-find-input" class="wide" placeholder="find — enter next, shift+enter previous, esc closes" title="Find in this file">
+            <button id="scn-find-case" class="ghost small find-opt" title="Match case">Aa</button>
+            <button id="scn-find-word" class="ghost small find-opt" title="Whole words">W</button>
+            <button id="scn-find-prev" class="ghost small" title="Previous match (shift+enter)">&#x2191;</button>
+            <button id="scn-find-next" class="ghost small" title="Next match (enter)">&#x2193;</button>
+            <span class="barlabel" id="scn-find-count"></span>
+            <button id="scn-find-close" class="ghost small" title="Close (esc)">&#xD7;</button>
+          </div>
+          <div class="line" id="scn-replace-row" style="display: none">
+            <input type="text" id="scn-replace-input" class="wide" placeholder="replace with — enter replaces this one" title="Replace the match with">
+            <button id="scn-replace-one" class="ghost small" title="Replace this match and go to the next (enter)">replace</button>
+            <button id="scn-replace-all" class="ghost small" title="Replace every match (one ctrl+z undoes it)">all</button>
+          </div>
+        </div>
         <plaintext id="scn-text" title="The .scenario source"
                    data-hint="The .scenario source. Keywords, seat names, quantities and the named helpers (words lists them) are coloured. It is checked as you type: the report below says what it means, what is wrong with it, and how often it happens (ctrl+enter checks at once)."></plaintext>
       </div>
@@ -976,6 +993,10 @@
              Scenarios of no system (hand types, partnership totals, the opponents' bidding) show under every one.
              The options are the host's (`draw_system_picker`): the compiled systems, then any a file names. -->
         <div class="side-row side-system" id="scenario-system-row"></div>
+        <!-- THE PICKED SYSTEM'S SWITCHES (2026-11-08): a tick for each alternative of a meaning it inherits, in a
+             system of your own that extends another. A click writes or takes out a `without` line in its file
+             (`draw_system_switches`, workbench/switches.odin). Empty for every other choice. -->
+        <div class="side-switches" id="scenario-switches"></div>
         <div class="side-row side-actions">
         <!-- TYPE TO FIND A SCENARIO. A hundred rows two lines tall is a wall, and the only instrument
              against it was the scrollbar - which is the wrong one for a list whose NAMES are the thing
@@ -2209,33 +2230,38 @@
     return false;
   });
 
-  // THE FIND BAR'S KEYS, in its fields: enter the next match (shift: the previous), esc closes; typing finds again.
-  // In the capture phase, before the field's own edit behavior answers enter.
-  ["#bml-find-input", "#bml-replace-input"].forEach(function (sel) {
-    var field = document.$(sel);
-    if (!field) return;
-    field.addEventListener("keydown", function (event) {
-      if (event.code === "Escape") { bmlFindClose(); event.preventDefault(); return true; }
-      if (event.code === "Enter" || event.code === "NumpadEnter") {
-        if (sel === "#bml-replace-input" && !event.shiftKey) bmlReplaceOne();
-        else bmlFindStep(event.shiftKey ? -1 : 1);
-        event.preventDefault();
-        return true;
-      }
-      return false;
-    }, { capture: true });
-  });
-  document.on("input", "#bml-find-input", function () { bmlFindScan(); bmlFind.fresh = true; });
-  document.on("click", "#bml-find-next", function () { bmlFindStep(1); });
-  document.on("click", "#bml-find-prev", function () { bmlFindStep(-1); });
-  document.on("click", "#bml-find-case", function () { bmlFindToggle("matchCase"); });
-  document.on("click", "#bml-find-word", function () { bmlFindToggle("word"); });
-  document.on("click", "#bml-replace-one", function () { bmlReplaceOne(); });
-  document.on("click", "#bml-replace-all", function () { bmlReplaceAll(); });
-  document.on("click", "#bml-find-close", function () { bmlFindClose(); });
-  // An edit while the bar is open: the matches again, the current one kept where it was.
-  document.on("change", "#bml-text", function () {
-    if (bmlFindOpenNow()) setTimeout(function () { bmlFindScan(bmlFind.at); }, 0);
+  // THE FIND BARS' KEYS, in their fields: enter the next match (shift: the previous), esc closes; typing finds again.
+  // In the capture phase, before the field's own edit behavior answers enter. Two bars - the notes source's
+  // (`bml-`) and my scenarios' (`scn-`) - one set of functions: each handler first says which bar it is.
+  ["bml", "scn"].forEach(function (p) {
+    ["#" + p + "-find-input", "#" + p + "-replace-input"].forEach(function (sel) {
+      var field = document.$(sel);
+      if (!field) return;
+      field.addEventListener("keydown", function (event) {
+        bmlFind.p = p;
+        if (event.code === "Escape") { bmlFindClose(); event.preventDefault(); return true; }
+        if (event.code === "Enter" || event.code === "NumpadEnter") {
+          wbFindLog("enter in " + sel, bmlFindEditor());
+          if (sel === "#" + p + "-replace-input" && !event.shiftKey) bmlReplaceOne();
+          else bmlFindStep(event.shiftKey ? -1 : 1);
+          event.preventDefault();
+          return true;
+        }
+        return false;
+      }, { capture: true });
+    });
+    document.on("input", "#" + p + "-find-input", function () { bmlFind.p = p; bmlFindScan(); bmlFind.fresh = true; });
+    document.on("click", "#" + p + "-find-next", function () { bmlFind.p = p; bmlFindStep(1); });
+    document.on("click", "#" + p + "-find-prev", function () { bmlFind.p = p; bmlFindStep(-1); });
+    document.on("click", "#" + p + "-find-case", function () { bmlFind.p = p; bmlFindToggle("matchCase"); });
+    document.on("click", "#" + p + "-find-word", function () { bmlFind.p = p; bmlFindToggle("word"); });
+    document.on("click", "#" + p + "-replace-one", function () { bmlFind.p = p; bmlReplaceOne(); });
+    document.on("click", "#" + p + "-replace-all", function () { bmlFind.p = p; bmlReplaceAll(); });
+    document.on("click", "#" + p + "-find-close", function () { bmlFind.p = p; bmlFindClose(); });
+    // An edit while the bar is open: the matches again, the current one kept where it was.
+    document.on("change", "#" + p + "-text", function () {
+      if (bmlFind.p === p && bmlFindOpenNow()) setTimeout(function () { bmlFindScan(bmlFind.at); }, 0);
+    });
   });
 
   // A click moves the caret away from whatever was offered, as a caret key does.
@@ -2891,11 +2917,14 @@
      and steps on, all writes every one as ONE transaction, so a single ctrl+z takes it back. The matches are
      found again after an edit while the bar is open. */
   var BML_FIND_MARKS = ["bml-find", "bml-find-at"];
-  var bmlFind = { matchCase: false, word: false, matches: [], at: -1, marked: [] };
+  var bmlFind = { matchCase: false, word: false, matches: [], at: -1, marked: [], p: "bml" };
+  // The open bar's parts and its editor: `bml-` the notes source's, `scn-` my scenarios'.
+  function bmlFindEl(part) { return document.$("#" + bmlFind.p + "-" + part); }
+  function bmlFindEditor() { return document.$("#" + bmlFind.p + "-text"); }
   var wbFindSteps = 0; // how many matches the bar has gone to: a test's proof
 
   function bmlFindQuery() {
-    var input = document.$("#bml-find-input");
+    var input = bmlFindEl("find-input");
     return input ? String(input.value || "") : "";
   }
 
@@ -2917,7 +2946,7 @@
 
   // Every match, marked; the current one the first at or after the caret (or `keep`, after an edit or a replace).
   function bmlFindScan(keep) {
-    var editor = document.$("#bml-text");
+    var editor = bmlFindEditor();
     if (!editor) return 0;
     bmlFindClearMarks(editor);
     bmlFind.matches = [];
@@ -2965,20 +2994,35 @@
   }
 
   function bmlFindCount() {
-    var count = document.$("#bml-find-count");
+    var count = bmlFindEl("find-count");
     if (!count) return;
     var n = bmlFind.matches.length;
     count.textContent = !bmlFindQuery().length ? "" : n ? (bmlFind.at + 1) + " of " + n : "no matches";
   }
 
+  // What the find bar did to the editor, for `WORKBENCH_KEY_LOG=1`: the caret, the selected length and the match. It
+  // is what showed the whole-file "selection" of 2026-11-08 was paint, not state.
+  function wbFindLog(what, editor) {
+    if (!wbKeyLogOn) return;
+    var picked = "";
+    try { picked = editor.plaintext.selectionText || ""; } catch (x) {}
+    console.log("wb-find " + what + " " + wbCaretText(editor) + " selected " + picked.length + " chars, match " +
+      JSON.stringify(bmlFind.matches[bmlFind.at] || null));
+  }
+
   // Select the current match and bring its line into view.
   function bmlFindShow() {
-    var editor = document.$("#bml-text"), f = bmlFind.matches[bmlFind.at];
+    var editor = bmlFindEditor(), f = bmlFind.matches[bmlFind.at];
     if (!editor || !f) return false;
+    // COLLAPSED FIRST, THEN THE MATCH. Moving one selection straight to another was PAINTED from the previous
+    // match's end to this one's start, while the state said just the match: stepping through a long file drew all
+    // of it as selected (reported 2026-11-08; reproduced windowless by snapshot, the first step alone is right).
+    bmlSelect(editor, f.row, f.start, f.row, f.start);
     bmlSelect(editor, f.row, f.start, f.row, f.end);
+    bmlFindMarkCurrent(editor);
+    wbFindLog("selected", editor);
     var line = editor.children[f.row];
     if (line) { try { line.scrollIntoView(); } catch (x) {} }
-    bmlFindMarkCurrent(editor);
     bmlFindCount();
     wbFindSteps += 1;
     return true;
@@ -2995,12 +3039,15 @@
   }
 
   // Open the bar (with the replace row for ctrl+h), seeded with the selection when it is on one line.
-  function bmlFindOpen(replace) {
-    var bar = document.$("#bml-find"), editor = document.$("#bml-text"), input = document.$("#bml-find-input");
+  function bmlFindOpen(replace, which) {
+    // The other view's bar open: closed first, so only one set of marks and matches is ever live.
+    if (bmlFindOpenNow() && bmlFind.p !== (which || "bml")) bmlFindClose();
+    bmlFind.p = which || "bml";
+    var bar = bmlFindEl("find"), editor = bmlFindEditor(), input = bmlFindEl("find-input");
     if (!bar || !editor || !input) return false;
     bar.style.display = "block";
-    var row = document.$("#bml-replace-row");
-    if (row) row.style.display = replace ? "block" : "none";
+    var row = bmlFindEl("replace-row");
+    if (row) row.style.display = replace && !bmlFindReadOnly(editor) ? "block" : "none";
     var picked = editor.plaintext.selectionText || "";
     if (picked && picked.indexOf("\n") < 0 && picked.indexOf("\r") < 0) input.value = picked;
     input.focus();
@@ -3011,7 +3058,7 @@
   }
 
   function bmlFindClose() {
-    var bar = document.$("#bml-find"), editor = document.$("#bml-text");
+    var bar = bmlFindEl("find"), editor = bmlFindEditor();
     if (bar) bar.style.display = "none";
     if (editor) { bmlFindClearMarks(editor); editor.focus(); }
     bmlFind.matches = [];
@@ -3020,25 +3067,28 @@
   }
 
   function bmlFindOpenNow() {
-    var bar = document.$("#bml-find");
+    var bar = bmlFindEl("find");
     return !!bar && bar.style.display === "block";
   }
 
   function bmlFindToggle(which) {
     bmlFind[which] = !bmlFind[which];
-    var button = document.$(which === "matchCase" ? "#bml-find-case" : "#bml-find-word");
+    var button = bmlFindEl(which === "matchCase" ? "find-case" : "find-word");
     if (button) button.attributes["class"] = "ghost small find-opt" + (bmlFind[which] ? " on" : "");
     bmlFindScan();
     bmlFind.fresh = true;
   }
 
   // Write the replacement over the current match (when it is still the selection's text), then the next.
+  // A read-only buffer (the built-in scenarios) is found in, never written.
+  function bmlFindReadOnly(editor) { return !!editor && !!editor.attributes["readonly"]; }
+
   function bmlReplaceOne() {
-    var editor = document.$("#bml-text"), f = bmlFind.matches[bmlFind.at];
-    if (!editor || !f) return false;
+    var editor = bmlFindEditor(), f = bmlFind.matches[bmlFind.at];
+    if (!editor || !f || bmlFindReadOnly(editor)) return false;
     var el = editor.children[f.row], text = el ? bmlLineText(el) : null;
     if (text === null) return false;
-    var replacement = String((document.$("#bml-replace-input") || {}).value || "");
+    var replacement = String((bmlFindEl("replace-input") || {}).value || "");
     var at = bmlFind.at;
     var ok = editor.plaintext.update(function (tctx) {
       tctx.setText(el.firstChild, text.slice(0, f.start) + replacement + text.slice(f.end));
@@ -3052,9 +3102,9 @@
 
   // Every match replaced, in one transaction. How many.
   function bmlReplaceAll() {
-    var editor = document.$("#bml-text"), query = bmlFindQuery();
-    if (!editor || !query.length) return 0;
-    var replacement = String((document.$("#bml-replace-input") || {}).value || "");
+    var editor = bmlFindEditor(), query = bmlFindQuery();
+    if (!editor || !query.length || bmlFindReadOnly(editor)) return 0;
+    var replacement = String((bmlFindEl("replace-input") || {}).value || "");
     var re = bmlFindPattern(query), lines = editor.children, edits = [], count = 0;
     for (var row = 0; row < lines.length; row++) {
       var text = bmlLineText(lines[row]);
@@ -3069,7 +3119,7 @@
       return true;
     });
     bmlFindScan();
-    var status = document.$("#bml-find-count");
+    var status = bmlFindEl("find-count");
     if (status) status.textContent = "replaced " + count;
     return count;
   }
@@ -3269,6 +3319,13 @@
           return true;
         }
       }
+      // F3 in my scenarios' source: its own find bar's next / previous (the notes' is with the line keys below).
+      if (sel === "#scn-text" && event.code === "F3" && !event.ctrlKey && !event.altKey && bmlFind.p === "scn" &&
+          bmlFindStep(event.shiftKey ? -1 : 1)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      }
       // THE LINE KEYS (`bmlSelectLine` and the rest) and F3 for the find bar's next / previous.
       if (sel === "#bml-text") {
         var line = null;
@@ -3277,7 +3334,7 @@
         else if (event.altKey && !event.ctrlKey && event.code === "ArrowUp") line = function (e) { return bmlMoveLines(e, true); };
         else if (event.altKey && !event.ctrlKey && event.code === "ArrowDown") line = function (e) { return bmlMoveLines(e, false); };
         else if (event.ctrlKey && !event.altKey && (event.code === "Slash" || event.code === "NumpadDivide")) line = bmlToggleComment;
-        else if (event.code === "F3" && !event.ctrlKey && !event.altKey) line = function () { return bmlFindStep(event.shiftKey ? -1 : 1); };
+        else if (event.code === "F3" && !event.ctrlKey && !event.altKey && bmlFind.p === "bml") line = function () { return bmlFindStep(event.shiftKey ? -1 : 1); };
         if (line) {
           var lined = false;
           try { lined = line(editor); } catch (x) { lined = false; }

@@ -640,7 +640,8 @@ split_name_and_description :: proc(rest: string) -> (name: string, description: 
 //   expression := term   ( "or"  term )*
 //   term       := factor ( "and" factor )*
 //   factor     := "not" factor | "(" expression ")" | atom
-//   atom       := name | "balanced" | "holds" "(" suit "," rank ")" | quantity ( cmp int | "in" a ".." b )
+//   atom       := name | "balanced" | "semibalanced" | "holds" "(" suit "," rank ")"
+//               | "shape" "(" ["any"] pattern ( "," ["any"] pattern )* ")" | quantity ( cmp int | "in" a ".." b )
 
 @(private)
 add_node :: proc(p: ^Parser, node: Node) -> int {
@@ -750,7 +751,7 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	// never "balanced", and a named helper asked about them would answer with something that reads like a
 	// verdict and means nothing. A seat line is where they belong, and the message says so.
 	// `seat` is one hand's place in the auction; a side has two.
-	if p.pair && (lowered == "balanced" || lowered == "seat" || is_vocabulary_word(word)) {
+	if p.pair && (lowered == "balanced" || lowered == "semibalanced" || lowered == "shape" || lowered == "seat" || is_vocabulary_word(word)) {
 		report(
 			p,
 			p.line_index,
@@ -763,8 +764,14 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	if lowered == "balanced" {
 		return add_node(p, Balanced_Node{}), true
 	}
+	if lowered == "semibalanced" {
+		return add_node(p, Balanced_Node{semi = true}), true
+	}
 	if lowered == "holds" {
 		return parse_holds(p, start_col)
+	}
+	if lowered == "shape" {
+		return parse_shape(p)
 	}
 	if v, is_vulnerability := vulnerability_word_of(lowered); is_vulnerability {
 		p.reads_table = true
@@ -985,6 +992,119 @@ parse_holds :: proc(p: ^Parser, start_col: int) -> (root: int, ok: bool) {
 	}
 	advance(p, 1)
 	return add_node(p, Holds_Node{suit = suit, rank = rank}), true
+}
+
+// `shape(any 4333, 5xxx, 10-1-1-1)` - see `Shape_Node`.
+@(private)
+parse_shape :: proc(p: ^Parser) -> (root: int, ok: bool) {
+	skip_spaces(p)
+	if !strings.has_prefix(p.text, "(") {
+		report(p, p.line_index, p.col, "`shape` takes patterns of four lengths, spades first: `shape(any 4333, 5xxx)`")
+		return 0, false
+	}
+	advance(p, 1)
+	node: Shape_Node
+	for {
+		skip_spaces(p)
+		col := p.col
+		word, has := take_word(p)
+		pattern := Shape_Pattern{}
+		if has && folded(word) == "any" {
+			pattern.any = true
+			skip_spaces(p)
+			col = p.col
+			word, has = take_word(p)
+		}
+		why: string
+		if has {
+			pattern, why = read_shape_pattern(word, pattern.any)
+		} else {
+			why = "expected a pattern of four lengths, spades first: `5332`, `5xxx`, `any 4432`"
+		}
+		if why != "" {
+			report(p, p.line_index, col, why)
+			return 0, false
+		}
+		if node.count == SHAPE_PATTERNS_MAX {
+			report(p, p.line_index, col, "too many patterns in one `shape` - at most 12; join two with `or`")
+			return 0, false
+		}
+		node.patterns[node.count] = pattern
+		node.count += 1
+		skip_spaces(p)
+		if strings.has_prefix(p.text, ",") {
+			advance(p, 1)
+			continue
+		}
+		if strings.has_prefix(p.text, ")") {
+			advance(p, 1)
+			return add_node(p, node), true
+		}
+		report(p, p.line_index, p.col, "expected `,` and another pattern, or `)`")
+		return 0, false
+	}
+}
+
+// One pattern's word: four characters, each a digit or `x` (`5332`, `5xxx`), or four parts joined by hyphens
+// (`10-1-1-1`). The lengths must add up to 13, or to less with an `x` to take the rest.
+@(private)
+read_shape_pattern :: proc(word: string, any: bool) -> (pattern: Shape_Pattern, why: string) {
+	pattern.any = any
+	parts: [4]string
+	count := 0
+	if strings.contains_rune(word, '-') {
+		rest := word
+		for part in strings.split_iterator(&rest, "-") {
+			if count == 4 {
+				count += 1
+				break
+			}
+			parts[count] = part
+			count += 1
+		}
+	} else if len(word) == 4 {
+		for i in 0 ..< 4 {
+			parts[i] = word[i:i + 1]
+		}
+		count = 4
+	}
+	bad := strings.concatenate(
+		{"`", word, "` is not a shape: four lengths, spades first - `5332`, `5xxx`, or `10-1-1-1` past 9"},
+		context.temp_allocator,
+	)
+	if count != 4 {
+		return pattern, bad
+	}
+	total, free := 0, false
+	for part, i in parts {
+		if part == "x" || part == "X" {
+			pattern.lengths[i] = -1
+			free = true
+			continue
+		}
+		if part == "" || len(part) > 2 {
+			return pattern, bad
+		}
+		value := 0
+		for c in transmute([]u8)part {
+			if c < '0' || c > '9' {
+				return pattern, bad
+			}
+			value = value * 10 + int(c - '0')
+		}
+		if value > 13 {
+			return pattern, bad
+		}
+		pattern.lengths[i] = i8(value)
+		total += value
+	}
+	if total > 13 || (!free && total != 13) {
+		return pattern, strings.concatenate(
+			{"`", word, "` does not add up to 13 cards", " - use `x` for a length left open" if !free else ""},
+			context.temp_allocator,
+		)
+	}
+	return pattern, ""
 }
 
 @(private)
