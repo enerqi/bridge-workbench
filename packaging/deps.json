@@ -2,16 +2,17 @@
     "##": [
         "What a workbench release is built from, besides this repository at the release tag.",
         "Read by .github/workflows/release-workbench.yml. Each sibling is checked out at `commit`; the",
-        "Odin compiler is laytan/setup-odin's `release` (a monthly tag, so a build can be repeated).",
+        "Odin compiler is laytan/setup-odin's `release` (a monthly tag, so a build can be repeated) -",
+        "`just pin-deps` sets it to the release tagged at the local compiler's commit, when there is one.",
         "Re-pin with `just pin-deps` from clean, pushed checkouts - it refuses uncommitted changes or",
         "unpushed commits, because CI can only check out what is on GitHub. All five are public; a private",
         "one would need the SIBLING_REPOS_TOKEN secret (a fine-grained token with read access to it)."
     ],
-    "odin": "dev-2026-10",
+    "odin": "dev-2026-11",
     "siblings": {
         "norn": {
             "repo": "enerqi/norn",
-            "commit": "98471d6ea85a855214b4e5eb421705a7069c82b7",
+            "commit": "5d35a6b44c25eaf06090b36d7d7d9d83fa7a51d0",
             "env": "NORN_HOME"
         },
         "odin-dds": {

@@ -10,7 +10,10 @@
 # else is a release that cannot be built (or, worse, one built from different code than was tested here).
 # UNTRACKED files are ignored (editor state, scratch): the price is that a new source file nobody added
 # is not caught here - the release workflow's build is what fails on it.
-# Also records the local compiler, as a reminder - the pin CI uses is the `odin` field, edited by hand.
+# THE COMPILER TOO: the local `odin version` is a nightly of some commit, and CI's laytan/setup-odin downloads a
+# monthly release. When a release is tagged AT that commit (`git ls-remote` on odin-lang/Odin), the `odin` field
+# is set to it, so CI builds with exactly the compiler that was tested here. When none is (a nightly between
+# releases), the field is left as it is and the line says so.
 # ---
 # pin the release's sibling repositories to the local checkouts' pushed HEADs
 [group('release')]
@@ -44,11 +47,28 @@ pin-deps:
 	    deps["siblings"][name]["commit"] = git(home, "rev-parse", "HEAD")
 	if problems:
 	    sys.exit("not pinned:" + "".join(chr(10) + "  " + p for p in problems))
+	local = subprocess.run(["odin", "version"], capture_output=True, text=True).stdout.strip()
+	commit = local.rsplit(":", 1)[-1].strip() if ":" in local else ""
+	released = ""
+	if commit:
+	    tags = subprocess.run(
+	        ["git", "ls-remote", "--tags", "https://github.com/odin-lang/Odin", "dev-*"],
+	        capture_output=True, text=True,
+	    ).stdout
+	    for line in tags.splitlines():
+	        sha, _, ref = line.partition("\t")
+	        tag = ref.removeprefix("refs/tags/")
+	        if sha.startswith(commit) and not tag.endswith("^{}") and (released == "" or tag < released):
+	            released = tag
+	if released:
+	    deps["odin"] = released
 	with open(path, "w", encoding="utf-8", newline=chr(10)) as f:
 	    json.dump(deps, f, indent=4)
 	    f.write(chr(10))
-	local = subprocess.run(["odin", "version"], capture_output=True, text=True).stdout.strip()
-	print(f"pinned {len(homes)} siblings in {path}; CI's compiler is {deps['odin']} (this machine: {local})")
+	if released:
+	    print(f"pinned {len(homes)} siblings and the compiler ({released}, this machine's {local}) in {path}")
+	else:
+	    print(f"pinned {len(homes)} siblings in {path}; no Odin release is tagged at this machine's compiler ({local}), so CI stays on {deps['odin']}")
 
 # The release notes: the `## <version>` section of CHANGELOG.md, printed. A tag with no section fails the
 # release early (the workflow calls this before anything is built).

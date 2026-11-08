@@ -356,6 +356,7 @@ main :: proc() {
 		check_the_two_hand_share_link(&view)
 		check_the_redealt_fade(&view)
 		check_the_why_pill(&view)
+		check_every_seat_focuses_and_reveals(&view)
 		if dir := os.get_env("PAGE_CHECK_SNAP", context.allocator); dir != "" {
 			snap_the_layouts_panel(&view, dir)
 		}
@@ -2860,4 +2861,156 @@ snap_the_layouts_panel :: proc(view: ^sa.Windowless_View, dir: string) {
 			fmt.eprintln("wrote", path)
 		}
 	}
+}
+
+/*
+EVERY SEAT'S PILL FOCUSES ITS HAND, AND REVEAL ALL BRINGS THE FOUR BACK - for each seat, on more than one board,
+at each card size, by REAL mouse clicks (the page hears them by delegation on the track, which `do_click` does not
+reach). Reported: South's pill often did nothing, and Reveal all did not always return to four hands. Only West
+was checked before (`check_the_play_through`).
+
+And with a hand focused, the other three are their pills alone: no box around them. This engine's `.seat` carries
+a 1px border (the `@media sciter` block draws borders where browsers have shadows) that the focus rule did not
+take away - three empty wireframes round N, S and E.
+*/
+check_every_seat_focuses_and_reveals :: proc(view: ^sa.Windowless_View) {
+	page, ok := render_page(CHECK_DEALS_MULTI)
+	if !ok {
+		check(false, "a multi-board page renders")
+		return
+	}
+	defer delete(page)
+	if err := sa.load_html(view.window, page, "file://page-check/seats.html"); err != nil {
+		check(false, fmt.tprintf("the multi-board page loads (%v)", err))
+		return
+	}
+	pump(view, 128)
+	root, rerr := sa.root(view.window)
+	if rerr != nil {
+		check(false, "the multi-board page has a root")
+		return
+	}
+
+	// The page's own rect for the point (`location` disagreed with `elementFromPoint` here), then a real click.
+	click_point :: proc(view: ^sa.Windowless_View, root: sa.Element, selector: string, at: int) -> bool {
+		res, err := sa.eval_element(
+			root,
+			fmt.tprintf(
+				`(function () {{ var e = document.querySelector('%s'); if (!e) return ''; var r = e.getBoundingClientRect(); return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); }})()`,
+				selector,
+			),
+		)
+		if err != nil {
+			return false
+		}
+		defer sa.value_clear(&res)
+		text, _ := sa.value_to_string(&res, context.temp_allocator)
+		f := strings.fields(text, context.temp_allocator)
+		if len(f) != 2 {
+			return false
+		}
+		x, _ := strconv.parse_int(f[0])
+		y, _ := strconv.parse_int(f[1])
+		p := [2]i32{i32(x), i32(y)}
+		sa.windowless_mouse(view, .MOUSE_MOVE, p)
+		sa.windowless_mouse(view, .MOUSE_DOWN, p)
+		sa.windowless_mouse(view, .MOUSE_UP, p)
+		pump(view, at)
+		return true
+	}
+	// Pump until the active board's North pill has stopped moving (at most ten pumps).
+	settle_carousel :: proc(view: ^sa.Windowless_View, root: sa.Element, at: ^int) {
+		last := ""
+		for _ in 0 ..< 10 {
+			pump(view, at^)
+			at^ += 40
+			res, err := sa.eval_element(root, `(function () { var l = document.querySelector('.slide.active .seat-n .lbl'); if (!l) return ''; var r = l.getBoundingClientRect(); return Math.round(r.left) + ',' + Math.round(r.top); })()`)
+			if err != nil {
+				return
+			}
+			now, _ := sa.value_to_string(&res, context.temp_allocator)
+			sa.value_clear(&res)
+			if now == last {
+				return
+			}
+			last = now
+		}
+	}
+	focused :: proc(root: sa.Element, seat: string) -> bool {
+		_, err := sa.select_first(root, fmt.tprintf(".slide.active.only-%s", seat))
+		return err == nil
+	}
+	any_focused :: proc(root: sa.Element) -> bool {
+		_, err := sa.select_first(root, `.slide.active[class*="only-"]`)
+		return err == nil
+	}
+
+	failed := make([dynamic]string, 0, 8, context.temp_allocator)
+	borders := make([dynamic]string, 0, 4, context.temp_allocator)
+	at := 200
+	for size in ([]string{"", "xl"}) {
+		if b, err := sa.select_first(root, fmt.tprintf(`[data-cards="%s"]`, size)); err == nil {
+			sa.do_click(b)
+		}
+		pump(view, at)
+		at += 40
+		for board in 0 ..< 2 {
+			for seat in ([]string{"n", "e", "s", "w"}) {
+				spot := fmt.tprintf("%s cards, board %d, %s", "XL" if size == "xl" else "M", board + 1, seat)
+				if !click_point(view, root, fmt.tprintf(".slide.active .seat-%s .lbl", seat), at) || !focused(root, seat) {
+					hit, _ := sa.eval_element(
+						root,
+						fmt.tprintf(
+							`(function () {{ var l = document.querySelector('.slide.active .seat-%s .lbl'); if (!l) return 'no pill'; var r = l.getBoundingClientRect(); var e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); var s = document.querySelector('.slide.active'); return 'pill ' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' hit ' + (e ? e.tagName + '.' + e.className + (e.closest('.slide') === s ? ' (this board)' : ' (another board)') : 'none') ; }})()`,
+							seat,
+						),
+					)
+					ht, _ := sa.value_to_string(&hit, context.temp_allocator)
+					sa.value_clear(&hit)
+					append(&failed, fmt.tprintf("%s: the pill did not focus it (%s)", spot, ht))
+					continue
+				}
+				at += 40
+				// The other three hands: their box gone, only the pill left. Read off the PAINT (this engine has no
+				// `getComputedStyle`): the pixel on each box's left edge, halfway down, against the felt 3px outside.
+				if seat == "w" {
+					sa.paint_windowless(view)
+					for other in ([]string{"n", "e", "s"}) {
+						box, berr := sa.select_first(root, fmt.tprintf(".slide.active .seat-%s", other))
+						if berr != nil {
+							continue
+						}
+						r, _ := sa.location(box, .Border, .Root)
+						y := r.y + r.height / 2
+						er, eg, eb, _ := sa.windowless_pixel(view, r.x, y)
+						fr, fg, fb, _ := sa.windowless_pixel(view, r.x - 3, y)
+						differ := abs(int(er) - int(fr)) + abs(int(eg) - int(fg)) + abs(int(eb) - int(fb))
+						if differ > 12 {
+							append(&borders, fmt.tprintf("%s: %s's box edge is drawn (%d off the felt)", spot, other, differ))
+						}
+					}
+				}
+				if !click_point(view, root, ".slide.active .table.reveal, .slide.active .reveal-all", at) || any_focused(root) {
+					append(&failed, fmt.tprintf("%s: Reveal all did not bring the four hands back", spot))
+					// Put it back for the next seat whatever happened, so one failure is not counted four times.
+					_, _ = sa.eval_element(root, `(function () { var r = document.querySelector('.slide.active .reveal, .slide.active .reveal-all'); if (r) r.click(); })()`)
+					pump(view, at)
+				}
+				at += 40
+			}
+			if next, err := sa.select_first(root, "#nc-next"); err == nil && board == 0 {
+				sa.do_click(next)
+				// The carousel SLIDES to the next board, and a click before it has stopped lands where the pill
+				// was a moment ago: three pumps, then the clicks.
+				settle_carousel(view, root, &at)
+			}
+		}
+		if prev, err := sa.select_first(root, "#nc-prev"); err == nil {
+			sa.do_click(prev)
+			pump(view, at)
+			at += 40
+		}
+	}
+	check(len(failed) == 0, fmt.tprintf("every seat's pill focuses it and Reveal all undoes it: %v", failed[:]))
+	check(len(borders) == 0, fmt.tprintf("with a hand focused the other seats have no box drawn round them: %v", borders[:]))
 }
