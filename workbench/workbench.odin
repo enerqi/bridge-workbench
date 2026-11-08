@@ -4141,13 +4141,18 @@ PREVIEW_BOX_CSS :: " div.bml-box { display: block; flow: horizontal; } div.bml-b
 // to a heading (the go-to box), so it goes, and the single `Top` link stays.
 PREVIEW_NAV_CSS :: " .nav-links { display: none; }"
 
+// THE WHEEL MOVES ABOUT THREE LINES, as the editors' does (`#bml-text` in `workbench.css`); the engine's own step
+// moved about fifteen (reported 2026-11-08). The framed document's root is what scrolls. `overflow` is a
+// shorthand that resets `scroll-manner`, and nothing here or in `bml.css` sets it on the root.
+PREVIEW_SCROLL_CSS :: " html { scroll-manner: scroll-manner(wheel-step: 3.6em); }"
+
 preview_override_css :: proc(css: string, allocator := context.allocator) -> string {
 	background := preview_page_background(css)
 	if background == "" {
 		// Nothing to mirror: fill the body instead, so a sheet with no page colour of its own at least has
 		// no white gutters where its text is.
 		return strings.concatenate(
-			{"<style>html { size: *; } body { size: *; max-width: none; } h1, h2, h3, h4 { cursor: pointer; }", PREVIEW_BOX_CSS, PREVIEW_NAV_CSS, "</style>"},
+			{"<style>html { size: *; } body { size: *; max-width: none; } h1, h2, h3, h4 { cursor: pointer; }", PREVIEW_BOX_CSS, PREVIEW_NAV_CSS, PREVIEW_SCROLL_CSS, "</style>"},
 			allocator,
 		)
 	}
@@ -4165,6 +4170,7 @@ preview_override_css :: proc(css: string, allocator := context.allocator) -> str
 			" h1, h2, h3, h4 { cursor: pointer; }",
 			PREVIEW_BOX_CSS,
 			PREVIEW_NAV_CSS,
+			PREVIEW_SCROLL_CSS,
 			"</style>",
 		},
 		allocator,

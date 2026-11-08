@@ -378,7 +378,7 @@ and `plaintext.selectRange` only moves the caret here (start and end both read b
 select-then-delete removes one character. And a selection set from script STRAIGHT OVER ANOTHER (`setBaseAndExtent`) is
 PAINTED from the old one's end to the new one's start while its state is right - the find bar stepping through a
 file drew the whole of it as selected (2026-11-08); collapse to the new start first (`bmlSelect` does, for every caller; held by
-`test_find_steps_paint_only_the_match`, which reads the paint). `WORKBENCH_KEY_LOG=1` prints every key the editors get, with the
+`test_find_steps_paint_only_the_match`, which reads the paint). The editors and the notes preview scroll THREE LINES a wheel step (`scroll-manner: scroll-manner(wheel-step: 3.6em)`; the engine's own step was ~15): it must come AFTER `overflow`, a shorthand that resets it - the first try, in a rule above, did nothing (2026-11-08). The preview's is `PREVIEW_SCROLL_CSS`. `WORKBENCH_KEY_LOG=1` prints every key the editors get, with the
 caret either side; `WORKBENCH_CHECK_LOG=1` the scenario check's runs.
 
 **Typing pays for the lines that changed, not for the buffer.** The colorizer keeps each line's last-marked
