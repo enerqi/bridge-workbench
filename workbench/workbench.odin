@@ -6708,6 +6708,58 @@ visible_scenarios :: proc(app: ^App, allocator := context.allocator) -> []int {
 }
 
 /*
+WHY THE COUNT IS "OF": the count's tooltip, the reasons scenarios are not in the list. The title has no
+room for it, and "115 of 124" under "every system" read as scenarios lost (reported 2026-11-08: they were the
+nine guides, an opt-in group). Each scenario is counted under the FIRST reason that hides it - system, then an
+opt-in group not picked, then the groups picked, then the filter - so the lines add up to the difference.
+*/
+scenarios_hidden_why :: proc(app: ^App, shown: int) -> string {
+	total := len(app.scenarios)
+	if shown == total {
+		return "every scenario is in the list"
+	}
+	wanted := selected_tag_names(app, context.temp_allocator)
+	other_system, opt_in, groups := 0, 0, 0
+	opt_in_names := make([dynamic]string, 0, 2, context.temp_allocator)
+	for _, i in app.scenarios {
+		if !in_current_system(app, i) {
+			other_system += 1
+			continue
+		}
+		hidden_by_opt_in := false
+		for tag in scenario_groups(app, i) {
+			if is_opt_in_group(tag) && !slice.contains(wanted, tag) {
+				hidden_by_opt_in = true
+				if !slice.contains(opt_in_names[:], tag) {
+					append(&opt_in_names, tag)
+				}
+			}
+		}
+		if hidden_by_opt_in {
+			opt_in += 1
+		} else if !in_selected_groups(app, i, wanted) {
+			groups += 1
+		}
+	}
+	filtered := total - shown - other_system - opt_in - groups
+	b := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&b, "%d not shown", total - shown)
+	if other_system > 0 {
+		fmt.sbprintf(&b, "; %d of another system (the system picker)", other_system)
+	}
+	if opt_in > 0 {
+		fmt.sbprintf(&b, "; %d shown only when their group is picked (groups: %s)", opt_in, strings.join(opt_in_names[:], ", ", context.temp_allocator))
+	}
+	if groups > 0 {
+		fmt.sbprintf(&b, "; %d in none of the groups picked", groups)
+	}
+	if filtered > 0 {
+		fmt.sbprintf(&b, "; %d not matching the filter", filtered)
+	}
+	return strings.to_string(b)
+}
+
+/*
 THE SCENARIO GROUPS: which sets the list is drawn from.
 
 WHY TAGS AND NOT A FOLDER. A scenario belongs to more than one thing at once — `opp-3-level-preempt`
@@ -8231,6 +8283,9 @@ draw_scenarios :: proc(app: ^App) {
 	// The count is part of the list's TITLE ("scenarios · 12 of 101"), and while `every scenario` is ticked the
 	// title says the run covers them all, whatever the filter shows - the rows' wash says it row by row.
 	set_text_at(app, "#scenario-count", fmt.tprintf("· %d", total) if len(shown) == total else fmt.tprintf("· %d of %d", len(shown), total))
+	if count := find(app, "#scenario-count"); count != nil {
+		_ = sa.set_attribute(count, "title", scenarios_hidden_why(app, len(shown)))
+	}
 	if len(shown) == 0 {
 		sa.set_html(list, `<div class="empty">no scenario matches</div>`)
 		return

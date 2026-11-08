@@ -377,7 +377,7 @@ a bubbling `document.on("keydown")` hears them too late - the handler is a CAPTU
 and `plaintext.selectRange` only moves the caret here (start and end both read back as the range's end), so
 select-then-delete removes one character. And a selection set from script STRAIGHT OVER ANOTHER (`setBaseAndExtent`) is
 PAINTED from the old one's end to the new one's start while its state is right - the find bar stepping through a
-file drew the whole of it as selected (2026-11-08); collapse to the new start first (`bmlFindShow`, held by
+file drew the whole of it as selected (2026-11-08); collapse to the new start first (`bmlSelect` does, for every caller; held by
 `test_find_steps_paint_only_the_match`, which reads the paint). `WORKBENCH_KEY_LOG=1` prints every key the editors get, with the
 caret either side; `WORKBENCH_CHECK_LOG=1` the scenario check's runs.
 

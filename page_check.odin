@@ -3013,4 +3013,59 @@ check_every_seat_focuses_and_reveals :: proc(view: ^sa.Windowless_View) {
 	}
 	check(len(failed) == 0, fmt.tprintf("every seat's pill focuses it and Reveal all undoes it: %v", failed[:]))
 	check(len(borders) == 0, fmt.tprintf("with a hand focused the other seats have no box drawn round them: %v", borders[:]))
+
+	// SOUTH'S PILL IS LIT BY THE SCRIPT (it sits under the middle row, which takes the pointer), so leaving the
+	// page from it must clear it too - by the mouse leaving the view, or moving off the boards: reported, the pill
+	// stayed lit. Both ways, from the pill's centre.
+	hot :: proc(root: sa.Element) -> bool {
+		_, err := sa.select_first(root, ".slide.active .seat-s .lbl.hot")
+		return err == nil
+	}
+	south_point :: proc(root: sa.Element) -> (p: [2]i32, ok: bool) {
+		res, err := sa.eval_element(root, `(function () { var e = document.querySelector('.slide.active .seat-s .lbl'); if (!e) return ''; var r = e.getBoundingClientRect(); return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); })()`)
+		if err != nil {
+			return
+		}
+		defer sa.value_clear(&res)
+		text, _ := sa.value_to_string(&res, context.temp_allocator)
+		f := strings.fields(text, context.temp_allocator)
+		if len(f) != 2 {
+			return
+		}
+		x, _ := strconv.parse_int(f[0])
+		y, _ := strconv.parse_int(f[1])
+		return {i32(x), i32(y)}, true
+	}
+	lit := make([dynamic]string, 0, 2, context.temp_allocator)
+	// The last `#nc-prev` slid the carousel: a point read while it moves is where the pill was.
+	settle_carousel(view, root, &at)
+	for leave in ([]string{"the view", "the boards"}) {
+		p, found := south_point(root)
+		if !found {
+			append(&lit, "no South pill")
+			break
+		}
+		// From off the boards first: the view's first move after the clicks above is heard as the mouse ENTERING.
+		sa.windowless_mouse(view, .MOUSE_MOVE, {4, 4})
+		pump(view, at)
+		at += 40
+		sa.windowless_mouse(view, .MOUSE_MOVE, p)
+		pump(view, at)
+		at += 40
+		if !hot(root) {
+			append(&lit, fmt.tprintf("leaving %s: South's pill was not lit under the pointer", leave))
+			continue
+		}
+		if leave == "the view" {
+			sa.windowless_mouse(view, .MOUSE_LEAVE, {-1, -1})
+		} else {
+			sa.windowless_mouse(view, .MOUSE_MOVE, {4, 4})
+		}
+		pump(view, at)
+		at += 40
+		if hot(root) {
+			append(&lit, fmt.tprintf("leaving %s: South's pill stayed lit", leave))
+		}
+	}
+	check(len(lit) == 0, fmt.tprintf("South's pill is lit under the pointer and not after it leaves: %v", lit[:]))
 }

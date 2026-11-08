@@ -8087,8 +8087,13 @@ scenario plain-one "not a guide"
 
 	testing.expect(t, !shows_guide(&app, guide_index), "no group selected: the guide is hidden")
 	testing.expect(t, shows_guide(&app, guide_index + 1), "a plain file scenario is shown")
+	// The count's tooltip says where the missing one went (reported: "of" read as scenarios lost).
+	why := scenarios_hidden_why(&app, len(visible_scenarios(&app, context.temp_allocator)))
+	testing.expectf(t, strings.contains(why, "1 shown only when their group is picked (groups: guide)"), "the count's tooltip names the guide: %q", why)
 	toggle_tag(&app, slam)
 	testing.expect(t, !shows_guide(&app, guide_index), "under slam alone the guide stays hidden")
+	why = scenarios_hidden_why(&app, len(visible_scenarios(&app, context.temp_allocator)))
+	testing.expectf(t, strings.contains(why, "1 shown only when") && strings.contains(why, "in none of the groups picked"), "each scenario counted once, under its first reason: %q", why)
 	type_filter(&app, "guide")
 	testing.expect(t, !shows_guide(&app, guide_index), "the filter does not bring it back")
 	type_filter(&app, "")

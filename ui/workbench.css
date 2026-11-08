@@ -2177,6 +2177,10 @@ aside.files {
 	font-family: monospace;
 	font-size: var(--mono);
 	overflow: scroll-indicator;
+	/* THE WHEEL MOVES THREE LINES, as other editors' does (Sublime, VS Code); the engine's own step moved about
+	   fifteen (reported 2026-11-08). A line of this monospace is ~1.2em. AFTER `overflow`, which is a shorthand
+	   that resets it: the same declaration in a rule above this one did nothing in the real window. */
+	scroll-manner: scroll-manner(wheel-step: 3.6em);
 	white-space: pre;
 	/* THE CARET, and the reason the editor read as view-only. Sciter's caret colour is
 	   `text-selection-caret-color` — NOT the browsers' `caret-color`, which this engine does not have — and
@@ -2532,6 +2536,7 @@ frame#bml-page {
 	font-family: monospace;
 	font-size: var(--mono);
 	overflow: scroll-indicator;
+	scroll-manner: scroll-manner(wheel-step: 3.6em); /* three lines a wheel step: see #bml-text */
 	white-space: pre;
 	text-selection-caret-color: var(--accent);
 }

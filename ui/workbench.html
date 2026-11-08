@@ -2896,7 +2896,11 @@
   /* A SELECTION from an anchor to a caret, through the element's own `selection.setBaseAndExtent` on the lines'
      text nodes. NOT `plaintext.selectRange` for anything wider than a caret: that collapsed a range to its far end
      (measured: `selectRange(0, 0, 1, 0)` read back `[1,0]`), which is why ctrl+l moved the caret down instead of
-     selecting the line (reported). This one holds, across lines, in either direction. */
+     selecting the line (reported). This one holds, across lines, in either direction.
+     COLLAPSED AT THE ANCHOR FIRST, THEN THE RANGE: a range set straight over another is PAINTED from the old one's
+     end to the new one's start while the state is right - the find bar stepping through a file drew all of it as
+     selected (2026-11-08). Measured windowless: a range set below another is drawn wrong, one above it or a bare
+     caret (`selectRange`, the go-to jump) is drawn right; collapsing first is right in every case. */
   function bmlSelect(editor, aRow, aCol, fRow, fCol) {
     var lines = editor.children, n = lines.length;
     // A position past the last line is the end of it: a selection of whole lines ends at the NEXT line's start,
@@ -2905,7 +2909,9 @@
     if (fRow >= n) { fRow = n - 1; fCol = (bmlLineText(lines[fRow]) || "").length; }
     var a = lines[aRow], f = lines[fRow];
     if (!a || !f) return false;
-    editor.selection.setBaseAndExtent(a.firstChild || a, aCol, f.firstChild || f, fCol);
+    var an = a.firstChild || a;
+    editor.selection.setBaseAndExtent(an, aCol, an, aCol);
+    editor.selection.setBaseAndExtent(an, aCol, f.firstChild || f, fCol);
     bmlCaretLine(editor);
     return true;
   }
@@ -3014,10 +3020,8 @@
   function bmlFindShow() {
     var editor = bmlFindEditor(), f = bmlFind.matches[bmlFind.at];
     if (!editor || !f) return false;
-    // COLLAPSED FIRST, THEN THE MATCH. Moving one selection straight to another was PAINTED from the previous
-    // match's end to this one's start, while the state said just the match: stepping through a long file drew all
-    // of it as selected (reported 2026-11-08; reproduced windowless by snapshot, the first step alone is right).
-    bmlSelect(editor, f.row, f.start, f.row, f.start);
+    // `bmlSelect` collapses before it selects: moving one selection straight to the next was painted as the
+    // whole span between them (2026-11-08).
     bmlSelect(editor, f.row, f.start, f.row, f.end);
     bmlFindMarkCurrent(editor);
     wbFindLog("selected", editor);
