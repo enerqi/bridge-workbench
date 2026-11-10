@@ -1860,7 +1860,7 @@
   // system's own helpers, or a misspelling of one, and the parser is what tells those two apart.
   var SCN_OPS   = { "and": 1, "or": 1, "not": 1, "in": 1 };
   var SCN_ATOMS = {
-    "hcp": 1, "controls": 1, "opc": 1, "longest": 1, "balanced": 1, "holds": 1,
+    "hcp": 1, "controls": 1, "opc": 1, "longest": 1, "balanced": 1, "holds": 1, "cards": 1,
     "spades": 1, "hearts": 1, "diamonds": 1, "clubs": 1,
     "two": 1, "three": 1, "four": 1, "five": 1, "six": 1, "seven": 1, "eight": 1, "nine": 1,
     "ten": 1, "jack": 1, "queen": 1, "king": 1, "ace": 1,
@@ -1902,6 +1902,13 @@
     if (plain) {
       bmlMark(el, plain[1].length, plain[0].length, "scn-key");
       if (plain[0].length < text.length) bmlMark(el, plain[0].length, text.length, "scn-str");
+      return;
+    }
+    // `north holds: AKQ32.K2.QJ3.432` - cards, not a condition: drawn as numbers are.
+    var held = /^(\s*)(north|east|south|west)\s+holds\s*:/i.exec(text);
+    if (held) {
+      bmlMark(el, held[1].length, held[0].length, "scn-key");
+      if (held[0].length < text.length) bmlMark(el, held[0].length, text.length, "scn-num");
       return;
     }
 

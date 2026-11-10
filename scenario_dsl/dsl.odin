@@ -27,7 +27,9 @@ package scenario_dsl
 	parentheses, over two kinds of atom:
 
 	  * GENERIC — `hcp`, `spades`/`hearts`/`diamonds`/`clubs`, `controls`, `longest` (and `seat`, below), compared with
-	    `< <= = != >= >` or a range (`hcp in 15..17`), plus `balanced`, `semibalanced`, `holds(spades, ace)` and
+	    `< <= = != >= >` or a range (`hcp in 15..17`), added up and offset (`spades >= hearts + 2`), card pools
+	    (`cards(spades, AKQ) >= 2`: two of the top three; see `Sum`), plus `balanced`, `semibalanced`,
+	    `holds(spades, ace)` and
     `shape(any 4333, 5xxx)` (see `Shape_Node`);
 	  * NAMED — the bidding system's own vocabulary (`is_strong_1c`, `is_2cd_swedish_club_resp`, …),
 	    supplied by the CONSUMER through `set_vocabulary`. That is what lets a user compose THIS system
@@ -87,6 +89,18 @@ package scenario_dsl
 
 	SYSTEMS AND NAMED MEANINGS - `system 2over1` blocks whose `meaning nt-opening: ...` lines a scenario uses by
 	name, and `system ours extends 2over1` overriding one - are systems.odin's.
+
+	FIXED CARDS put a seat's cards in place - a hand you held, or the motif a scenario is about:
+
+			scenario my-hand "the hand I held: what did partner have for his 2D?"
+			  north holds: AKQ32.K2.QJ3.432
+			  south: hcp in 8..11 and diamonds >= 5
+
+	PBN's dots, spades to clubs; an empty suit fixes nothing there (it is not a void: say `hearts = 0`). Or each
+	suit named, for a few cards: `north holds: S:AKQ H:K`. The cards are DEALT, not waited for (norn's predeal,
+	carried by the condition), so a whole hand costs nothing; they are tested too, so a run that cannot predeal
+	them still keeps no deal without them. A `check` or `--frequency` of such a scenario counts how often the rest
+	holds GIVEN those cards.
 
 	A DOUBLE-DUMMY LINE asks the solver about the WHOLE deal, after the seat lines have accepted it:
 
@@ -172,11 +186,27 @@ Compare_Node :: struct {
 // longer major first" or "nine cards in the majors" needs, and the one thing a range of fixed numbers cannot say.
 // `seat` and `opc` are not summed: one is a place at the table, the other a judgement of two hands. (A single
 // number against a plain number stays a `Compare_Node`.)
+//
+// A sum may end in a CONSTANT, `spades >= hearts + 2` or `hcp - 2 > hearts`: what "two longer" and "a point short"
+// say, which a comparison of two bare numbers cannot.
+//
+// A term may be a CARD POOL, `cards(spades, AKQ)`: how many of those cards the hand holds - "two of the top three
+// spades" is `cards(spades, AKQ) >= 2`. One suit to a pool, so the pools of several suits are ANDed atoms (each
+// suit its own minimum), and added up when one count spans suits (`cards(spades, AK) + cards(hearts, AK) >= 3`).
+// On a partnership line the pool is the side's: either hand holding a card counts it.
 SUM_TERMS_MAX :: 4
 
+Term :: struct {
+	quantity: Quantity, // unused for a card pool
+	is_cards: bool,
+	suit:     norn.Suit,
+	cards:    norn.Rank_Set,
+}
+
 Sum :: struct {
-	terms: [SUM_TERMS_MAX]Quantity,
-	count: int,
+	terms:    [SUM_TERMS_MAX]Term,
+	count:    int,
+	constant: int, // added to the terms: `hearts + 2`
 }
 
 Sum_Compare_Node :: struct {
@@ -358,6 +388,10 @@ Program :: struct {
 	dealer:        Maybe(norn.Seat),
 	vulnerability: Maybe(norn.Vulnerability),
 	reads_table:   bool,
+	// CARDS FIXED to seats (`north holds: AKQ32.K2.QJ3.432`): dealt by construction (`norn.Predeal`, through the
+	// condition) and tested as well, so a deal from a run that cannot predeal them is still never kept without them.
+	fixed:         [norn.Seat]norn.Hand_Summary,
+	fixes:         bool,
 	// The names of the scenario's ALTERNATIVES (`also "<name>" <seat>: ...`), in the order they first appear.
 	alternatives:  []string,
 	// The names of the alternatives of the MEANINGS it uses, each once, in the order they first appear: what a
@@ -521,6 +555,17 @@ condition :: proc(program: ^Program) -> norn.Condition {
 	// (It once asked about the scenario's alone, so a meaning's alternative never reached the card or `--frequency`.)
 	if len(program.alternatives) > 0 || len(program.meaning_alternatives) > 0 {
 		predicate.explain = explain
+	}
+	if program.fixes {
+		pd: norn.Predeal
+		for seat in norn.Seat {
+			for suit in norn.Suit {
+				for rank in program.fixed[seat].suits[suit] {
+					norn.predeal_add(&pd, seat, norn.make_card(suit, rank))
+				}
+			}
+		}
+		predicate.predeal = pd
 	}
 	if program.reads_table {
 		predicate.table = norn.Table_Draw {

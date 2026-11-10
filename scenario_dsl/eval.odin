@@ -32,6 +32,15 @@ evaluate :: proc(summary: norn.Deal_Summary, table: norn.Table, userdata: rawptr
 	if program == nil {
 		return false
 	}
+	if program.fixes {
+		for seat in norn.Seat {
+			for suit in norn.Suit {
+				if summary[seat].suits[suit] & program.fixed[seat].suits[suit] != program.fixed[seat].suits[suit] {
+					return false
+				}
+			}
+		}
+	}
 	for also in 0 ..= len(program.alternatives) {
 		if lines_hold(program, summary, table, also, {}) {
 			return true
@@ -292,10 +301,10 @@ shape_matches :: proc(pattern: Shape_Pattern, lengths: [norn.SUIT_COUNT]int) -> 
 
 @(private)
 sum_value :: proc(sum: Sum, hand: norn.Hand_Summary) -> int {
-	total := 0
+	total := sum.constant
 	for i in 0 ..< sum.count {
 		term := sum.terms[i]
-		total += quantity_value(term, hand)
+		total += card(hand.suits[term.suit] & term.cards) if term.is_cards else quantity_value(term.quantity, hand)
 	}
 	return total
 }

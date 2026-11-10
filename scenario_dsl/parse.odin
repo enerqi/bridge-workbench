@@ -206,6 +206,8 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 	double_dummy: Maybe(Double_Dummy)
 	dealer: Maybe(norn.Seat)
 	vulnerability: Maybe(norn.Vulnerability)
+	fixed: [norn.Seat]norn.Hand_Summary
+	fixes := false
 	p.nodes = nodes
 	p.reads_table = false
 	// THE SYSTEM ITS MEANINGS ARE READ IN, known before the first seat line: the `system:` line may come after
@@ -324,6 +326,14 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 					append(&tags, strings.clone(trimmed, p.allocator))
 				}
 			}
+		case strings.has_suffix(key, " holds"):
+			// CARDS FIXED to a seat, dealt rather than waited for (`Program.fixed`).
+			seat, is_seat := seat_of(strings.trim_space(key[:len(key) - len(" holds")]))
+			if !is_seat {
+				report(p, p.line_index, 1, "expected `<north|east|south|west> holds: <cards>` - one seat's cards")
+			} else if read_fixed_cards(p, value, value_col, seat, &fixed) {
+				fixes = true
+			}
 		case:
 			seat, is_seat := seat_of(key)
 			pair := false
@@ -347,7 +357,7 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 		p.line_index += 1
 	}
 
-	if len(rules) == 0 {
+	if len(rules) == 0 && !fixes {
 		report(p, header_index, 1, "a scenario needs at least one seat condition")
 		delete(nodes)
 		delete(rules)
@@ -392,6 +402,8 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			double_dummy = double_dummy,
 			dealer = dealer,
 			vulnerability = vulnerability,
+			fixed = fixed,
+			fixes = fixes,
 			reads_table = p.reads_table || dealer != nil || vulnerability != nil,
 			alternatives = alternatives[:],
 			meaning_alternatives = meaning_alternatives[:],
@@ -399,6 +411,111 @@ parse_scenario :: proc(p: ^Parser) -> (program: Program, ok: bool) {
 			allocator = p.allocator,
 		},
 		true
+}
+
+/*
+The cards of a `<seat> holds:` line, added to `fixed[seat]`: PBN's dotted form, spades to clubs (`AKQ32.K2.QJ3.432`,
+`AKQ...` for the top three spades alone - an empty suit fixes nothing there, it is not a void), or each suit named
+(`S:AKQ H:K`, `♠AKQ ♥K`). False, reported, when a card is not one, is named twice, is another seat's already, or
+the seat would hold more than 13.
+*/
+@(private)
+read_fixed_cards :: proc(p: ^Parser, value: string, value_col: int, seat: norn.Seat, fixed: ^[norn.Seat]norn.Hand_Summary) -> bool {
+	USAGE :: "expected the cards, spades first: `AKQ32.K2.QJ3.432` (PBN's dots), or each suit named: `S:AKQ H:K`"
+	cards: norn.Hand_Summary
+	add :: proc(cards: ^norn.Hand_Summary, suit: norn.Suit, text: string) -> (bad: string) {
+		if text == "" || text == "-" {
+			return ""
+		}
+		ranks, why := ranks_of(text)
+		if why != "" {
+			return why
+		}
+		if ranks & cards.suits[suit] != {} {
+			return "a card is named twice"
+		}
+		cards.suits[suit] += ranks
+		return ""
+	}
+	if value == "" {
+		report(p, p.line_index, value_col, USAGE)
+		return false
+	}
+	if strings.contains(value, ".") {
+		groups := strings.split(strings.trim_space(value), ".", context.temp_allocator)
+		if len(groups) != 4 {
+			report(p, p.line_index, value_col, "PBN's form has four suits, spades to clubs, between three dots: `AKQ32.K2.QJ3.432`")
+			return false
+		}
+		for group, i in groups {
+			if bad := add(&cards, SUITS_SPADES_FIRST[i], strings.trim_space(group)); bad != "" {
+				report(p, p.line_index, value_col, strings.concatenate({"`", group, "`: ", bad}, context.temp_allocator))
+				return false
+			}
+		}
+	} else {
+		for token in strings.fields(strings.trim_space(value), context.temp_allocator) {
+			suit, rest, is_suit := suit_prefix(token)
+			if !is_suit {
+				report(p, p.line_index, value_col, USAGE)
+				return false
+			}
+			if bad := add(&cards, suit, strings.trim_prefix(rest, ":")); bad != "" {
+				report(p, p.line_index, value_col, strings.concatenate({"`", token, "`: ", bad}, context.temp_allocator))
+				return false
+			}
+		}
+	}
+	total := 0
+	for suit in norn.Suit {
+		total += card(cards.suits[suit] | fixed[seat].suits[suit])
+		for other in norn.Seat {
+			if other != seat && cards.suits[suit] & fixed[other].suits[suit] != {} {
+				report(p, p.line_index, value_col, fmt_message(p, "a card here is %s's already", seat_word(other)))
+				return false
+			}
+			if other == seat && cards.suits[suit] & fixed[seat].suits[suit] != {} {
+				report(p, p.line_index, value_col, "a card here is fixed to this seat already")
+				return false
+			}
+		}
+	}
+	if total > 13 {
+		report(p, p.line_index, value_col, "a hand holds 13 cards - this fixes more")
+		return false
+	}
+	for suit in norn.Suit {
+		fixed[seat].suits[suit] += cards.suits[suit]
+	}
+	return true
+}
+
+@(private)
+SUITS_SPADES_FIRST := [4]norn.Suit{.Spades, .Hearts, .Diamonds, .Clubs}
+
+// The suit a token of a `holds:` line starts with - a letter (`S`, `h`) or a glyph (`♠`, `♥`) - and the rest.
+@(private)
+suit_prefix :: proc(token: string) -> (suit: norn.Suit, rest: string, ok: bool) {
+	glyphs := [4]string{"♠", "♥", "♦", "♣"}
+	for glyph, i in glyphs {
+		if strings.has_prefix(token, glyph) {
+			return SUITS_SPADES_FIRST[i], token[len(glyph):], true
+		}
+	}
+	if len(token) < 2 {
+		return {}, "", false
+	}
+	switch token[0] {
+	case 's', 'S':
+		return .Spades, token[1:], true
+	case 'h', 'H':
+		return .Hearts, token[1:], true
+	case 'd', 'D':
+		return .Diamonds, token[1:], true
+	case 'c', 'C':
+		return .Clubs, token[1:], true
+	}
+	return {}, "", false
 }
 
 // The condition of a seat or partnership line, which has to be the WHOLE rest of the line.
@@ -640,7 +757,8 @@ split_name_and_description :: proc(rest: string) -> (name: string, description: 
 //   expression := term   ( "or"  term )*
 //   term       := factor ( "and" factor )*
 //   factor     := "not" factor | "(" expression ")" | atom
-//   atom       := name | "balanced" | "semibalanced" | "holds" "(" suit "," rank ")"
+//   atom       := name | "balanced" | "semibalanced" | "holds" "(" suit "," rank ")" | sum cmp sum
+//   sum        := term ( "+" term )* [ ("+" | "-") int ];  term := quantity | "cards" "(" suit "," cards ")"
 //               | "shape" "(" ["any"] pattern ( "," ["any"] pattern )* ")" | quantity ( cmp int | "in" a ".." b )
 
 @(private)
@@ -769,6 +887,10 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	}
 	if lowered == "holds" {
 		return parse_holds(p, start_col)
+	}
+	if lowered == "cards" {
+		term := parse_card_pool(p) or_return
+		return parse_sum_start(p, term, start_col)
 	}
 	if lowered == "shape" {
 		return parse_shape(p)
@@ -1111,19 +1233,10 @@ read_shape_pattern :: proc(word: string, any: bool) -> (pattern: Shape_Pattern, 
 parse_comparison :: proc(p: ^Parser, quantity: Quantity, start_col: int) -> (root: int, ok: bool) {
 	skip_spaces(p)
 
-	// A SUM on the left (`spades + hearts`), or another number on the right (`spades > hearts`): a
+	// A SUM on the left (`spades + hearts`, `hcp - 2`), or another number on the right (`spades > hearts`): a
 	// `Sum_Compare_Node`. Anything else is the plain `Compare_Node` below, as it always was.
-	left := Sum{count = 1}
-	left.terms[0] = quantity
-	if strings.has_prefix(p.text, "+") {
-		read_sum_tail(p, &left) or_return
-		skip_spaces(p)
-	}
-	if left.count > 1 {
-		return parse_sum_comparison(p, left, start_col)
-	}
-	if quantity_after_comparison(p) {
-		return parse_sum_comparison(p, left, start_col)
+	if strings.has_prefix(p.text, "+") || strings.has_prefix(p.text, "-") || quantity_after_comparison(p) {
+		return parse_sum_start(p, Term{quantity = quantity}, start_col)
 	}
 
 	// `hcp in 15..17`
@@ -1165,8 +1278,8 @@ parse_comparison :: proc(p: ^Parser, quantity: Quantity, start_col: int) -> (roo
 	return add_node(p, Compare_Node{quantity = quantity, op = op, value = value}), true
 }
 
-// Is what follows a comparison and then a number OF THE HAND (`> hearts`), rather than a plain number? The cursor
-// is left where it was.
+// Is what follows a comparison and then a number OF THE HAND (`> hearts`, `> cards(...)`), rather than a plain
+// number? The cursor is left where it was.
 @(private)
 quantity_after_comparison :: proc(p: ^Parser) -> bool {
 	save, save_col := p.text, p.col
@@ -1179,7 +1292,101 @@ quantity_after_comparison :: proc(p: ^Parser) -> bool {
 		return false
 	}
 	_, is_quantity := quantity_of(folded(word))
-	return is_quantity
+	return is_quantity || folded(word) == "cards"
+}
+
+// A sum whose first term is read: the rest of it, then its comparison.
+@(private)
+parse_sum_start :: proc(p: ^Parser, first: Term, start_col: int) -> (root: int, ok: bool) {
+	left := Sum{}
+	append_term(p, &left, first, start_col) or_return
+	read_sum_tail(p, &left) or_return
+	return parse_sum_comparison(p, left, start_col)
+}
+
+/*
+`cards(spades, AKQ)`, the word `cards` already read: a suit and the cards of it, as ranks run together (`AKQJT`,
+`AKQJ10`, `AQ9`) or apart (`A K Q`, `ace king`).
+*/
+@(private)
+parse_card_pool :: proc(p: ^Parser) -> (term: Term, ok: bool) {
+	USAGE :: "`cards` takes a suit and its cards: `cards(spades, AKQ) >= 2` - two of the top three spades"
+	skip_spaces(p)
+	if !strings.has_prefix(p.text, "(") {
+		report(p, p.line_index, p.col, USAGE)
+		return {}, false
+	}
+	advance(p, 1)
+	suit_col := p.col
+	suit_word, _ := take_word(p)
+	suit, is_suit := suit_of(folded(suit_word))
+	if !is_suit {
+		report(p, p.line_index, suit_col, "expected a suit — clubs, diamonds, hearts or spades")
+		return {}, false
+	}
+	skip_spaces(p)
+	if strings.has_prefix(p.text, ",") {
+		advance(p, 1)
+	}
+	term = Term{is_cards = true, suit = suit}
+	for {
+		skip_spaces(p)
+		if strings.has_prefix(p.text, ")") {
+			break
+		}
+		word_col := p.col
+		word, has_word := take_word(p)
+		if !has_word {
+			report(p, p.line_index, p.col, "expected the cards, then `)`")
+			return {}, false
+		}
+		ranks, bad := ranks_of(word)
+		if bad != "" {
+			report(p, p.line_index, word_col, strings.concatenate({"`", word, "` is not a list of cards: ", bad}, context.temp_allocator))
+			return {}, false
+		}
+		if ranks & term.cards != {} {
+			report(p, p.line_index, word_col, fmt_message(p, "`%s` names a card already named", word))
+			return {}, false
+		}
+		term.cards += ranks
+		skip_spaces(p)
+		if strings.has_prefix(p.text, ",") {
+			advance(p, 1)
+		}
+	}
+	advance(p, 1)
+	if term.cards == {} {
+		report(p, p.line_index, suit_col, USAGE)
+		return {}, false
+	}
+	return term, true
+}
+
+// The ranks in one word of a card pool: a rank's name (`ace`, `10`), or its letters run together (`AKQJT`,
+// `KJ10`). `bad` says what is wrong, "" when nothing.
+@(private)
+ranks_of :: proc(word: string) -> (ranks: norn.Rank_Set, bad: string) {
+	lowered := folded(word)
+	if rank, is_rank := rank_of(lowered); is_rank {
+		return {rank}, ""
+	}
+	for i := 0; i < len(lowered); i += 1 {
+		letter := lowered[i:i + 1]
+		if lowered[i] == '1' && i + 1 < len(lowered) && lowered[i + 1] == '0' {
+			letter = "10"
+			i += 1
+		}
+		rank, is_rank := rank_of(letter)
+		if !is_rank {
+			return {}, "a card is A K Q J T (or 10), or 9 down to 2"
+		}
+		if rank in ranks {
+			return {}, "a card is named twice"
+		}
+		ranks += {rank}
+	}
+	return ranks, ""
 }
 
 @(private)
@@ -1187,36 +1394,60 @@ is_number_start :: proc(c: byte) -> bool {
 	return (c >= '0' && c <= '9') || c == '-' || c == '+'
 }
 
-// The rest of a sum after its first number: `+ hearts + diamonds`. Each term a hand's number, and not `seat` or
-// `opc` (see `Sum_Compare_Node`).
+// The rest of a sum after its first term: `+ hearts + diamonds`, `+ cards(hearts, AK)`, and a constant at the
+// end, `+ 2` or `- 1`. Each term a hand's number, and not `seat` or `opc` (see `Sum_Compare_Node`).
 @(private)
 read_sum_tail :: proc(p: ^Parser, sum: ^Sum) -> (ok: bool) {
 	for {
 		skip_spaces(p)
-		if !strings.has_prefix(p.text, "+") {
+		minus := strings.has_prefix(p.text, "-")
+		if !minus && !strings.has_prefix(p.text, "+") {
 			return true
 		}
+		sign_col := p.col
 		advance(p, 1)
 		skip_spaces(p)
 		term_col := p.col
-		word, has_word := take_word(p)
-		quantity: Quantity
-		is_quantity := false
-		if has_word {
-			quantity, is_quantity = quantity_of(folded(word))
+		if len(p.text) > 0 && p.text[0] >= '0' && p.text[0] <= '9' {
+			value, _ := take_int(p)
+			sum.constant += -value if minus else value
+			skip_spaces(p)
+			if strings.has_prefix(p.text, "+") || strings.has_prefix(p.text, "-") {
+				report(p, p.line_index, p.col, "a number added to a sum comes last: `hearts + diamonds + 2`")
+				return false
+			}
+			return true
 		}
-		if !is_quantity {
-			report(p, p.line_index, term_col, "expected a number of the hand after `+` - hcp, controls, a suit or longest")
+		if minus {
+			report(p, p.line_index, sign_col, "only a number is taken away (`hcp - 2`); the hand's numbers are added up")
 			return false
 		}
-		append_term(p, sum, quantity, term_col) or_return
+		word, has_word := take_word(p)
+		term: Term
+		is_term := false
+		if has_word && folded(word) == "cards" {
+			term = parse_card_pool(p) or_return
+			is_term = true
+		} else if has_word {
+			term.quantity, is_term = quantity_of(folded(word))
+		}
+		if !is_term {
+			report(p, p.line_index, term_col, "expected a number of the hand after `+` - hcp, controls, a suit, longest or cards(...) - or a number")
+			return false
+		}
+		append_term(p, sum, term, term_col) or_return
 	}
+}
+
+@(private)
+is_place_or_judgement :: proc(term: Term) -> bool {
+	return !term.is_cards && (term.quantity == .Seat || term.quantity == .Opc)
 }
 
 // One term of a sum, refused when it is not a number a hand can add up.
 @(private)
-append_term :: proc(p: ^Parser, sum: ^Sum, quantity: Quantity, col: int) -> (ok: bool) {
-	if quantity == .Seat || quantity == .Opc || sum.terms[0] == .Seat || sum.terms[0] == .Opc {
+append_term :: proc(p: ^Parser, sum: ^Sum, term: Term, col: int) -> (ok: bool) {
+	if is_place_or_judgement(term) || (sum.count > 0 && is_place_or_judgement(sum.terms[0])) {
 		report(p, p.line_index, col, "`seat` and `opc` are not added to or compared with the hand's other numbers")
 		return false
 	}
@@ -1224,7 +1455,7 @@ append_term :: proc(p: ^Parser, sum: ^Sum, quantity: Quantity, col: int) -> (ok:
 		report(p, p.line_index, col, "a sum adds up at most four numbers")
 		return false
 	}
-	sum.terms[sum.count] = quantity
+	sum.terms[sum.count] = term
 	sum.count += 1
 	return true
 }
@@ -1232,10 +1463,6 @@ append_term :: proc(p: ^Parser, sum: ^Sum, quantity: Quantity, col: int) -> (ok:
 // `<sum> <op> <number or sum>`, or `<sum> in <low>..<high>`, the left already read.
 @(private)
 parse_sum_comparison :: proc(p: ^Parser, left: Sum, start_col: int) -> (root: int, ok: bool) {
-	if left.terms[0] == .Seat || left.terms[0] == .Opc {
-		report(p, p.line_index, start_col, "`seat` and `opc` are not added to or compared with the hand's other numbers")
-		return 0, false
-	}
 	skip_spaces(p)
 	if word, has_word := peek_word(p); has_word && folded(word) == "in" {
 		take_word(p)
@@ -1266,14 +1493,24 @@ parse_sum_comparison :: proc(p: ^Parser, left: Sum, start_col: int) -> (root: in
 	right_col := p.col
 	// A WORD here is a number of the hand; digits are word characters too, so a plain number is told apart first.
 	if word, has_word := peek_word(p); has_word && !is_number_start(word[0]) {
-		quantity, is_quantity := quantity_of(folded(word))
-		if !is_quantity {
-			report(p, p.line_index, right_col, "expected a number, or a number of the hand - hcp, controls, a suit or longest")
+		term: Term
+		is_term := false
+		if folded(word) == "cards" {
+			take_word(p)
+			term = parse_card_pool(p) or_return
+			is_term = true
+		} else {
+			term.quantity, is_term = quantity_of(folded(word))
+			if is_term {
+				take_word(p)
+			}
+		}
+		if !is_term {
+			report(p, p.line_index, right_col, "expected a number, or a number of the hand - hcp, controls, a suit, longest or cards(...)")
 			return 0, false
 		}
-		take_word(p)
 		right := Sum{}
-		append_term(p, &right, quantity, right_col) or_return
+		append_term(p, &right, term, right_col) or_return
 		read_sum_tail(p, &right) or_return
 		return add_node(p, Sum_Compare_Node{left = left, op = op, right = right}), true
 	}

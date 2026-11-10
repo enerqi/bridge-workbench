@@ -83,6 +83,28 @@ write_program_into :: proc(b: ^strings.Builder, program: ^Program) {
 		strings.write_byte(b, '\n')
 	}
 
+	if program.fixes {
+		for seat in norn.Seat {
+			if program.fixed[seat] == {} {
+				continue
+			}
+			strings.write_string(b, "  ")
+			strings.write_string(b, seat_word(seat))
+			strings.write_string(b, " holds: ")
+			for suit, i in ([4]norn.Suit{.Spades, .Hearts, .Diamonds, .Clubs}) {
+				if i > 0 {
+					strings.write_byte(b, '.')
+				}
+				for r := int(max(norn.Rank)); r >= 0; r -= 1 {
+					if norn.Rank(r) in program.fixed[seat].suits[suit] {
+						strings.write_byte(b, RANK_LETTERS[r])
+					}
+				}
+			}
+			strings.write_byte(b, '\n')
+		}
+	}
+
 	if dd, has := program.double_dummy.?; has {
 		strings.write_string(b, "  double-dummy: ")
 		strings.write_string(b, "north-south" if dd.side == .North_South else "east-west")
@@ -258,7 +280,26 @@ write_sum :: proc(b: ^strings.Builder, sum: Sum) {
 		if i > 0 {
 			strings.write_string(b, " + ")
 		}
-		strings.write_string(b, quantity_word(term))
+		if !term.is_cards {
+			strings.write_string(b, quantity_word(term.quantity))
+			continue
+		}
+		strings.write_string(b, "cards(")
+		strings.write_string(b, suit_word(term.suit))
+		strings.write_string(b, ", ")
+		for r := int(max(norn.Rank)); r >= 0; r -= 1 {
+			if norn.Rank(r) in term.cards {
+				strings.write_byte(b, RANK_LETTERS[r])
+			}
+		}
+		strings.write_byte(b, ')')
+	}
+	if sum.constant > 0 {
+		strings.write_string(b, " + ")
+		strings.write_int(b, sum.constant)
+	} else if sum.constant < 0 {
+		strings.write_string(b, " - ")
+		strings.write_int(b, -sum.constant)
 	}
 }
 
@@ -383,6 +424,10 @@ suit_word :: proc(suit: norn.Suit) -> string {
 	}
 	return "spades"
 }
+
+// A card pool's ranks as written back, `cards(spades, AKQT)`, Two first.
+@(private)
+RANK_LETTERS := "23456789TJQKA"
 
 @(private)
 rank_word :: proc(rank: norn.Rank) -> string {

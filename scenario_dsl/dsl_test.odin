@@ -1501,7 +1501,9 @@ test_a_hands_numbers_compare_with_each_other :: proc(t: ^testing.T) {
 		line: string,
 		says: string,
 	} {
-		{"  north: spades + 3 >= 9", "after `+`"},
+		{"  north: spades + is_big >= 9", "after `+`"},
+		{"  north: spades + 3 + hearts >= 9", "comes last"},
+		{"  north: spades - hearts >= 2", "only a number is taken away"},
 		{"  north: spades + seat >= 9", "`seat` and `opc`"},
 		{"  north: seat > hearts", "`seat` and `opc`"},
 		{"  north: spades > is_big", "a number of the hand"},
@@ -1521,6 +1523,155 @@ test_a_hands_numbers_compare_with_each_other :: proc(t: ^testing.T) {
 			problems,
 		)
 		for &each in parsed {
+			destroy_program(&each)
+		}
+	}
+}
+
+/*
+A SUM WITH A CONSTANT (`spades >= hearts + 2`) and CARD POOLS (`cards(spades, AKQ) >= 2`, two of the top three):
+held to the same conditions in Odin over random deals, a side's pool counting either hand's cards, printed back in
+one spelling, and the mistakes one diagnostic each.
+*/
+@(test)
+test_offsets_and_card_pools :: proc(t: ^testing.T) {
+	source := "scenario x\n  north: spades >= hearts + 2 and hcp - 3 > clubs and cards(spades, AKQ) >= 2\n  south: cards(hearts, AK) + cards(spades, AK) in 1..2 or cards(clubs, AKQJT) > diamonds\n  east-west: cards(diamonds, AK) = 2\n"
+	program, ok := parse_one(t, source)
+	if !ok {return}
+	defer destroy_program(&program)
+	testing.expect_value(t, write_program(&program, context.temp_allocator), source)
+
+	count :: proc(hand: norn.Hand_Summary, suit: norn.Suit, ranks: norn.Rank_Set) -> int {
+		return card(hand.suits[suit] & ranks)
+	}
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 20261110)
+	wrong, kept := 0, 0
+	for _ in 0 ..< 60_000 {
+		summary := norn.summarize_deal(norn.deal_hands())
+		n, s := summary[.North], summary[.South]
+		e, w := summary[.East], summary[.West]
+		majors := count(s, .Hearts, {.Ace, .King}) + count(s, .Spades, {.Ace, .King})
+		want :=
+			norn.spade_length(n) >= norn.heart_length(n) + 2 &&
+			norn.hcp(n) - 3 > norn.club_length(n) &&
+			count(n, .Spades, {.Ace, .King, .Queen}) >= 2 &&
+			(majors >= 1 && majors <= 2 || count(s, .Clubs, {.Ace, .King, .Queen, .Jack, .Ten}) > norn.diamond_length(s)) &&
+			count(e, .Diamonds, {.Ace, .King}) + count(w, .Diamonds, {.Ace, .King}) == 2
+		got := evaluate(summary, {}, &program)
+		wrong += int(got != want)
+		kept += int(got)
+	}
+	testing.expectf(t, wrong == 0, "%d deals where the condition and its Odin disagree", wrong)
+	testing.expect(t, kept > 0, "nothing kept")
+
+	// One spelling back, whichever was written.
+	for spelling in ([]string{"cards(spades, A K Q)", "cards(spades, ace, king, queen)", "cards(Spades, QKA)", "cards(spades, aqk)"}) {
+		text := strings.concatenate({"scenario x\n  north: ", spelling, " >= 2\n"}, context.temp_allocator)
+		parsed, problems := parse(text, "f.scenario", context.temp_allocator)
+		if testing.expectf(t, len(problems) == 0 && len(parsed) == 1, "%q: %v", spelling, problems) {
+			testing.expect_value(t, write_program(&parsed[0], context.temp_allocator), "scenario x\n  north: cards(spades, AKQ) >= 2\n")
+		}
+		for &each in parsed {
+			destroy_program(&each)
+		}
+	}
+	text := "scenario x\n  north: cards(hearts, KJ10 9) >= 2\n"
+	parsed, problems := parse(text, "f.scenario", context.temp_allocator)
+	if testing.expectf(t, len(problems) == 0 && len(parsed) == 1, "ten as 10: %v", problems) {
+		testing.expect_value(t, write_program(&parsed[0], context.temp_allocator), "scenario x\n  north: cards(hearts, KJT9) >= 2\n")
+	}
+	for &each in parsed {
+		destroy_program(&each)
+	}
+
+	cases := []struct {
+		line: string,
+		says: string,
+	} {
+		{"  north: cards(spades) >= 2", "`cards` takes a suit and its cards"},
+		{"  north: cards(trumps, AK) >= 2", "expected a suit"},
+		{"  north: cards(spades, AKX) >= 2", "not a list of cards"},
+		{"  north: cards(spades, AKA) >= 2", "named twice"},
+		{"  north: cards(spades, AK, K) >= 2", "already named"},
+		{"  north: cards(spades, AK)", "expected a comparison"},
+		{"  north: cards spades >= 2", "`cards` takes a suit"},
+	}
+	for c in cases {
+		bad := strings.concatenate({"scenario x\n", c.line, "\n"}, context.temp_allocator)
+		bad_parsed, bad_problems := parse(bad, "f.scenario", context.temp_allocator)
+		testing.expectf(
+			t,
+			len(bad_problems) >= 1 && strings.contains(bad_problems[0].message, c.says),
+			"%q: %v",
+			c.line,
+			bad_problems,
+		)
+		for &each in bad_parsed {
+			destroy_program(&each)
+		}
+	}
+}
+
+/*
+FIXED CARDS (`north holds: AKQ32.K2.QJ3.432`) are DEALT, not waited for: a whole hand fixed to North comes up on every
+deal, where reject sampling would never meet it, and the rest of the scenario is measured given those cards. Both
+spellings read the same, the line prints back in PBN's dots, and the mistakes one diagnostic each.
+*/
+@(test)
+test_fixed_cards_are_dealt :: proc(t: ^testing.T) {
+	source := "scenario x\n  north holds: AKQ32.K2.QJ3.432\n  south holds: T98..A.\n  south: hcp >= 4\n"
+	program, ok := parse_one(t, source)
+	if !ok {return}
+	defer destroy_program(&program)
+	testing.expect_value(t, write_program(&program, context.temp_allocator), source)
+
+	condition := condition(&program)
+	deals := make([dynamic]norn.Deal, 0, 300, context.temp_allocator)
+	tables := make([dynamic]norn.Table, 0, 300, context.temp_allocator)
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 20261110)
+	_, attempts := norn.collect_accepted(&deals, &tables, 300, .Pretty, condition, max_attempts = 100_000)
+	testing.expect_value(t, len(deals), 300)
+	testing.expectf(t, attempts < 600, "%d deals dealt for 300 kept: the fixed cards were waited for", attempts)
+	for deal in deals {
+		summary := norn.summarize_deal(deal)
+		n, s := summary[.North], summary[.South]
+		ok_north :=
+			norn.spade_length(n) == 5 && norn.heart_length(n) == 2 && norn.holds(n, .Spades, .Ace) &&
+			norn.holds(n, .Diamonds, .Queen) && norn.holds(n, .Clubs, .Three)
+		ok_south := norn.holds(s, .Spades, .Ten) && norn.holds(s, .Spades, .Nine) && norn.holds(s, .Diamonds, .Ace)
+		if !testing.expect(t, ok_north && ok_south && norn.hcp(s) >= 4, "a kept deal without its fixed cards") {
+			break
+		}
+	}
+	// Tested as well as dealt: without the predeal (a deal from outside), a deal without the cards is not kept.
+	testing.expect(t, !evaluate(norn.summarize_deal(norn.deal_hands()), {}, &program), "a random deal holds North's 13 cards")
+
+	named, named_ok := parse_one(t, "scenario y\n  north holds: S:AKQ ♥K d10\n")
+	if named_ok {
+		testing.expect_value(t, write_program(&named, context.temp_allocator), "scenario y\n  north holds: AKQ.K.T.\n")
+		destroy_program(&named)
+	}
+
+	cases := []struct {
+		line: string,
+		says: string,
+	} {
+		{"  north holds: AKQ.K2", "four suits"},
+		{"  north holds: AKX...", "a card is A K Q J T"},
+		{"  north holds: AKA...", "named twice"},
+		{"  north holds: X:AK", "expected the cards"},
+		{"  north holds: AKQJT98765432.A..", "13 cards"},
+		{"  north holds: A...\n  south holds: A...", "north's already"},
+		{"  north-south holds: A...", "one seat's cards"},
+		{"  north holds:", "expected the cards"},
+	}
+	for c in cases {
+		bad := strings.concatenate({"scenario x\n", c.line, "\n"}, context.temp_allocator)
+		bad_parsed, problems := parse(bad, "f.scenario", context.temp_allocator)
+		testing.expectf(t, len(problems) >= 1 && strings.contains(problems[0].message, c.says), "%q: %v", c.line, problems)
+		for &each in bad_parsed {
 			destroy_program(&each)
 		}
 	}

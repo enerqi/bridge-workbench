@@ -894,6 +894,8 @@ NEW_SCENARIO_TEMPLATE :: `# A scenario is a name, a description, and one line pe
 #   quantities   hcp  controls  spades  hearts  diamonds  clubs  longest
 #   comparisons  <  <=  =  !=  >=  >        or a range:  hcp in 15..17
 #   against each other, and added up:       spades > hearts    spades + hearts >= 9
+#   with a number on the end:               spades >= hearts + 2
+#   card pools   cards(spades, AKQ) >= 2    two of the top three spades
 #   other atoms  balanced   holds(spades, ace)
 #   names        ready-made helpers, some written for one bidding system - press words to list them
 #
@@ -1503,6 +1505,8 @@ scenario_words :: proc(app: ^App) {
       deal: <condition>             each part names its hand: north(...)
       dealer: <seat>                who deals every board (else drawn per deal)
       vulnerability: <who>          none / north-south / east-west / both
+      <seat> holds: <cards>         cards fixed to that seat, dealt every time:
+                                    AKQ32.K2.QJ3.432 (PBN, spades first) or S:AKQ H:K
       also "<name>" <seat>: <cond>  an alternative, named on the deals it lets in
 
 The lines AND together. Within a condition:
@@ -1514,6 +1518,8 @@ The lines AND together. Within a condition:
     in <low>..<high>               a range         hcp in 15..17
     <number> <op> <number>         one against another   spades > hearts
     <number> + <number>            added up (up to four) spades + hearts >= 9
+    ... + 2   ... - 2              a number on the end   spades >= hearts + 2
+    cards(<suit>, <cards>)         how many it holds     cards(spades, AKQ) >= 2
     balanced                       norn's own definition
     holds(<suit>, <rank>)          holds(spades, ace)
     seat                           the hand's place in the auction, 1 = dealer
