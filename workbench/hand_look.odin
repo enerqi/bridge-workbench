@@ -164,6 +164,8 @@ load_file_with_look :: proc(app: ^App, asset: ^sciter.Som_Asset_T, path: string)
 reshow_page_for_look :: proc(app: ^App) {
 	if app.showing_analysed {
 		_ = show_analysed_page(app)
+	} else if app.showing_lead {
+		_ = show_lead_page(app, app.lead_row)
 	} else if app.shown_path != "" && strings.has_suffix(strings.to_lower(app.shown_path, context.temp_allocator), ".html") {
 		path := strings.clone(app.shown_path, context.temp_allocator) // `show_page_file` replaces it
 		_ = show_page_file(app, path, take_keyboard = false)

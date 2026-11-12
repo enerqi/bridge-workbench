@@ -139,6 +139,8 @@ show_look_hand :: proc(app: ^App) -> string {
 	switch {
 	case app.showing_analysed && app.analysed_page != "":
 		page, about = app.analysed_page, "the analysed page in the hand pane"
+	case app.showing_lead && app.lead_row >= 0 && shown_lead_html(app) != "":
+		page, about = shown_lead_html(app), "the lead problem's layouts in the hand pane"
 	case app.shown_path != "" && strings.has_suffix(strings.to_lower(app.shown_path, context.temp_allocator), ".html"):
 		if data, err := os.read_entire_file(app.shown_path, context.temp_allocator); err == nil {
 			url, _ := strings.replace_all(app.shown_path, `\`, "/", context.temp_allocator)

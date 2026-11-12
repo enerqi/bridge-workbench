@@ -529,6 +529,30 @@ check_the_window_bugs :: proc(view: ^sa.Windowless_View, root: sa.Element) {
 		}
 	}
 
+	// 5. THE PAGE'S OWN HELP, the toolbar's `?`: the same kind of card, and its close button closes it.
+	if close, err := sa.select_first(root, "#nc-cca-help-close"); err == nil {
+		sa.do_click(close)
+		pump(view, 32)
+	}
+	if btn, err := sa.select_first(root, "#nc-page-help"); err == nil {
+		sa.do_click(btn)
+		pump(view, 64)
+		if card, cerr := sa.select_first(root, "#nc-page-help-modal .cca-help-card"); cerr == nil {
+			cb, _ := sa.location(card, .Border, .Root)
+			check(cb.height > 200 && int(cb.y + cb.height) <= VIEW_HEIGHT, fmt.tprintf("the page's help card opens and fits (%dx%d)", cb.width, cb.height))
+		} else {
+			check(false, "the page has its help card")
+		}
+		if x, xerr := sa.select_first(root, "#nc-page-help-close"); xerr == nil {
+			sa.do_click(x)
+			pump(view, 32)
+		}
+		closed := eval_text(root, `(function(){ var m = document.getElementById('nc-page-help-modal'); return m && m.hasAttribute('hidden') ? 'hidden' : 'shown'; })()`)
+		check(closed == "hidden", fmt.tprintf("and its close button closes it (%s)", closed))
+	} else {
+		check(false, "the toolbar has the page's ? button")
+	}
+
 	// 5. FOCUSING A HAND RESIZES IT AT ONCE. The `only-<seat>` class raises the hand's font-size, and with a
 	//    `transition` pending the engine applied it only at the next restyle — on screen the card grew a
 	//    beat late, on the next hover, which read as the click lagging.

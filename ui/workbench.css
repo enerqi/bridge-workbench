@@ -789,7 +789,7 @@ button.ghost:disabled {
 	background: var(--line);
 }
 
-#fill, #analyse-fill {
+#fill, #analyse-fill, #lead-fill {
 	width: 0px;
 	height: *;
 	border-radius: 4px;
@@ -806,7 +806,7 @@ button.ghost:disabled {
 	margin-right: 0;
 }
 
-#analyse-fill {
+#analyse-fill, #lead-fill {
 	display: block;
 }
 

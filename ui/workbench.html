@@ -142,7 +142,7 @@
       <div class="line">
         <span class="barlabel field-label">keys</span>
         <button class="small" id="prefs-keys" title="Every keyboard shortcut in this window (ctrl+/)"
-                data-hint="The list of every keyboard shortcut: moving between views, zoom, the hand page, the scenario list, the editors. Ctrl+/ opens it from anywhere; esc comes back here.">show all shortcuts<span class="kbd">ctrl+/</span></button>
+                data-hint="The list of every keyboard shortcut: moving between views, zoom, the hand page, the scenario list, the editors. ctrl+/ opens it from anywhere; esc comes back here.">show all shortcuts<span class="kbd">ctrl+/</span></button>
       </div>
       <div class="about-line">
         Moving between views, zoom, the hand page, the scenario list and the editors. The keys are fixed.
@@ -471,7 +471,7 @@
          a test asserts that every key the handler implements is named here, which is what stops the two
          drifting. -->
     <div class="keyspanel" id="keyspanel" style="display:none" tabindex="0"
-         data-hint="Every keyboard shortcut in this window. CTRL+/ opens and closes it.">
+         data-hint="Every keyboard shortcut in this window. ctrl+/ opens and closes it.">
       <div class="tagpicker-head">
         <span class="title">keys</span>
         <span class="keys">esc or ctrl+/ closes</span>
@@ -498,7 +498,7 @@
         <div class="krow"><span class="k"><b>ctrl+b</b></span><span class="d">fold the scenario list away, or bring it back</span></div>
         <div class="krow"><span class="k"><b>ctrl+t</b><b>ctrl+\</b></span><span class="d">the hand page: closed → beside the controls → the whole width (shift: back the other way)</span></div>
         <div class="krow"><span class="k"><b>ctrl+o</b></span><span class="d">open the next format this scenario has (shift: the previous one)</span></div>
-        <div class="krow"><span class="k"><b>ctrl+enter</b></span><span class="d">generate — shift: analyse the deal instead</span></div>
+        <div class="krow"><span class="k"><b>ctrl+enter</b></span><span class="d">generate — shift: analyse the deal instead; alt: a lead problem</span></div>
         <div class="krow"><span class="k"><b>ctrl+l</b></span><span class="d">copy a link to the hand page — shift: show it as a QR code</span></div>
         <div class="krow"><span class="k"><b>ctrl+shift+b</b></span><span class="d">open the hand page in your web browser</span></div>
 
@@ -598,36 +598,36 @@
       file, see it rendered as a page, save it. Any folder of <code>.bml</code> files will do — add yours with
       <b>add…</b> under notes folders.</p>
       <ul>
-        <li><b>preview</b> (closed / beside / full width, <b>CTRL+T</b>) shows the rendered page and keeps up
+        <li><b>preview</b> (closed / beside / full width, <b>ctrl+t</b>) shows the rendered page and keeps up
             as you type, re-rendering when you pause.</li>
         <li><b>save</b> writes the file.</li>
-        <li><b>fold</b> collapses the file to its headings, keeping the caret's section open. Remembered per file.</li>
-        <li><b>CTRL+R</b> jumps to any heading in any file in the folder. The letters only need to be in order
+        <li><b>fold</b> collapses the file to its headings, keeping the caret's section open. Each file remembers whether it was folded.</li>
+        <li><b>ctrl+r</b> jumps to any heading in any file in the folder. The letters only need to be in order
             (<code>lbn</code> would find Lebensohl), and dashes don't matter (<code>1h 1s</code> finds 1H-1S).</li>
-        <li><b>CTRL+K</b> links to a heading: pick it the same way and <code>[name](#name)</code> is written at the
+        <li><b>ctrl+k</b> links to a heading: pick it the same way and <code>[name](#name)</code> is written at the
             caret - or type <code>](#</code> and the list opens to finish it. A heading in another document (one
             that is not part of this file's) is linked as <code>other.html#...</code>, so the link works on the page.</li>
-        <li><b>CTRL+I</b> inserts BML you may not remember the shape of: <code>#CUT</code>/<code>#PASTE</code> with
+        <li><b>ctrl+i</b> inserts BML you may not remember the shape of: <code>#CUT</code>/<code>#PASTE</code> with
             replacements, <code>#HIDE</code>, <code>#INCLUDE</code>, competitive
             headers, lists, bold/italic/monospace.</li>
-        <li><b>guide</b> (<b>CTRL+G</b>) shows every piece of BML in the preview - its text beside how the page draws it - with an
+        <li><b>guide</b> (<b>ctrl+g</b>) shows every piece of BML in the preview - its text beside how the page draws it - with an
             <b>insert</b> link on each that writes it at the caret.</li>
         <li><b>Completion</b>: after three letters of a word in a description, the status line names a bridge term
-            (<i>tab →</i> Lebensohl). <b>Tab</b> writes it, <b>Ctrl+Space</b> steps to the next, <b>Esc</b> drops
+            (<i>tab →</i> Lebensohl). <b>tab</b> writes it, <b>ctrl+space</b> steps to the next, <b>esc</b> drops
             it. Settings &gt; Notes completion turns it off or adds this folder's own words; a <code>lexicon.txt</code>
             in the notes folder adds your terms, one a line.</li>
         <li>Typing <b>=</b> after a bid writes <code> = </code> and capitalises the bid (<code>1c</code> → <code>1C</code>);
             a space after a lone bid under a bid row does the same, and shift+space is a plain space.</li>
-        <li><b>Tab</b> indents with spaces to the next 4-column stop, <b>Enter</b> keeps the line's indent,
-            <b>Backspace</b> in an indent goes back a level of the bid table above, Enter in an auction lines its
-            calls up in columns, a <code>#+CAPTION: title</code> line just above a diagram, auction or table
-            titles it without starting a section, <code>#BOX</code> ... <code>#ENDBOX</code> puts the diagram or
-            auction it starts with on the left and the text after it beside them (<code>#BOX note</code>,
-            <code>tip</code> or <code>warning</code>, with a title after it if you like, frames it as a coloured
-            callout), and
-            <b>tidy</b> (under "this document") re-indents a whole file's bid tables 4 spaces a level.</li>
-        <li>In a <code>| cell | cell |</code> table, <b>Tab</b> lines the columns up and goes to the next cell,
-            <b>Shift+Tab</b> to the previous one; past the last cell it adds a row.</li>
+        <li><b>Editing keys</b>: <b>tab</b> indents to the next 4-column stop; <b>enter</b> keeps the line's
+            indent, and in an auction lines its calls up in columns; <b>backspace</b> in an indent goes back one
+            level of the bid table above. <b>tidy</b> (under "this document") re-indents every bid table in the
+            file, 4 spaces a level.</li>
+        <li><b>Laying out the page</b>: a <code>#+CAPTION: title</code> line just above a diagram, auction or table
+            gives it a title without starting a section. <code>#BOX</code> ... <code>#ENDBOX</code> puts the diagram
+            or auction it starts with on the left and the text after it beside it; <code>#BOX note</code>,
+            <code>tip</code> or <code>warning</code> (a title after it if you like) makes it a coloured callout.</li>
+        <li>In a <code>| cell | cell |</code> table, <b>tab</b> lines the columns up and goes to the next cell,
+            <b>shift+tab</b> to the previous one; past the last cell it adds a row.</li>
         <li><b>Squiggles</b> are problems the parser found — hover one to read it. Red means something will be
             missing from the page; yellow is a warning.</li>
         <li><b>links</b> also checks cross-references. It is off by default: a file that is one chapter of a
@@ -821,7 +821,7 @@
       and one line per seat.</p>
       <ul>
         <li>A seat line combines <code>hcp</code>, the suit lengths, <code>controls</code>, <code>balanced</code>,
-            <code>holds(spades, ace)</code> and more with <b>and</b>, <b>or</b>, <b>not</b>, comparisons and ranges
+            <code>holds(spades, ace)</code>, a defender who passed (<code>east: silent(1, hearts)</code>) and more with <b>and</b>, <b>or</b>, <b>not</b>, comparisons and ranges
             (<code>hcp in 15..17</code>). All the seat lines must hold. <b>words</b> lists everything you can use.</li>
         <li><b>check</b> spells back what it understood, underlines anything wrong, and measures how often the
             scenario happens — so you find out a condition is too tight before generating.</li>
@@ -987,7 +987,28 @@
            (ctrl+r / ctrl+g / ctrl+/) is gone: the filter's placeholder says ctrl+r and the groups button's
            tooltip ctrl+g. While `every scenario` is ticked the title says so (`draw_scenarios`). -->
       <div class="side-head">
-        <div class="side-title" id="scenario-title">scenarios <span class="side-count" id="scenario-count"></span><span class="side-all" id="scenario-all"></span></div>
+        <div class="side-title" id="scenario-title">scenarios <span class="side-count" id="scenario-count"></span><span class="side-all" id="scenario-all"></span><button class="help-toggle ghost small" id="help-deals" title="How does this view work? (f1)"
+                data-hint="Explain the scenario list, the hand page beside it and the buttons over the page.">?</button></div>
+        <div class="panel-help" id="help-deals-text">
+          <p>Pick a bidding situation on the left, deal hands for it in the middle, and read them on the right.</p>
+          <ul>
+            <li>A <b>scenario</b> is an auction and the hands that fit it. The list holds the built-in ones and any you
+                wrote under <b>my scenarios</b>. The menu above it shows one <b>system</b>'s scenarios (plus those
+                that belong to no system); <b>groups</b> (<b>ctrl+g</b>) narrows the list to topics, and the filter
+                (<b>ctrl+r</b>) to names you type.</li>
+            <li><b>pages in</b> is the folder the pages are written to and read back from. The small tags on a row
+                say which kinds of file that scenario already has there.</li>
+            <li>The <b>hand page</b> opens beside the panels when there is a page to show: generate, analyse and lead
+                problems all put theirs there, and picking a scenario shows its page while the page is open. The
+                buttons at the top right put it <b>closed</b>, <b>beside</b> the panels or <b>wide</b>; closing it
+                also frees the memory a big page holds.</li>
+            <li>Over the page: <b>↗ browser</b> opens it in your web browser, <b>share link</b> copies a link that
+                rebuilds these deals in anyone's browser, <b>QR</b> shows that link for a phone to scan.</li>
+            <li>On the page itself, the arrow keys step through the boards and <b>a</b> / <b>n</b> / <b>e</b> /
+                <b>s</b> / <b>w</b> show all four hands or one seat's. Hover over anything there for what it does.</li>
+            <li>Drag the thin lines between the panes to resize them. <b>ctrl+/</b> lists every keyboard shortcut.</li>
+          </ul>
+        </div>
         <!-- WHOSE MEANINGS THE LIST SHOWS (2026-11-05): one system, or every system. Not a group - the groups are
              topics that combine with OR, and a system is one choice for the whole list, made once and remembered.
              Scenarios of no system (hand types, partnership totals, the opponents' bidding) show under every one.
@@ -1017,8 +1038,8 @@
              found in the help panel, which is the same complaint one level down: a shortcut nothing on
              screen mentions is a shortcut for whoever wrote it. -->
         <input type="text" id="scenario-filter" class="filter"
-               title="Narrow the list to the scenarios you name (CTRL+R)"
-               data-hint="Narrow the list to the scenarios whose name or description matches what you type. Spaces and dashes are separators, so `1c 2h` finds `1c-2h-or-2n`. CTRL+R puts the caret here, the up and down arrows move the selection, and escape clears it."
+               title="Narrow the list to the scenarios you name (ctrl+r)"
+               data-hint="Narrow the list to the scenarios whose name or description matches what you type. Spaces and dashes are separators, so `1c 2h` finds `1c-2h-or-2n`. ctrl+r puts the caret here, the up and down arrows move the selection, and escape clears it."
                placeholder="filter  (ctrl+r)">
 
         <!-- THE GROUPS THAT ARE SELECTED, one removable chip each, and NOTHING AT ALL when none are. They
@@ -1035,12 +1056,12 @@
 
              `.on` while any group is selected, so the control says the list is narrowed even when the chips
              beside it have scrolled out of a cramped bar. -->
-        <button id="deal-groups" class="ghost icon-text" title="Pick the scenario groups (CTRL+G)"
-                data-hint="Choose which groups of scenarios the list is drawn from — several at once shows the scenarios in any of them. CTRL+G opens it too."><i class="icon stack"><i class="lane on"></i><i class="lane"></i><i class="lane on"></i></i>groups</button>
+        <button id="deal-groups" class="ghost icon-text" title="Pick the scenario groups (ctrl+g)"
+                data-hint="Choose which groups of scenarios the list is drawn from — several at once shows the scenarios in any of them. ctrl+g opens it too."><i class="icon stack"><i class="lane on"></i><i class="lane"></i><i class="lane on"></i></i>groups</button>
 
         </div>
         <div class="tagchips" id="tagchips" style="display:none"
-             data-hint="The scenario groups the list is narrowed to. Press one to stop filtering by it. CTRL+G picks them."></div>
+             data-hint="The scenario groups the list is narrowed to. Press one to stop filtering by it. ctrl+g picks them."></div>
         <div class="side-row side-folder">
         <label for="outdir" class="side-label">pages in</label>
         <input type="text" id="outdir" class="quiet"
@@ -1179,6 +1200,123 @@
              GENERATING has written for the selected scenario, so they sit with generate. -->
         <div class="line outputs" id="outputs" style="display:none"
              data-hint="What generate has already written for the scenario selected in the list. Press one to open that format - the page in the pane, a pbn or text file as text, a handviewer page in your browser."></div>
+        </div>
+      </div>
+
+      <!-- LEAD PROBLEMS (LEAD_PROBLEM_PLAN.md), a panel of their own (2026-11-11): its settings sat at the foot of
+           generate's and read as more options of generating (reported), and its button was a quiet ghost beside
+           `regenerate`. It is a third thing the window does with the selected scenario - deal one hand of it as
+           the opening leader's and solve every lead - so it has generate's and analyse's shape: a title that
+           folds, `?`, its own seed, a primary button, its own progress and status. Settings remembered per
+           scenario (workbench/lead.odin); the problem is a page in the hand pane; the report pane gets one line
+           with its seed, never the ranking (it gave the answer away). -->
+      <div class="panel">
+        <div class="legend">
+          <button class="fold" id="fold-lead"><span class="chev" id="fold-lead-chev">▾</span><svg class="ic section-ic" viewBox="0 0 24 24"><path fill="currentColor" d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>lead problems</button>
+          <button class="help-toggle ghost small" id="help-lead" title="What is a lead problem? (f1 with the focus in this panel)"
+                  data-hint="Explain what this panel is for.">?</button>
+        </div>
+        <div class="panel-body" id="lead-body">
+        <div class="panel-help" id="help-lead-text">
+          <p>What do you lead? You are given the opening leader's hand from the selected scenario. The other three
+          hands are then dealt many times over - each time still fitting the scenario; each of these is a
+          <i>layout</i> - and every card you could lead is tried on every layout, played <i>double dummy</i>: every
+          card visible, best play by everyone. The answer ranks the leads by how often they beat the contract.</p>
+          <ul>
+            <li><b>lead against</b> is the contract; leave it empty and it is chosen from the declaring side's
+                cards on each layout. <b>by</b> is the declarer - the leader sits on their left - or, with no
+                contract, a side whose hands the rules choose between.</li>
+            <li><b>layouts</b>: how many deals the leads are solved on, quick to deep. Four times the layouts halves
+                the margins and takes four times as long.</li>
+            <li><b>seed</b>: empty for a new problem each time; a number gives the same problem back.</li>
+            <li>A DEALT hand asks for your lead first: click a card in the hand, and the ranking appears with your
+                lead marked. The line under the buttons keeps the score for this window. A hand your scenario fixes
+                (a <code>holds:</code> line) is answered at once.</li>
+            <li>Reading the answer: <b>beats it</b> is the share of layouts the lead sets the contract on, with how
+                far that figure could be off (<code>40% ± 7</code>: somewhere from 33 to 47); <b>tricks</b> is the
+                defence's average; <b>cost</b> is how many tricks a layout the lead gives away against the best one.
+                Click a heading to sort by it.</li>
+            <li>Click a line of the answer to see the layouts where that lead did worst, drawn small; from there they
+                open as card pages. <b>next problem</b> deals another.</li>
+            <li><b>scoring</b> says what the best lead is. <b>beats it</b>: the lead that sets the contract most
+                often. <b>IMPs</b> (teams) and <b>MP</b> (pairs) score each layout's result against the field's,
+                and the field leads the card that takes the most tricks. At IMPs a set against a game is worth about
+                ten overtricks, so the lead that sets it more often wins even if it sometimes gives a trick away. At
+                matchpoints any better result is a top and any worse one a bottom, so a lead that never gives a
+                trick away is hard to beat. Vulnerability is the problem's own, shown under the auction; no
+                contract is doubled.</li>
+            <li>The line under the buttons is your score for this window: problems answered, how many with the best
+                lead, the tricks your leads gave away in all, and at IMPs or MP what your leads scored against the
+                field.</li>
+            <li>The layouts are only as real as the scenario. If the defenders passed, say so in it -
+                <code>east: silent(1, hearts)</code>, <code>west: silent(2, hearts)</code> - or the leader and
+                partner may be dealt hands that would have bid (<b>words</b> in my scenarios explains it).</li>
+          </ul>
+        </div>
+        <div class="line field">
+          <label for="lead-contract">lead against</label>
+          <input type="text" id="lead-contract" class="num" placeholder="chosen" title="The contract led against: 4S, 3NT"
+                 data-hint="The contract the lead problem is against (4S, 3NT). Leave it empty and it is chosen from the declaring side's cards on each layout, by fit, stoppers and strength: the most common choice is the contract.">
+        </div>
+        <div class="line field">
+          <label for="lead-by">by</label>
+          <select id="lead-by" title="Who declares; the leader is on their left"
+                  data-hint="Who declares. The leader is declarer's left-hand opponent, and that is the hand you are given. With no contract, a side may be named: the rules pick which of its hands declares.">
+            <option value="north">north</option>
+            <option value="east">east</option>
+            <option value="south" selected>south</option>
+            <option value="west">west</option>
+            <option value="north-south">north-south</option>
+            <option value="east-west">east-west</option>
+          </select>
+        </div>
+        <!-- SCORING: what the leads are ranked by. At IMPs and matchpoints each lead is scored against the field's
+             lead (the one taking the most tricks), layout by layout. -->
+        <div class="line field">
+          <label>scoring</label>
+          <div class="seg" id="lead-scoring" title="What the leads are ranked by"
+               data-hint="beats it ranks the leads by how often they set the contract. IMPs scores each layout's result against the field's (which leads the card taking the most tricks) on the IMP scale, where a set against a game is worth about ten overtricks. MP scores it at matchpoints: better than the field's result is a top, the same is half, so an overtrick counts as much as a set. Vulnerability is the problem's table.">
+            <button class="segbtn on" data-lead-scoring="beats" title="How often each lead sets the contract">beats it</button>
+            <button class="segbtn" data-lead-scoring="imps" title="Teams: IMPs against the field's lead">IMPs</button>
+            <button class="segbtn" data-lead-scoring="mp" title="Pairs: matchpoints against the field's lead">MP</button>
+          </div>
+        </div>
+        <!-- DEPTH, a few stops rather than a number to type (asked for: "a slider with a few choices to balance speed
+             vs depth"): the window's segmented control, the lit stop the setting. Each stop doubles or so the work;
+             the margin shrinks with its square root, which the line under it says. -->
+        <div class="line field">
+          <label>layouts</label>
+          <div class="seg" id="lead-depth" title="How many layouts the leads are solved on: quick to deep"
+               data-hint="How many deals, fitting the scenario with the leader's hand fixed, every lead is solved on double dummy. More layouts narrow the margins and take longer: four times the layouts halves the margin.">
+            <button class="segbtn" data-lead-layouts="50" title="Quick: margins about ±14">50</button>
+            <button class="segbtn" data-lead-layouts="100" title="Margins about ±10">100</button>
+            <button class="segbtn on" data-lead-layouts="200" title="Margins about ±7">200</button>
+            <button class="segbtn" data-lead-layouts="400" title="Margins about ±5">400</button>
+            <button class="segbtn" data-lead-layouts="1000" title="Deep: margins about ±3, and slow">1000</button>
+          </div>
+        </div>
+        <div class="line field note">
+          <span class="output-note" id="lead-depth-note" data-hint="What the chosen depth buys: the widest margin on a lead's beats-it figure, and the time.">margins up to ±7%</span>
+        </div>
+        <div class="line field">
+          <label for="lead-seed">seed</label>
+          <input type="text" id="lead-seed" class="num" placeholder="fresh" title="Repeat the same problem"
+                 data-hint="Leave empty for a new problem every time. Put a number in to get the SAME problem back. next problem always deals a new one.">
+        </div>
+        <div class="line actions">
+          <button id="lead-problem" title="What do I lead? One hand of this scenario, every lead solved (ctrl+alt+enter)"
+                  data-hint="Deal one hand of the selected scenario as the opening leader's, then solve every lead of it double dummy over the layouts, and rank them: how often each beats the contract, and its tricks. The problem opens in the hand pane, asking for your lead first when the hand was dealt (click a card of it); a line of the answer opens the layouts where that lead did worst.">lead problem<span class="kbd">ctrl+alt+enter</span></button>
+          <button id="lead-show" class="ghost" disabled title="Put the last lead problem back in the pane"
+                  data-hint="Shows the last lead problem again - after its layouts or another page have taken the pane - without solving it again.">show problem</button>
+          <span class="busy" id="lead-busy" style="display:none"
+                data-hint="A lead problem is being dealt and solved."><i class="spinner"></i><span id="lead-busy-text">solving…</span><span class="track mini"><span id="lead-fill"></span></span></span>
+        </div>
+        <div class="line status-line">
+          <span class="status" id="lead-status" data-hint="What the last lead problem did, or why it would not start."></span>
+        </div>
+        <div class="line status-line">
+          <span class="status" id="lead-score" data-hint="The lead problems answered in this window: how many, how many with the best lead, the tricks the other leads gave away against the best, and at IMPs or MP what your leads scored against the field. A dealt hand asks for your lead before it shows the ranking."></span>
+        </div>
         </div>
       </div>
 
@@ -1333,11 +1471,11 @@
              the same; the window's CTRL+wheel/plus/minus leaves the page where it is. -->
         <div class="seg" id="page-zoom">
           <button class="segbtn" id="page-zoom-out" title="Smaller hand page (ctrl+wheel over the page)"
-                  data-hint="Make the hand page smaller - only the page, not the rest of the window. CTRL+wheel over the page does the same.">−</button>
+                  data-hint="Make the hand page smaller - only the page, not the rest of the window. ctrl+wheel over the page does the same.">−</button>
           <button class="segbtn" id="page-zoom-reset" title="Hand page back to 100%"
                   data-hint="Put the hand page back to 100% - the size a browser draws it - whatever the window's own zoom is."><span id="page-zoom-level">100%</span></button>
           <button class="segbtn" id="page-zoom-in" title="Bigger hand page (ctrl+wheel over the page)"
-                  data-hint="Make the hand page bigger - only the page, not the rest of the window. CTRL+wheel over the page does the same.">+</button>
+                  data-hint="Make the hand page bigger - only the page, not the rest of the window. ctrl+wheel over the page does the same.">+</button>
         </div>
         <!-- OUT OF THE WINDOW, whatever is in the pane. The chips answer "which file"; this answers "not
              here" - a browser has more room for a 48-deal page, a find-in-page and a print, and it is the
@@ -3739,13 +3877,13 @@
     if (WB_DRAG_LOG) console.log("wb-drag " + what);
   }
 
-  /* THE FRAME LOG (`WORKBENCH_FRAME_LOG=1`): while the window is being RESIZED, every gap between painted
+  /* THE FRAME LOG (`WORKBENCH_FRAME_LOG=1`): while the window is being RESIZED or a divider DRAGGED, every gap between painted
      frames longer than 40ms, with the window's size and whether the hand page is open - and, when a resize
      stops, the burst's frame count and worst gap. Reported: "moving the workbench window around is smooth,
      resizing is not". The cost is layout and paint inside the engine, which no host call can time; the gap
      between animation frames is where it shows. Off otherwise: an endless frame loop is not free. */
   function wbFrameLog() {
-    var last = Date.now(), resized = 0, frames = 0, worst = 0, slow = 0;
+    var last = Date.now(), resized = 0, frames = 0, worst = 0, slow = 0, what = "resize";
     // The SIZE is compared on every frame rather than heard from a `resize` event: in this engine the event
     // did not arrive (measured - the first version of this log printed nothing through a whole resize).
     var root = document.documentElement, seenW = root.clientWidth, seenH = root.clientHeight;
@@ -3753,30 +3891,41 @@
       var p = document.$("#pageview");
       if (!(p && p.style.getPropertyValue("display") != "none")) return "page closed";
       var title = document.$("#page-title");
-      return "page open: " + (title ? title.textContent : "?");
+      // WHAT IS BEING LAID OUT, so a log says which run it came from: the framed document's element count and the
+      // report pane's lines (a long transcript re-wraps when the controls' width changes).
+      var frame = document.$("#page"), count = "?";
+      try { count = frame.frame.document.querySelectorAll("*").length; } catch (e) {}
+      var report = document.$("#report");
+      return "page open: " + (title ? title.textContent : "?") + "; " + count + " page elements; report " +
+             (report ? report.children.length : "?") + " lines";
     }
     function tick() {
       var now = Date.now(), gap = now - last;
       last = now;
       if (root.clientWidth != seenW || root.clientHeight != seenH) {
-        seenW = root.clientWidth; seenH = root.clientHeight; resized = now;
+        seenW = root.clientWidth; seenH = root.clientHeight; resized = now; what = "resize";
       }
+      // A DIVIDER DRAG counts too (2026-11-11): reported, a pane drag was slow while the window's resize was
+      // fast, and the log heard only the second.
+      if (wbDrag) { resized = now; what = "drag " + (wbDrag.divider.parentElement.id || "?"); }
       if (now - resized < 300) {
         frames += 1;
         if (gap > worst) worst = gap;
         if (gap > 40) {
           slow += 1;
-          console.log("wb-frame " + gap + "ms at " + document.documentElement.clientWidth + "x" +
-                      document.documentElement.clientHeight + " (" + pageOpen() + ")");
+          console.log("wb-frame " + what + " " + gap + "ms at " + document.documentElement.clientWidth + "x" +
+                      document.documentElement.clientHeight + " (" + pageOpen() + ")" +
+                      (what == "resize" ? "" : "; " + wbDragMoves + " moves in it, " + wbDragMoveMs + "ms in their handler"));
         }
       } else if (frames > 0) {
-        console.log("wb-frame resize done: " + frames + " frames, " + slow + " over 40ms, worst " + worst + "ms (" + pageOpen() + ")");
+        console.log("wb-frame " + what + " done: " + frames + " frames, " + slow + " over 40ms, worst " + worst + "ms (" + pageOpen() + ")");
         frames = 0; worst = 0; slow = 0;
       }
+      wbDragMoves = 0; wbDragMoveMs = 0;
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
-    console.log("wb-frame logging frame gaps while the window is resized");
+    console.log("wb-frame logging frame gaps while the window is resized or a divider dragged");
   }
 
   function wbIsDivider(element) {
@@ -3845,6 +3994,7 @@
      any release, on any move without the button, and whatever happens it cannot outlive the button. */
   function wbEndDrag() {
     if (!wbDrag) return;
+    wbApplyDragMove(); // the last move waiting for its frame: the host reads the widths it writes
     var d = wbDrag;
     wbDrag = null;
     d.divider.state.capture(false);
@@ -3863,16 +4013,41 @@
     d.split.postEvent(new Event("wb-split-dragged", { bubbles: true }));
   }
 
+  // How many moves a drag frame took and how long they ran, for the frame log: a slow frame with one move in it is
+  // the engine's; one with fifty is the moves piling up.
+  var wbDragMoves = 0, wbDragMoveMs = 0;
   document.on("mousemove", function (evt) {
     if (!wbDrag) return;
+    var moveStart = Date.now();
+    try { return wbDragMove(evt); } finally { wbDragMoves += 1; wbDragMoveMs += Date.now() - moveStart; }
+  });
+  function wbDragMove(evt) {
     // The button came up somewhere we did not hear. Only when the engine says so: an event without a
     // `buttons` field must not end every drag at its first move.
     if (typeof evt.buttons === "number" && !(evt.buttons & 1)) { wbEndDrag(); return; }
     var d = wbDrag;
-    var total = d.widths[d.left] + d.widths[d.right];
     var leftWidth = d.widths[d.left] + (evt.screenX - d.startX);
     if (!(leftWidth === leftWidth)) return; // NaN: an event without coordinates
     wbDragLog("move x=" + evt.screenX + " target=" + (evt.target ? evt.target.tagName : "?") + " left=" + leftWidth);
+    /* ONE WRITE A FRAME, the latest move's. The engine lays the window out again after every event whose handler
+       changed a style, so a fast mouse paid one layout per move: the frame log showed 133 moves in one 1961ms
+       frame whose handlers ran 67ms of it (~14ms of layout a move), and slower drags were smooth. The move keeps
+       only its width; the frame writes it. */
+    d.pending = leftWidth;
+    if (!d.scheduled) {
+      d.scheduled = true;
+      requestAnimationFrame(wbApplyDragMove);
+    }
+    return true;
+  }
+  function wbApplyDragMove() {
+    var d = wbDrag;
+    if (!d) return;
+    d.scheduled = false;
+    if (d.pending === undefined) return;
+    var leftWidth = d.pending;
+    d.pending = undefined;
+    var total = d.widths[d.left] + d.widths[d.right];
     if (leftWidth < WB_PANE_MIN) leftWidth = WB_PANE_MIN;
     if (leftWidth > total - WB_PANE_MIN) leftWidth = total - WB_PANE_MIN;
     // ONLY THE TWO PANES BESIDE THE DIVIDER are written, in CSS px (on-screen / zoom). The right one is `1*`
@@ -3883,7 +4058,7 @@
     d.panes[d.right].style.setProperty("width",
       d.right === last ? "1*" : Math.round((total - leftWidth) / d.zoom) + "px");
     return true;
-  });
+  }
 
   document.on("mouseup", function (evt) {
     if (!wbDrag) return;

@@ -17,6 +17,7 @@ package main
 
 import "base:runtime"
 import "core:fmt"
+import "core:math/rand"
 import "core:log"
 import "core:os"
 import "core:path/filepath"
@@ -30,6 +31,7 @@ import "core:time"
 import "../analyse"
 import "../bidding"
 import "../deal_solve"
+import "../lead_problem"
 import "../outline"
 import "../par_caption"
 import "../prefs"
@@ -195,6 +197,7 @@ test_app_destroy :: proc(app: ^App, loc := #caller_location) {
 	delete(app.preview_clicked, app.allocator)
 	delete(app.shown_path, app.allocator)
 	delete(app.analysed_page, app.allocator)
+	free_lead_state(app)
 	clear_outputs(app)
 	delete(app.outputs)
 	delete(app.bml_open, app.allocator) // `open_bml` clones it onto the heap, as `main` frees at exit
@@ -505,7 +508,10 @@ test_every_control_is_documented :: proc(t: ^testing.T) {
 			"#clear",
 			"#about",
 			"#help-generate",
+			"#help-lead",
 			"#help-analyse",
+			"#lead-problem",
+			"#lead-seed",
 			`.tab[data-view="panes"]`,
 			`.tab[data-view="editor"]`,
 			"#deal-list-toggle",
@@ -598,7 +604,7 @@ test_the_panel_help_toggles :: proc(t: ^testing.T) {
 
 	for pair in ([]struct {
 			button, block: string,
-		}{{"#help-generate", "#help-generate-text"}, {"#help-analyse", "#help-analyse-text"}}) {
+		}{{"#help-generate", "#help-generate-text"}, {"#help-lead", "#help-lead-text"}, {"#help-analyse", "#help-analyse-text"}}) {
 		testing.expect_value(t, effective_display(&app, pair.block), "none") // closed to begin with
 
 		sa.do_click(find(&app, pair.button))
@@ -1751,15 +1757,24 @@ test_f1_opens_the_help_of_what_has_the_focus :: proc(t: ^testing.T) {
 	pump(&app)
 	testing.expect(t, !open(&app, "analyse"), "escape should put it away")
 
-	// The focus in neither panel: both, and F1 again closes both. A folded generate panel unfolds.
+	// The focus in the scenario list: the list's own help, which explains the view.
 	_ = sa.set_focus(find(&app, "#scenarios"))
+	press_key(&app, .F1)
+	pump(&app)
+	testing.expect(t, open(&app, "deals") && !open(&app, "generate"), "F1 in the scenario list should open the view's help")
+	press_key(&app, .F1) // not escape: the list answers its own (it clears the filter)
+	pump(&app)
+	testing.expect(t, !open(&app, "deals"), "and F1 again put it away")
+
+	// The focus in no panel (the report): all of them, and F1 again closes them. A folded generate panel unfolds.
+	_ = sa.set_focus(find(&app, "#report"))
 	fold_panel(&app, "generate", true)
 	press_key(&app, .F1)
 	pump(&app)
-	testing.expect(t, open(&app, "generate") && open(&app, "analyse"), "F1 outside the panels should open both")
+	testing.expect(t, open(&app, "deals") && open(&app, "generate") && open(&app, "analyse"), "F1 outside the panels should open them all")
 	press_key(&app, .F1)
 	pump(&app)
-	testing.expect(t, !open(&app, "generate") && !open(&app, "analyse"), "F1 again should close both")
+	testing.expect(t, !open(&app, "generate") && !open(&app, "analyse"), "F1 again should close them")
 	fold_panel(&app, "generate", false)
 
 	// The scenarios view has one.
@@ -1833,6 +1848,7 @@ test_the_keys_panel_names_every_shortcut :: proc(t: ^testing.T) {
 			"ctrl+\\",
 			"ctrl+o",
 			"ctrl+enter",
+			"alt: a lead problem",
 			"ctrl+/",
 			"f1",
 			"ctrl+,",
@@ -6827,7 +6843,7 @@ attach_for_test :: proc(app: ^App) {
 
 // A key press at the document ROOT, which is where a window handler hears it from whatever has the focus.
 @(private = "file")
-press_key :: proc(app: ^App, key: sciter.Sc_Kb_Codes, ctrl := false, shift := false) {
+press_key :: proc(app: ^App, key: sciter.Sc_Kb_Codes, ctrl := false, shift := false, alt := false) {
 	root := sa.root(app.window) or_else nil
 	if root == nil {
 		return
@@ -6835,6 +6851,7 @@ press_key :: proc(app: ^App, key: sciter.Sc_Kb_Codes, ctrl := false, shift := fa
 	states: sciter.Keyboard_States
 	if ctrl {states += {.LCONTROL}}
 	if shift {states += {.LSHIFT}}
+	if alt {states += {.LALT}}
 	_, _ = sa.send_key(root, .DOWN, u32(key), states)
 }
 
@@ -10291,7 +10308,11 @@ test_a_drag_cannot_outlive_the_button :: proc(t: ^testing.T) {
 	sa.windowless_mouse(&g_view, .MOUSE_DOWN, {x, y})
 	sa.windowless_mouse(&g_view, .MOUSE_MOVE, {x - 10, y})
 	pump(&app)
-	settled := pane_box(&app, ".work")
+	// Where that one move puts the controls: 10px narrower. Not measured here - the drag writes once a FRAME, and
+	// whether the frame has come by this pump is the wall clock's business; the sweep's first move ends the drag
+	// and writes it in any case.
+	settled := work
+	settled.width -= 10
 	// The pointer wanders off and back across the divider with NO button held.
 	for step in 0 ..< 12 {
 		sa.windowless_mouse(&g_view, .MOUSE_MOVE, {x - 300 + i32(step) * 50, y}, button = {})
@@ -14048,3 +14069,329 @@ test_the_look_preview_follows_the_looks :: proc(t: ^testing.T) {
 	choose_notes_look(&app, NOTES_PAGE_PREF, "white")
 	testing.expect_value(t, app.look_tab, Look_Tab.Editor)
 }
+
+// The index of the scenario named `name` in the window's list, -1 if there is none.
+@(private = "file")
+scenario_index :: proc(app: ^App, name: string) -> int {
+	for scenario, i in app.scenarios {
+		if scenario.name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+/*
+THE LEAD PROBLEM'S FIELDS: an empty contract leaves it to the rules and lets `by` be a side; a contract needs a
+seat; a bad contract or layout count is refused in the generate panel's status, and nothing starts.
+*/
+@(test)
+test_a_lead_problem_job_reads_its_fields :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	select_scenario(&app, max(scenario_index(&app, "1c"), 0))
+
+	set_input(&app, "#lead-contract", "")
+	set_input(&app, "#lead-by", "north-south")
+	attach_for_test(&app) // the depth is a click
+	click(&app, `#lead-depth [data-lead-layouts="400"]`)
+	pump(&app)
+	sa.detach_window_handler(app.window, &app.handler)
+	job, err := lead_job(&app)
+	testing.expect_value(t, err, "")
+	testing.expect_value(t, job.kind, Job_Kind.Lead)
+	testing.expect(t, job.lead.contract == nil && !job.lead.one_seat, "the contract is chosen, by a side")
+	testing.expect_value(t, job.lead_layouts, 400)
+	note, _ := sa.text(find(&app, "#lead-depth-note"), context.temp_allocator)
+	testing.expectf(t, strings.contains(note, "±5%"), "the depth says what it buys: %q", note)
+	choose_lead_depth(&app, 120) // a remembered number between stops takes the nearest
+	testing.expect_value(t, lead_depth(&app), 100)
+	job_free(&job, app.allocator)
+
+	set_input(&app, "#lead-contract", "4S")
+	set_input(&app, "#lead-by", "east")
+	job, err = lead_job(&app)
+	c, given := job.lead.contract.?
+	testing.expect(t, err == "" && given && c == lead_problem.Lead_Contract{4, .Spades, .East}, "4♠ by East")
+	job_free(&job, app.allocator)
+
+	for bad in ([]struct {
+			contract, by: string,
+		}{{"4S", "north-south"}, {"4X", "south"}}) {
+		set_input(&app, "#lead-contract", bad.contract)
+		set_input(&app, "#lead-by", bad.by)
+		set_lead_status(&app, "")
+		set_status(&app, "idle")
+		start_lead(&app)
+		said, _ := sa.text(find(&app, "#lead-status"), context.temp_allocator)
+		testing.expectf(t, !app.running && said != "", "%v is refused, in the lead panel: %q", bad, said)
+		generate_said, _ := sa.text(find(&app, "#status"), context.temp_allocator)
+		testing.expect_value(t, generate_said, "idle") // not in generate's
+	}
+	// CTRL+ALT+ENTER is the lead problem's, not generate's (it was generate's: ALT was not read). Refused here, so
+	// no worker starts: the refusal says which panel the key reached.
+	attach_for_test(&app)
+	set_input(&app, "#lead-contract", "4X")
+	set_lead_status(&app, "")
+	set_status(&app, "idle")
+	press_key(&app, .ENTER, ctrl = true, alt = true)
+	pump(&app)
+	keyed, _ := sa.text(find(&app, "#lead-status"), context.temp_allocator)
+	idle, _ := sa.text(find(&app, "#status"), context.temp_allocator)
+	testing.expectf(t, !app.running && strings.contains(keyed, "not a contract") && idle == "idle", "the key: %q / %q", keyed, idle)
+	sa.detach_window_handler(app.window, &app.handler)
+	// The panel's own seed, not generate's.
+	set_input(&app, "#lead-contract", "")
+	set_input(&app, "#lead-by", "south")
+	set_input(&app, "#seed", "1")
+	set_input(&app, "#lead-seed", "9")
+	seeded, serr := lead_job(&app)
+	defer job_free(&seeded, app.allocator)
+	testing.expect(t, serr == "" && seeded.lead_seed == 9, "the lead panel's seed")
+	fresh, ferr := lead_job(&app, fresh = true)
+	defer job_free(&fresh, app.allocator)
+	testing.expect(t, ferr == "" && fresh.lead_seed == nil, "`next problem` ignores it")
+}
+
+// The contract and declarer are remembered for the scenario they were used with; another scenario starts empty.
+@(test)
+test_the_lead_settings_are_remembered_per_scenario :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	// In the heap, not temp memory: a redraw on the way frees the temp allocator. A map is only allocated by its
+	// first entry, and an unallocated one reads as "no prefs file", so one goes in first.
+	app.prefs.allocator = context.allocator
+	prefs.set(&app.prefs, "theme", "dark")
+	defer prefs.destroy(&app.prefs)
+	first, second := scenario_index(&app, "1c"), scenario_index(&app, "1c-1n")
+	if !testing.expect(t, first >= 0 && second >= 0, "the built-in scenarios are there") {return}
+
+	select_scenario(&app, first)
+	set_input(&app, "#lead-contract", "3NT")
+	set_input(&app, "#lead-by", "north")
+	choose_lead_depth(&app, 400)
+	testing.expect_value(t, lead_scoring(&app), lead_problem.Scoring.Beats)
+	choose_lead_scoring(&app, .Imps)
+	job, err := lead_job(&app)
+	testing.expect_value(t, err, "")
+	testing.expect_value(t, job.lead.scoring, lead_problem.Scoring.Imps) // the run is ranked at IMPs
+	job_free(&job, app.allocator)
+
+	select_scenario(&app, second)
+	testing.expect_value(t, read_text(&app, "#lead-contract"), "")
+	testing.expect_value(t, read_text(&app, "#lead-by"), "south")
+	testing.expect_value(t, lead_depth(&app), 400) // the depth is for all scenarios
+	choose_lead_depth(&app, LEAD_DEFAULT_DEPTH)
+	choose_lead_scoring(&app, .Beats)
+	restore_lead_settings(&app) // and comes back from the prefs
+	testing.expect_value(t, lead_depth(&app), 400)
+	testing.expect_value(t, lead_scoring(&app), lead_problem.Scoring.Imps) // so is the scoring
+	select_scenario(&app, first)
+	testing.expect_value(t, read_text(&app, "#lead-contract"), "3NT")
+	testing.expect_value(t, read_text(&app, "#lead-by"), "north")
+}
+
+/*
+THE PROBLEM IS ASKED BEFORE IT IS SOLVED (asked for: show the problem while the expensive parts go on). The three
+hand-overs `work_lead` makes, taken in turn on this thread: the QUESTION (dealt, no solver) goes in the pane and a
+card of it can be picked; the ANSWER then opens at that card's lead, scored; PAR comes last and is swapped into the
+shown page's choice block without a reload, the rows' card pages with it.
+*/
+@(test)
+test_a_lead_problem_asks_before_it_is_solved :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app)
+	defer sa.detach_window_handler(app.window, &app.handler)
+	init_lead_clicks(&app)
+	scenario, found := cli.lookup(app.scenarios, "1c")
+	if !testing.expect(t, found, "the 1c scenario is there") {return}
+	request, _ := lead_problem.parse_lead_request("north-south")
+	app.job = Job{kind = .Lead, lead = request, lead_layouts = 40}
+	app.running = true // the run is under way until par is in (no worker: the test hands each step over)
+	defer app.running = false
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, 5)
+	deal_solve.init()
+	defer deal_solve.shutdown()
+
+	// 1. The question, and a card picked on it.
+	result := deal_solve.lead_problem_deal(scenario.predicate, request, 40, context.temp_allocator)
+	if !testing.expect_value(t, result.problem, "") {return}
+	testing.expect(t, result.rows == nil && result.solved == nil, "nothing solved yet")
+	question := strings.builder_make(app.allocator)
+	deal_solve.write_lead_question(&question, result, "1c", "")
+	app.lead_ready.question = strings.to_string(question)
+	app.lead_ready.title = strings.clone("lead problem", app.allocator)
+	take_lead_question(&app)
+	pump(&app)
+	watch_lead_clicks(&app)
+	testing.expect(t, app.lead_waiting && app.showing_lead, "the question is in the pane")
+	testing.expect(t, is_disabled(&app, "#page-browser"), "the question cannot go to a browser: its answer is worked out here")
+	testing.expect(t, !is_disabled(&app, "#lead-show") || app.showing_lead, "")
+	PICK :: `(function(){ var d = document.$("#page").frame.document; var k = d.querySelector(".hand .k"); k.dispatchEvent(new Event("click", {bubbles: true})); return d.querySelectorAll(".hand .k.mine").length; })()`
+	testing.expect_value(t, func_count(&app, PICK), 1)
+	pump(&app)
+	if os.get_env("WB_SNAPSHOTS", context.temp_allocator) != "" {
+		set_pane_mode(&app, .Wide)
+		pump(&app)
+		snapshot_png("lead-question")
+	}
+	card, picked := app.lead_card.?
+	if !testing.expect(t, picked, "the pick is kept for the answer") {return}
+
+	// 2. The answer: opened at that card's lead, and scored.
+	if !testing.expect(t, deal_solve.lead_problem_leads(&result, context.temp_allocator), "the leads solve") {return}
+	app.lead_ready = build_lead_answer(result, "1c", "", app.allocator)
+	take_lead_pages(&app)
+	pump(&app)
+	watch_lead_clicks(&app)
+	row := lead_row_of_card(app.lead.lead_of, card)
+	testing.expect(t, row >= 0 && app.lead_score.problems == 1 && !app.lead_asking, "the picked card's lead is scored")
+	testing.expect(t, strings.contains(app.lead.page, fmt.tprintf(`<body data-picked="%d">`, row)), "and the answer opens at it")
+	testing.expect(t, strings.contains(app.lead.page, "being worked out"), "par is still to come")
+	testing.expect(t, app.lead.rows_pending, "and so are the card pages")
+	testing.expect(t, is_disabled(&app, "#page-browser"), "nor the answer before par")
+	show_lead_row(&app, 0)
+	said, _ := sa.text(find(&app, "#lead-status"), context.temp_allocator)
+	testing.expectf(t, strings.contains(said, "still being made"), "a row's layouts wait: %q", said)
+
+	// 3. Par, swapped into the shown page's block.
+	if !testing.expect(t, deal_solve.lead_problem_par(&result, context.temp_allocator), "par solves") {return}
+	app.lead_ready_rows = make([]string, len(result.rows), app.allocator)
+	choices := strings.builder_make(app.allocator)
+	deal_solve.write_lead_choices(&choices, result)
+	app.lead_ready_choices = strings.to_string(choices)
+	take_lead_par(&app)
+	pump(&app)
+	testing.expect(t, !app.lead.rows_pending, "the card pages are in")
+	testing.expect(t, !is_disabled(&app, "#page-browser"), "the whole problem can go to a browser")
+	testing.expect(t, strings.contains(app.lead.page, "Par agrees") && !strings.contains(app.lead.page, "being worked out"), "the kept page has par")
+	PAR :: `(function(){ var d = document.$("#page").frame.document; var c = d.querySelector(".choices"); return c && c.textContent.indexOf("Par agrees") >= 0 ? 1 : 0; })()`
+	testing.expect_value(t, func_count(&app, PAR), 1) // in the pane too, without a reload
+}
+
+// The worker's half, on the test's thread: the problem is a page (the report gets one line), the contract chosen.
+@(test)
+test_a_lead_problem_is_a_page_not_a_report :: proc(t: ^testing.T) {
+	app: App
+	if !test_app(t, &app) {return}
+	defer test_app_destroy(&app)
+	attach_for_test(&app) // the `show problem` click goes through the real handler
+	defer sa.detach_window_handler(app.window, &app.handler)
+	name := "1c"
+	if !testing.expect(t, scenario_index(&app, name) >= 0, "the 1c scenario is there") {return}
+	request, _ := lead_problem.parse_lead_request("north-south")
+	app.job = Job {
+		kind         = .Lead,
+		scenarios    = clone_strings([]string{name}, app.allocator),
+		lead         = request,
+		lead_layouts = 40,
+		lead_seed    = 5,
+	}
+	defer job_free(&app.job, app.allocator)
+	work_lead(&app)
+	report := strings.to_string(app.transcript)
+	// The report names the problem and its seed, and gives nothing away: the answer is the page's.
+	testing.expectf(t, strings.contains(report, "lead problem · ") && strings.contains(report, "seed 5 · 40 layouts"), "%s", report)
+	testing.expectf(t, !strings.contains(report, "beats it") && !strings.contains(report, "The contract, chosen"), "no ranking: %s", report)
+
+	// THE PAGE: what `LEAD_PAGE` does - the problem into the pane, kept for `show problem`.
+	testing.expect(t, is_disabled(&app, "#lead-show"), "no problem yet: `show problem` is dead")
+	take_lead_pages(&app)
+	take_lead_par(&app) // the third hand-over: the rows' card pages and par (`work_lead` makes all three)
+	pump(&app)
+	testing.expect(t, app.showing_lead && app.lead_row == -1, "the pane shows the problem")
+	title, _ := sa.text(find(&app, "#page-title"), context.temp_allocator)
+	testing.expectf(t, strings.has_prefix(title, "lead problem: "), "the pane is titled: %q", title)
+	testing.expect(t, is_disabled(&app, "#lead-show"), "on screen: `show problem` has nothing to do")
+	testing.expect(t, is_disabled(&app, "#page-share"), "the problem has no boards to share")
+	testing.expect(t, !is_disabled(&app, "#page-browser"), "but it can go to a browser")
+	testing.expect(t, strings.contains(app.lead.page, `href="#lead-row-`), "its rows link their layouts")
+
+	// PICK FIRST: a dealt hand asks. A click on a group of the hand is the lead: the page's script answers and
+	// posts the pick, which the host scores, and the kept page is answered from then on.
+	testing.expect(t, app.lead_asking, "a dealt hand asks for the lead first")
+	before, _ := sa.text(find(&app, "#lead-score"), context.temp_allocator)
+	testing.expect_value(t, before, "")
+	// A mouse click is the engine's `click` to the page's script; `do_click` and script's `click()` are not (both
+	// measured: the listener never ran), so the click is dispatched as an event, from script.
+	CLICK_BEST :: `(function(){ var d = document.$("#page").frame.document; d.querySelector('.hand .g[data-row="0"]').dispatchEvent(new Event("click", {bubbles: true})); return d.querySelector("body").classList.contains("pick") ? 1 : 0; })()`
+	// The window's start-up wiring, which the test view does not run: the handler, attached to the page's document
+	// as `DOCUMENT_COMPLETE` would.
+	init_lead_clicks(&app)
+	watch_lead_clicks(&app)
+	testing.expect_value(t, func_count(&app, CLICK_BEST), 0) // the page answered
+	pump(&app)
+	testing.expect(t, !app.lead_asking, "the pick was heard")
+	testing.expect(t, app.lead_score.problems == 1 && app.lead_score.best == 1, "and scored: the best lead")
+	score, _ := sa.text(find(&app, "#lead-score"), context.temp_allocator)
+	testing.expectf(t, strings.has_prefix(score, "1 problem · 1 best lead"), "the score is shown: %q", score)
+	testing.expect(t, strings.contains(app.lead.page, `<body data-picked="0">`), "the kept page is answered")
+	lead_answered(&app, 1)
+	testing.expect_value(t, app.lead_score.problems, 1) // a problem is scored once
+
+	// A LINE'S FOLD is built while open, from the script's strings (a resize re-handles every element, hidden or
+	// not), and emptied when closed.
+	FOLD :: `(function(){ var d = document.$("#page").frame.document; d.querySelector('.lead[data-row="0"] .line').dispatchEvent(new Event("click", {bubbles: true})); return d.querySelectorAll('.lead[data-row="0"] .why .layout, .lead[data-row="0"] .why .say').length; })()`
+	testing.expect(t, func_count(&app, FOLD) > 0, "an opened line shows its layouts")
+	testing.expect_value(t, func_count(&app, FOLD), 0) // closed again: built no more
+
+	// A row's link puts its layouts in the pane as a card page; `show problem` brings the problem back.
+	row := -1
+	for page, r in app.lead.rows {
+		if page != "" {
+			row = r
+			break
+		}
+	}
+	if !testing.expect(t, row >= 0, "some row has layouts") {return}
+	link, is_row := lead_row_link(fmt.tprintf("#lead-row-%d", row))
+	testing.expect(t, is_row && link == row, "the link names its row")
+	_, is_row = lead_row_link("#elsewhere")
+	testing.expect(t, !is_row, "another link is not a row's")
+	// A real card page cannot be hosted by this windowless engine (it faults in `loadHtml`), so the row's page is
+	// swapped for a minimal one: the flow is tested here, the card page's content by `deal_solve`'s test.
+	delete(app.lead.rows[row], app.allocator)
+	app.lead.rows[row] = strings.clone(MINIMAL_PAGE, app.allocator)
+	show_lead_row(&app, row)
+	pump(&app)
+	testing.expect(t, app.showing_lead && app.lead_row == row, "the row's layouts are in the pane")
+	title, _ = sa.text(find(&app, "#page-title"), context.temp_allocator)
+	testing.expectf(t, strings.contains(title, "did worst on"), "and say so: %q", title)
+	testing.expect(t, !is_disabled(&app, "#page-share"), "a card page can be shared")
+	testing.expect(t, !is_disabled(&app, "#lead-show"), "`show problem` can bring it back")
+	// Only for its own scenario: another selected, it has nothing to show for it.
+	other := scenario_index(&app, "1c-1n")
+	here := scenario_index(&app, name)
+	select_scenario(&app, other)
+	testing.expect(t, is_disabled(&app, "#lead-show"), "another scenario: `show problem` is dead")
+	select_scenario(&app, here)
+	testing.expect(t, !is_disabled(&app, "#lead-show"), "its own again: alive")
+	click(&app, "#lead-show")
+	pump(&app)
+	testing.expect(t, app.showing_lead && app.lead_row == -1, "`show problem` put the problem back")
+	ASKS :: `(function(){ var b = document.$("#page").frame.document.querySelector("body"); return b.classList.contains("pick") ? 1 : 0; })()`
+	testing.expect_value(t, func_count(&app, ASKS), 0) // shown again, it keeps its answer
+
+	// For LOOKING at the page (`WB_SNAPSHOTS=<folder>`, as `test_snapshot_the_views`): wide, its first line open.
+	if os.get_env("WB_SNAPSHOTS", context.temp_allocator) != "" {
+		opened, _ := strings.replace(app.lead.page, `<div class="lead" data-row="0"`, `<div class="lead open" data-row="0"`, 1, context.temp_allocator)
+		set_pane_mode(&app, .Wide)
+		_ = show_page_html(&app, opened, "lead problem")
+		pump(&app)
+		pump(&app)
+		snapshot_png("lead-problem")
+		asked, _ := strings.replace(app.lead.page, `<body data-picked="0">`, lead_problem.PICK_BODY, 1, context.temp_allocator)
+		_ = show_page_html(&app, asked, "lead problem")
+		pump(&app)
+		pump(&app)
+		snapshot_png("lead-problem-asks")
+	}
+}
+
+
+

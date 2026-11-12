@@ -17,9 +17,11 @@ package main
 import "base:runtime"
 import "core:fmt"
 import "core:log"
+import "core:math/rand"
 import "core:mem"
 import "core:os"
 import "core:reflect"
+import "core:strconv"
 import "core:strings"
 import "core:sync"
 import "core:sys/posix"
@@ -27,6 +29,7 @@ import win "core:sys/windows"
 
 import "bidding"
 import "deal_solve"
+import "lead_problem"
 import "norn:cli"
 import "norn:combo"
 import "norn:norn"
@@ -82,7 +85,90 @@ run_sim :: proc() -> int {
 	hooks := sim_hooks.make_hooks(loaded.programs, loaded.scenarios[:loaded.builtin_count])
 	defer sim_hooks.free_hooks(&hooks)
 
+	// A LEAD PROBLEM (`--lead 4S:south`) is this program's, not norn's: it needs the solver (LEAD_PROBLEM_PLAN.md).
+	for argument in arguments {
+		if argument == "--lead" {
+			return run_lead_problem(registry, arguments)
+		}
+	}
+
 	return cli.main_program(registry, sim_hooks.gen_hooks(&hooks), arguments)
+}
+
+/*
+`sim -S <scenario> --lead 4S:south [--layouts N] [--scoring beats|imps|mp] [--seed N]`: "what do I lead?" over a scenario. `--lead south`
+(or `--lead north-south`) leaves the contract to the rules (`lead_problem/choose.odin`). One deal that
+fits the scenario is dealt, and its leader's hand (declarer's left-hand opponent) is the problem; then `--layouts`
+deals (200) that fit the scenario with that hand fixed, the opening lead solved double dummy on each for every
+card, and the leads ranked. The scenario's own double-dummy hooks do not apply here. LEAD_PROBLEM_PLAN.md, phase 1.
+*/
+run_lead_problem :: proc(registry: []cli.Scenario, arguments: []string) -> int {
+	name, spec := "", ""
+	layouts := 200
+	seed: Maybe(u64)
+	scoring := lead_problem.Scoring.Beats
+	for i := 0; i < len(arguments); i += 1 {
+		value := arguments[i + 1] if i + 1 < len(arguments) else ""
+		switch arguments[i] {
+		case "-S", "--scenario":
+			name = value
+		case "--lead":
+			spec = value
+		case "--layouts":
+			n, ok := strconv.parse_int(value)
+			if !ok || n < 1 {
+				fmt.eprintln("sim: --layouts takes a number of layouts, 1 or more")
+				return 2
+			}
+			layouts = n
+		case "--scoring":
+			s, ok := lead_problem.parse_scoring(value)
+			if !ok {
+				fmt.eprintln("sim: --scoring takes beats, imps or mp")
+				return 2
+			}
+			scoring = s
+		case "--seed":
+			n, ok := strconv.parse_u64(value)
+			if !ok {
+				fmt.eprintln("sim: --seed takes a number")
+				return 2
+			}
+			seed = n
+		case:
+			fmt.eprintfln("sim: %q is not an option of a lead problem (-S, --lead, --layouts, --scoring, --seed)", arguments[i])
+			return 2
+		}
+		i += 1
+	}
+	request, bad := lead_problem.parse_lead_request(spec)
+	if bad != "" {
+		fmt.eprintfln("sim: --lead: %s", bad)
+		return 2
+	}
+	request.scoring = scoring
+	scenario, found := cli.lookup(registry, name)
+	if name == "" || !found {
+		fmt.eprintfln("sim: a lead problem needs a scenario: -S <name>%s", "" if name == "" else fmt.tprintf(" (no scenario %q)", name))
+		return 2
+	}
+	run_seed := seed.? or_else cli.fresh_seed()
+	if _, given := seed.?; !given {
+		fmt.eprintfln("sim: seed=%d (pass --seed %d to reproduce)", run_seed, run_seed)
+	}
+	state: rand.Xoshiro256_Random_State
+	context.random_generator = norn.seeded_xoshiro(&state, run_seed)
+
+	result := deal_solve.lead_problem_run(scenario.predicate, request, layouts, context.temp_allocator)
+	if result.problem != "" {
+		fmt.eprintfln("sim: %s: %s", scenario.name, result.problem)
+		return 1
+	}
+	b := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&b, "%s\n", cli.scenario_title(scenario))
+	deal_solve.write_lead_result(&b, result)
+	fmt.print(strings.to_string(b))
+	return 0
 }
 
 /*

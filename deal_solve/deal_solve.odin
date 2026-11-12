@@ -275,6 +275,18 @@ annotate :: proc(
 		}
 		return
 	}
+	annotate_solved(builder, deal, format, res, vulnerability)
+}
+
+// `annotate` with the deal's table already solved (a batch's, `solve_layouts`), so a page of many boards
+// pays one batched call rather than a solve a board. `format` must be an annotating one.
+annotate_solved :: proc(
+	builder: ^strings.Builder,
+	deal: norn.Deal,
+	format: norn.Output_Format,
+	res: ^dds.Table_Results,
+	vulnerability: norn.Vulnerability = .None,
+) {
 	// Par from the full table. SidesParBin gives the STRUCTURED par (level/denom/seats + undertricks)
 	// for each side; we render the declaring seats and doubling ourselves so a par that is a doubled
 	// EW sacrifice reads as e.g. "5Cx EW-2" rather than a plain score. The two sides agree except on

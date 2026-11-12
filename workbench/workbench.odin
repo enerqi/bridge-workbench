@@ -52,6 +52,7 @@ import "core:time"
 import "../analyse"
 import "../bidding"
 import "../deal_solve"
+import "../lead_problem"
 import "../outline"
 import "../perf"
 import "../prefs"
@@ -92,11 +93,18 @@ ANALYSE_PART :: uintptr(14) // lparam = thousandths of the board under way, whil
 GUIDE_INSERT :: uintptr(15) // an example's `insert` in the BML guide was clicked; write it at the caret (`guide_insert`)
 PAGE_QUEUED :: uintptr(16) // the hand page's load finished with another asked for meanwhile; load it (`show_page_file`)
 SYSTEM_CHOSEN :: uintptr(17) // the system dropdown changed; apply it (`choose_system`), which may redraw the dropdown
+LEAD_PAGE :: uintptr(18) // a lead problem's pages are ready in `App.lead_ready`; show the problem (`workbench/lead.odin`)
+LEAD_STEP :: uintptr(19) // lparam = stage << 28 | done << 14 | total, from the lead run's progress hook
+LEAD_ROW :: uintptr(20) // a line of the lead problem's page asked for its layouts (`App.lead_clicked`)
+LEAD_QUESTION :: uintptr(22) // a lead problem's question is ready in `App.lead_ready`: show it while the leads are solved
+LEAD_PAR :: uintptr(23) // a lead problem's par and card pages are ready (`App.lead_ready_rows` / `_choices`)
+LEAD_NEXT :: uintptr(21) // the lead problem's `next problem` link: another from the same scenario, a fresh seed
 
 Job_Kind :: enum {
 	Generate,
 	Analyse,
 	Ocr, // a dropped hand-diagram image: read it, then analyse what was read
+	Lead, // a lead problem over the selected scenario (`workbench/lead.odin`)
 }
 
 // One unit of work, composed on the engine's thread and owned by the worker. `argv` is the base argument
@@ -112,6 +120,10 @@ Job :: struct {
 	echo:      bool, // generate only: small text output goes into the report pane as well as to the file
 	want_page: bool, // analyse and ocr: the card page into the frame, instead of the text report
 	image:     string, // ocr only: the dropped image, an absolute path
+	// lead only: what is led against, how many layouts, and the seed (`#seed`; nil = a fresh one).
+	lead:         lead_problem.Lead_Request,
+	lead_layouts: int,
+	lead_seed:    Maybe(u64),
 }
 
 App :: struct {
@@ -167,6 +179,8 @@ App :: struct {
 	// The card page, rendered by the worker and shown by the engine thread (PAGE). A whole document
 	// rather than a line, so it travels here like `failure` does.
 	page:               string,
+	// A lead problem's pages, built by the worker and TAKEN by the engine thread (LEAD_PAGE), as `page` is.
+	lead_ready:         Lead_Pages,
 
 	// The deal OCR read out of a dropped image, travelling to the engine thread (DEAL) so the analyse
 	// box shows what was actually read — the OCR is a guess at a picture, and an unreadable digit is a
@@ -218,6 +232,20 @@ App :: struct {
 	analysed_page:      string,
 	hand_look_stale:    bool, // the hand page look changed while the page was out of sight (`choose_hand_look`)
 	showing_analysed:   bool,
+
+	// The last lead problem (`workbench/lead.odin`): its page, each row's worst layouts as a card page, and what
+	// of it the pane shows - `lead_row` -1 for the problem itself. Kept like `analysed_page`, for `show problem`.
+	lead:               Lead_Pages,
+	showing_lead:       bool,
+	lead_row:           int,
+	lead_clicked:       int,
+	lead_click_handler: sa.Event_Handler,
+	lead_asking:        bool, // the kept problem is still asking for its lead (pick-first)
+	lead_waiting:       bool, // its question is shown and its answer not yet in
+	lead_card:          Maybe(Lead_Card), // a card picked on the question, for the answer to open at
+	lead_ready_rows:    []string, // the worker's third hand-over: each row's card page
+	lead_ready_choices: string, // ... and the choice block with par
+	lead_score:         Lead_Score, // the drill's session
 
 	// What is in the deals folder, scenario name -> the formats generated for it. One `read_dir` fills it
 	// (see `scan_outputs`); the list rows and the format chips are both projections of it.
@@ -338,6 +366,10 @@ App :: struct {
 	page_queued_title:  string,
 	page_queued_kind:   Page_Request,
 	page_queued_keys:   bool,
+	// The waiting page is a lead problem's (`show_lead_page`), row `page_queued_lead_row`: said again once it is
+	// loaded, since every load clears what the pane is showing (`remember_shown_path`).
+	page_queued_lead:     bool,
+	page_queued_lead_row: int,
 	prefs:              prefs.Prefs,
 	prefs_path:         string,
 
@@ -394,6 +426,8 @@ work :: proc(app: ^App) {
 		work_analyse(app)
 	case .Ocr:
 		work_ocr(app)
+	case .Lead:
+		work_lead(app)
 	}
 }
 
@@ -796,6 +830,23 @@ on_posted :: proc(handler: ^sa.Host_Handler, posted: sa.Posted) {
 	case PAGE_QUEUED:
 		load_queued_page(app)
 
+	case LEAD_QUESTION:
+		take_lead_question(app)
+
+	case LEAD_PAGE:
+		take_lead_pages(app)
+
+	case LEAD_PAR:
+		take_lead_par(app)
+
+	case LEAD_STEP:
+		lead_step(app, int(posted.lparam))
+
+	case LEAD_ROW:
+		show_lead_row(app, app.lead_clicked)
+	case LEAD_NEXT:
+		start_lead(app, fresh = true)
+
 	case SYSTEM_CHOSEN:
 		// Posted: applying a system can re-read the scenario files and redraw the dropdown, and replacing the
 		// `<select>` inside its own change event is the tear-the-tree-out hazard `LIVE` describes.
@@ -826,8 +877,11 @@ job_ended :: proc(app: ^App, show_result := false) {
 	ui_thread_priority(false)
 	set_enabled(app, "#generate", true)
 	set_enabled(app, "#analyse", true)
+	set_enabled(app, "#lead-problem", true)
 	set_enabled(app, "#cancel", false)
 	set_analyse_busy(app, false)
+	set_lead_busy(app, false)
+	refresh_lead_browser(app) // a run that ended short of par leaves its page as it is
 
 	// The pane segment IS re-asked here, and this is the one place it must be: a run writes pages to disk
 	// without putting any of them in the frame, so "is there a page to show" has just changed for a control
@@ -946,10 +1000,12 @@ start_job :: proc(app: ^App, job: Job, status: string) {
 	set_job_status(app, status)
 	set_enabled(app, "#generate", false)
 	set_enabled(app, "#analyse", false)
+	set_enabled(app, "#lead-problem", false)
 	set_enabled(app, "#cancel", job.kind == .Generate)
 	set_page_look_for_run(app) // before the worker exists: it reads `norn.page_look_css` and nothing guards it
-	set_analyse_busy(app, job.kind != .Generate)
-	if job.kind != .Generate {
+	set_analyse_busy(app, analysing(app))
+	set_lead_busy(app, job.kind == .Lead)
+	if analysing(app) {
 		set_text_at(app, "#analyse-busy-text", status) // "analysing match.lin…" until the boards are counted
 	}
 	app.worker = thread.create_and_start_with_poly_data(app, work)
@@ -1521,7 +1577,9 @@ remember_shown_path :: proc(app: ^App, path: string) {
 	}
 	app.shown_path = strings.clone(path, app.allocator) if path != "" else ""
 	app.showing_analysed = false // every show passes through here; the analysed one says so afterwards
+	app.showing_lead = false // the same for a lead problem's pages
 	refresh_show_analysed(app)
+	refresh_lead_show(app)
 	// The pane`s own `browser` button acts on this, so it is alive exactly when there is a FILE behind what
 	// is on screen - not for a page `analyse` built in memory - AND WHEN THAT FILE IS A PAGE.
 	//
@@ -2241,7 +2299,7 @@ set_pane_mode :: proc(app: ^App, mode: Pane_Mode) {
 	// something else (a chip, the list with the pane open, generate, another analyse) - and `show last` puts
 	// it back after that.
 	opening := pane_mode(app) == .Closed
-	if mode != .Closed && opening && !app.showing_analysed && !shown_page_is_the_selection(app) {
+	if mode != .Closed && opening && !app.showing_analysed && !app.showing_lead && !shown_page_is_the_selection(app) {
 		show_selected_page(app, follow = false)
 	}
 	switch mode {
@@ -2259,6 +2317,7 @@ set_pane_mode :: proc(app: ^App, mode: Pane_Mode) {
 	}
 	refresh_overlay_controls(app)
 	refresh_show_analysed(app)
+	refresh_lead_show(app)
 }
 
 // WHILE AN ANALYSE RUNS, A SPINNER STANDS WHERE `show last` IS (asked for: "analyse can be slow on multiple
@@ -2769,7 +2828,7 @@ fold_panel :: proc(app: ^App, key: string, folded: bool) {
 }
 
 restore_folds :: proc(app: ^App) {
-	for key in ([]string{"generate", "analyse"}) {
+	for key in ([]string{"generate", "lead", "analyse"}) {
 		if word, found := prefs.get(&app.prefs, fmt.tprintf("fold.%s", key)); found && word == "folded" {
 			fold_panel(app, key, true)
 		}
@@ -3113,6 +3172,7 @@ load_queued_page :: proc(app: ^App) {
 	what := strings.clone(app.page_queued, context.temp_allocator)
 	title := strings.clone(app.page_queued_title, context.temp_allocator)
 	kind, keys := app.page_queued_kind, app.page_queued_keys
+	lead, lead_row := app.page_queued_lead, app.page_queued_lead_row
 	forget_queued_page(app)
 	when ODIN_DEBUG {fmt.eprintfln("[page] loading the %v that waited", kind)}
 	switch kind {
@@ -3121,7 +3181,9 @@ load_queued_page :: proc(app: ^App) {
 	case .Text:
 		_ = show_text_file(app, what)
 	case .Html:
-		_ = show_page_html(app, what, title, keys)
+		if show_page_html(app, what, title, keys) && lead {
+			lead_page_shown(app, lead_row)
+		}
 	}
 }
 
@@ -3130,6 +3192,7 @@ forget_queued_page :: proc(app: ^App) {
 	delete(app.page_queued_title)
 	app.page_queued = ""
 	app.page_queued_title = ""
+	app.page_queued_lead = false
 }
 
 // Give the framed document the keyboard, so the page's own shortcuts work the moment it appears: left/right
@@ -5234,6 +5297,8 @@ on_frame_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		// so the zoom `show_page_file` applies lands on the OLD one. Setting a style is not a document
 		// replacement, so doing it inside the frame's own dispatch is safe (unlike a render). Not claimed.
 		apply_page_zoom(app)
+		// A lead problem's page answers its rows' links (`watch_lead_clicks`); its document is a new root.
+		watch_lead_clicks(app)
 		// And a file asked for while this one arrived can go in now - posted, being a document replacement.
 		page_load_done(app)
 		return false
@@ -6501,6 +6566,8 @@ set_output_note :: proc(app: ^App, text: string) {
 set_job_status :: proc(app: ^App, text: string) {
 	if analysing(app) {
 		set_text_at(app, "#analyse-status", text)
+	} else if app.job.kind == .Lead {
+		set_lead_status(app, text)
 	} else {
 		set_status(app, text)
 	}
@@ -6516,6 +6583,8 @@ set_progress :: proc(app: ^App, percent: int) {
 	selector, track := "#fill", 200
 	if analysing(app) {
 		selector, track = "#analyse-fill", 80
+	} else if app.job.kind == .Lead {
+		selector, track = "#lead-fill", 80
 	}
 	if fill := find(app, selector); fill != nil {
 		sa.set_style(fill, "width", fmt.tprintf("%dpx", track * clamp(percent, 0, 100) / 100))
@@ -7542,6 +7611,7 @@ select_scenario :: proc(app: ^App, index: int) {
 	if row := find(app, fmt.tprintf(`#scenarios .row[data-index="%d"]`, index)); row != nil {
 		_ = sa.scroll_to_view(row)
 	}
+	restore_lead_settings(app)
 	note_selected_page(app)
 }
 
@@ -7604,6 +7674,7 @@ filter_scenarios :: proc(app: ^App) {
 		if row := find(app, fmt.tprintf(`#scenarios .row[data-index="%d"]`, app.selected)); row != nil {
 			_ = sa.scroll_to_view(row)
 		}
+		restore_lead_settings(app)
 		note_selected_page(app) // the chips, the status line and the pane follow the new selection
 	}
 }
@@ -7867,7 +7938,12 @@ window_shortcut_key :: proc(app: ^App, key_code: u32, modifiers: sciter.Keyboard
 		// SHIFT picks the other primary action. Generate and analyse are the window's two verbs and they
 		// sit in two panels one above the other; one key with one modifier says that better than two
 		// unrelated letters would.
-		if shift {
+		//
+		// ALT is the third panel's, the lead problem (2026-11-11): the same enter chord, so it reads as "run", and
+		// free here (ctrl+l, the obvious letter, copies the page's link).
+		if sciter.KEYBOARD_STATE_ALT & modifiers != {} {
+			start_lead(app)
+		} else if shift {
 			start_analyse(app)
 		} else {
 			start_generate(app)
@@ -7887,6 +7963,9 @@ open_shown_in_browser :: proc(app: ^App) {
 	// was dead for it at first ("rather than writing a temp file nobody asked for") - and then it was asked
 	// for: an analysed match is a page like any other, and a browser is where it has room. So the analysed
 	// page is written to ONE file in the temp folder, replaced each time, and that is opened.
+	if open_lead_in_browser(app) {
+		return
+	}
 	if app.showing_analysed && app.analysed_page != "" {
 		path, written := write_analysed_page(app.analysed_page)
 		if !written {
@@ -7947,28 +8026,34 @@ away every one open in the view.
 
 A folded panel is unfolded first, since its paragraph is inside the part the fold hides.
 */
-view_help_keys :: proc(app: ^App) -> (keys: [2]string, n: int) {
+view_help_keys :: proc(app: ^App) -> (keys: [4]string, n: int) {
 	#partial switch current_view(app) {
 	case .Panes:
-		return {"generate", "analyse"}, 2
+		return {"deals", "generate", "lead", "analyse"}, 4
 	case .Editor:
-		return {"bml", ""}, 1
+		return {"bml", "", "", ""}, 1
 	case .Scenarios:
-		return {"scn", ""}, 1
+		return {"scn", "", "", ""}, 1
 	}
 	return
 }
 
+// The element a help paragraph's panel is: a deals-view panel's body, or for the scenario list's own help the
+// list's pane (the focus in the filter or a row asks about the list).
+help_body :: proc(key: string) -> string {
+	return "#scenario-list" if key == "deals" else fmt.tprintf("#%s-body", key)
+}
+
 // The view's help narrowed by the focus: in the deals view, the panel the focus is in, if it is in one.
-context_help_keys :: proc(app: ^App) -> (keys: [2]string, n: int) {
+context_help_keys :: proc(app: ^App) -> (keys: [4]string, n: int) {
 	keys, n = view_help_keys(app)
 	if n < 2 {
 		return
 	}
 	if node, err := sa.focus_element(app.window); err == nil {
 		for key in keys[:n] {
-			if _, perr := sa.select_parent(node, fmt.tprintf("#%s-body", key)); perr == nil {
-				return {key, ""}, 1
+			if _, perr := sa.select_parent(node, help_body(key)); perr == nil {
+				return {key, "", "", ""}, 1
 			}
 		}
 	}
@@ -8954,6 +9039,28 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		draw_notes_look_prefs(app)
 		return true
 	}
+	if word, _ := sa.attribute(be.target, "data-lead-scoring", context.temp_allocator); word != "" {
+		// The lead problem's scoring: lit, and remembered at once, as the depth is.
+		if scoring, parsed := lead_problem.parse_scoring(word); parsed {
+			choose_lead_scoring(app, scoring)
+			if app.prefs_path != "" {
+				prefs.set(&app.prefs, LEAD_SCORING_PREF, word)
+				_ = prefs.save(&app.prefs, app.prefs_path)
+			}
+		}
+		return true
+	}
+	if word, _ := sa.attribute(be.target, "data-lead-layouts", context.temp_allocator); word != "" {
+		// The lead problem's depth: lit, and remembered at once, as the other segmented choices are.
+		if layouts, parsed := strconv.parse_int(word); parsed {
+			choose_lead_depth(app, layouts)
+			if app.prefs_path != "" {
+				prefs.set(&app.prefs, LEAD_LAYOUTS_PREF, word)
+				_ = prefs.save(&app.prefs, app.prefs_path)
+			}
+		}
+		return true
+	}
 	if word, _ := sa.attribute(be.target, "data-suits", context.temp_allocator); word != "" {
 		choose_suits(app, word)
 		return true
@@ -9041,6 +9148,16 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		start_analyse(app)
 		return true
 
+	case "lead-problem":
+		start_lead(app)
+		return true
+
+	case "lead-show":
+		if !show_lead_page(app, -1) {
+			set_lead_status(app, "no lead problem yet in this window")
+		}
+		return true
+
 	case "show-analysed":
 		if !show_analysed_page(app) {
 			set_analyse_status(app, "nothing analysed yet in this window")
@@ -9063,12 +9180,12 @@ on_event :: proc(handler: ^sa.Event_Handler, event: sa.Event) -> bool {
 		set_status(app, "idle")
 		return true
 
-	case "fold-generate", "fold-analyse":
+	case "fold-generate", "fold-lead", "fold-analyse":
 		key := id[len("fold-"):]
 		fold_panel(app, key, !effective_display_is_hidden(app, fmt.tprintf("#%s-body", key)))
 		return true
 
-	case "help-generate", "help-analyse", "help-bml", "help-scn":
+	case "help-generate", "help-lead", "help-analyse", "help-bml", "help-scn", "help-deals":
 		// The `?` next to a panel legend toggles that panel's paragraph. The button's id names the block
 		// (`help-generate` -> `#help-generate-text`), so adding a third panel needs no code here.
 		selector := fmt.tprintf("#%s-text", id)
@@ -9653,6 +9770,7 @@ main :: proc() {
 	if frame := sa.select_first(sa.root(window) or_else nil, "#page") or_else nil; frame != nil {
 		sa.attach_handler(frame, &app.page_handler)
 	}
+	init_lead_clicks(app) // the hand page's documents' own clicks, attached per document (`watch_lead_clicks`)
 	// AND THE SCENARIO SOURCE'S PANE, for the live check's timer: a third struct, for the same reason. The
 	// PANE (`#scn-source`), not the editor inside it: the editor's script runs its own `timer()` on every edit
 	// (squiggles off, recolour), and a host timer on that same element froze the window after an edit
@@ -9759,6 +9877,7 @@ main :: proc() {
 	restore_deals_layout(app)
 	restore_folds(app)
 	restore_analyse_settings(app)
+	restore_lead_settings(app)
 
 	// What is already in the deals folder, BEFORE the list is drawn: the rows carry their format tags from
 	// the first frame, so a window opened on a folder from an earlier session says what is in it rather
@@ -9834,6 +9953,7 @@ main :: proc() {
 	delete(app.docs, app.allocator)
 	delete(app.shown_path, app.allocator)
 	delete(app.analysed_page, app.allocator)
+	free_lead_state(app)
 	for name in app.scn_names {
 		delete(name, app.allocator)
 	}

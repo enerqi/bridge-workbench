@@ -178,6 +178,8 @@ shown_page :: proc(app: ^App) -> (page: string, ok: bool) {
 	switch {
 	case app.showing_analysed && app.analysed_page != "":
 		return app.analysed_page, true
+	case app.showing_lead && shown_lead_html(app) != "":
+		return shown_lead_html(app), true
 	case app.shown_path != "":
 		data, err := os.read_entire_file_from_path(app.shown_path, context.temp_allocator)
 		if err != nil {

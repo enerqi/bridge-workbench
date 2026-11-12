@@ -165,6 +165,7 @@ lint *args:
 	odin check par_caption {{norn}} -vet -vet-cast -strict-style -vet-tabs -no-entry-point {{args}}
 	odin check replay {{norn}} -vet -vet-cast -strict-style -vet-tabs -no-entry-point {{args}}
 	odin check sampled {{norn}} -vet -vet-cast -strict-style -vet-tabs -no-entry-point {{args}}
+	odin check lead_problem {{norn}} -vet -vet-cast -strict-style -vet-tabs -no-entry-point {{args}}
 	odin check share {{norn}} -vet -vet-cast -strict-style -vet-tabs -no-entry-point {{args}}
 	odin check qr -vet -vet-cast -strict-style -vet-tabs -no-entry-point {{args}}
 	odin check player {{norn}} {{dds}} -vet -vet-cast -strict-style -vet-tabs {{args}}
@@ -326,6 +327,11 @@ test-prefs *args: mktarget_dirs
 # prefix bonuses) and ranking the corpus with the open file first. No engine in any of it, which is why the
 # ranking's judgement calls are testable at all.
 # ---
+# the lead problem's arithmetic without the solver: the contract, the leads, the tally and ranking (LEAD_PROBLEM_PLAN.md)
+[group('test')]
+test-lead-problem *args: mktarget_dirs
+	odin test lead_problem {{norn}} -debug -vet -strict-style -linker:{{linker}} -out:{{ target_path("debug", "test-lead-problem.exe") }} {{args}}
+
 # run the heading-palette unit tests (heading parsing, fuzzy scoring, ranking)
 [group('test')]
 test-outline *args: mktarget_dirs
