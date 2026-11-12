@@ -896,7 +896,8 @@ NEW_SCENARIO_TEMPLATE :: `# A scenario is a name, a description, and one line pe
 #   against each other, and added up:       spades > hearts    spades + hearts >= 9
 #   with a number on the end:               spades >= hearts + 2
 #   card pools   cards(spades, AKQ) >= 2    two of the top three spades
-#   other atoms  balanced   holds(spades, ace)
+#   other atoms  balanced   holds(spades, ace)   shape(5xxx, any 4432)
+#   a defender who passed when they could have bid:   east: silent(1, hearts)
 #   names        ready-made helpers, some written for one bidding system - press words to list them
 #
 # north-south: and east-west: lines read BOTH hands of a side together:
@@ -1522,6 +1523,9 @@ The lines AND together. Within a condition:
     cards(<suit>, <cards>)         how many it holds     cards(spades, AKQ) >= 2
     balanced                       norn's own definition
     holds(<suit>, <rank>)          holds(spades, ace)
+    semibalanced                   every suit 2 to 6 cards, no major longer than 5
+    shape(<pattern>, ...)          lengths spades first: shape(5xxx, any 4432)
+    silent(<level>, <their suits>) a defender who passed: silent(1, hearts)
     seat                           the hand's place in the auction, 1 = dealer
     vulnerable                     this hand's side is vulnerable
     favourable  unfavourable       the vulnerability as this side sees it
@@ -1567,6 +1571,25 @@ are one alternative. check counts what each one adds.
 
     north: hcp in 15..17 and balanced
     also "14, five-card suit" north: hcp = 14 and balanced and longest = 5
+
+A SILENT DEFENDER is a hand that passed when it could have bid. Give the
+level its first chance came at and the suits the opponents had bid by then
+(or notrump, over a notrump opening):
+
+    east: silent(1, hearts)            1♥ - pass
+    west: silent(2, hearts)            1♥ - pass - 2♥ - pass
+    east: silent(1, clubs, hearts)     1♣ - pass - 1♥ - pass
+    west: silent(2, notrump)           1NT - pass (overcalls start at two)
+
+It is true of every hand except those nearly everyone would bid with. At
+the one level: a five-card major with two of A K Q J and 8+ hcp, any other
+five-card suit with 10+, a six-card suit with 8+ (or two of the top three
+with 6+), seven cards with 5+, 5-5 in two unbid suits with 8+, a takeout
+double with 12+ (a doubleton in their suits, and three of every other suit
+or four of an unbid major), and 16+ of any shape. The two and three levels
+ask for more. Length in THEIR suits never counts: a trap pass is silence
+too. Vulnerability and a later balancing chance are not judged. Without it,
+a lead problem's leader and partner may hold hands that would have bid.
 
 SYSTEMS AND MEANINGS. A file may also hold system blocks. A system names
 its MEANINGS - conditions written once - and its scenarios use them by

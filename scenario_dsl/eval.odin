@@ -254,6 +254,9 @@ eval_node :: proc(program: ^Program, index: int, at: ^At) -> bool {
 		}
 		return false
 
+	case Silent_Node:
+		return !would_act(hand, node)
+
 	case Hand_Node:
 		inner := at_hand(at.summary, at.table, node.seat, node.pair)
 		inner.mode = at.mode

@@ -30,7 +30,7 @@ package scenario_dsl
 	    `< <= = != >= >` or a range (`hcp in 15..17`), added up and offset (`spades >= hearts + 2`), card pools
 	    (`cards(spades, AKQ) >= 2`: two of the top three; see `Sum`), plus `balanced`, `semibalanced`,
 	    `holds(spades, ace)` and
-    `shape(any 4333, 5xxx)` (see `Shape_Node`);
+    `shape(any 4333, 5xxx)` (see `Shape_Node`) and a defender's silence, `silent(1, hearts)` (see `Silent_Node`);
 	  * NAMED — the bidding system's own vocabulary (`is_strong_1c`, `is_2cd_swedish_club_resp`, …),
 	    supplied by the CONSUMER through `set_vocabulary`. That is what lets a user compose THIS system
 	    without compiling it, and what a form of HCP-and-shape ranges fundamentally cannot express.
@@ -322,6 +322,7 @@ Node :: union {
 	Holds_Node,
 	Balanced_Node,
 	Shape_Node,
+	Silent_Node,
 	Vulnerability_Node,
 	Hand_Node,
 	Not_Node,

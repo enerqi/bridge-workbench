@@ -760,6 +760,7 @@ split_name_and_description :: proc(rest: string) -> (name: string, description: 
 //   atom       := name | "balanced" | "semibalanced" | "holds" "(" suit "," rank ")" | sum cmp sum
 //   sum        := term ( "+" term )* [ ("+" | "-") int ];  term := quantity | "cards" "(" suit "," cards ")"
 //               | "shape" "(" ["any"] pattern ( "," ["any"] pattern )* ")" | quantity ( cmp int | "in" a ".." b )
+//               | "silent" "(" level ( "," suit )+ | "silent" "(" level "," "notrump" ")"
 
 @(private)
 add_node :: proc(p: ^Parser, node: Node) -> int {
@@ -869,7 +870,7 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	// never "balanced", and a named helper asked about them would answer with something that reads like a
 	// verdict and means nothing. A seat line is where they belong, and the message says so.
 	// `seat` is one hand's place in the auction; a side has two.
-	if p.pair && (lowered == "balanced" || lowered == "semibalanced" || lowered == "shape" || lowered == "seat" || is_vocabulary_word(word)) {
+	if p.pair && (lowered == "balanced" || lowered == "semibalanced" || lowered == "shape" || lowered == "silent" || lowered == "seat" || is_vocabulary_word(word)) {
 		report(
 			p,
 			p.line_index,
@@ -894,6 +895,9 @@ parse_atom :: proc(p: ^Parser) -> (root: int, ok: bool) {
 	}
 	if lowered == "shape" {
 		return parse_shape(p)
+	}
+	if lowered == "silent" {
+		return parse_silent(p, start_col)
 	}
 	if v, is_vulnerability := vulnerability_word_of(lowered); is_vulnerability {
 		p.reads_table = true

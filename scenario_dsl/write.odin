@@ -200,6 +200,9 @@ write_node :: proc(b: ^strings.Builder, program: ^Program, index: int, level: Le
 	case Balanced_Node:
 		strings.write_string(b, "semibalanced" if node.semi else "balanced")
 
+	case Silent_Node:
+		write_silent(b, node)
+
 	case Shape_Node:
 		strings.write_string(b, "shape(")
 		for k in 0 ..< node.count {
