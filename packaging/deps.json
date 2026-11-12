@@ -12,7 +12,7 @@
     "siblings": {
         "norn": {
             "repo": "enerqi/norn",
-            "commit": "129ce1448b1f47a20e649f1d431847fae35eed19",
+            "commit": "7f4f6589c55bd752ebcc4028655b7f2a21b9e8f0",
             "env": "NORN_HOME"
         },
         "odin-dds": {
@@ -22,7 +22,7 @@
         },
         "odin-sciter": {
             "repo": "enerqi/odin-sciter",
-            "commit": "0361b0d98b14c560b760c567f847bb68724cd20d",
+            "commit": "606514f19092bae4453d906e6c6f182a24ffab79",
             "env": "SCITER_HOME"
         },
         "bridge-markup": {
